@@ -39,7 +39,6 @@ async def read_projects(
 async def read_public_projects(
     project_type: Optional[ProjectType] = None,
     region: Optional[str] = None,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Holt öffentliche Projekte für Dienstleister"""
