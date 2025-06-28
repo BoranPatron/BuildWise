@@ -3,10 +3,9 @@ from sqlalchemy.orm import sessionmaker
 from .config import get_settings
 
 settings = get_settings()
-DATABASE_URL = (
-    f"postgresql+asyncpg://{settings.db_user}:{settings.db_password}"
-    f"@{settings.db_host}:{settings.db_port}/{settings.db_name}"
-)
+
+# Verwende SQLite für die Entwicklung
+DATABASE_URL = "sqlite+aiosqlite:///./buildwise.db"
 
 engine = create_async_engine(DATABASE_URL, echo=False, future=True)
 

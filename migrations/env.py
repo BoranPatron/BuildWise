@@ -1,15 +1,23 @@
 from logging.config import fileConfig
+import sys
+import os
 
 from sqlalchemy import pool
 from sqlalchemy.engine import Connection
 from alembic import context
 
+# Füge das Projektverzeichnis zum Python-Pfad hinzu
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from app.core.config import get_settings
 from app.models import Base
-from app.core.database import DATABASE_URL
 
 config = context.config
-fileConfig(config.config_file_name)
+if config.config_file_name:
+    fileConfig(config.config_file_name)
+
+# Verwende SQLite für die Entwicklung
+DATABASE_URL = "sqlite:///./buildwise.db"
 
 
 def run_migrations_offline() -> None:
