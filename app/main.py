@@ -16,10 +16,20 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# CORS-Middleware
+# CORS-Konfiguration für Netzwerk-Zugriff
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # In Produktion spezifische Domains angeben
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://192.168.1.65:5173",
+        "http://192.168.1.42:5173",
+        "https://localhost:5173",
+        "https://127.0.0.1:5173",
+        "https://192.168.1.65:5173",
+        "https://192.168.1.42:5173",
+        "*"  # Für Entwicklung - in Produktion entfernen!
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
