@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, func
+from sqlalchemy import select, update, func, or_
 from typing import List, Optional
 from datetime import datetime
 
@@ -37,7 +37,12 @@ async def get_tasks_for_project(db: AsyncSession, project_id: int) -> List[Task]
 
 
 async def get_tasks_for_user(db: AsyncSession, user_id: int) -> List[Task]:
-    result = await db.execute(select(Task).where(Task.assigned_to == user_id))
+    # Hole alle Aufgaben, die der Benutzer erstellt hat ODER denen er zugewiesen ist
+    result = await db.execute(
+        select(Task).where(
+            or_(Task.created_by == user_id, Task.assigned_to == user_id)
+        )
+    )
     return list(result.scalars().all())
 
 

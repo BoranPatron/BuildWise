@@ -28,7 +28,7 @@ class MessageRead(MessageBase):
     updated_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class MessageSummary(BaseModel):
@@ -40,7 +40,7 @@ class MessageSummary(BaseModel):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class ChatRoom(BaseModel):

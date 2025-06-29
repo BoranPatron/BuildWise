@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, Integer, String, Boolean, Enum, Text
+from sqlalchemy import Column, DateTime, Integer, String, Boolean, Enum, Text, Date
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 import enum
@@ -12,6 +12,13 @@ class UserType(enum.Enum):
     SERVICE_PROVIDER = "service_provider"
 
 
+class UserStatus(enum.Enum):
+    ACTIVE = "active"
+    INACTIVE = "inactive"
+    SUSPENDED = "suspended"
+    DELETED = "deleted"
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -23,14 +30,33 @@ class User(Base):
     phone = Column(String, nullable=True)
     user_type = Column(Enum(UserType), nullable=False, default=UserType.PRIVATE)
     
-    # Firmendaten für Dienstleister
+    # DSGVO-konforme Felder
+    status = Column(Enum(UserStatus), nullable=False, default=UserStatus.ACTIVE)
+    data_processing_consent = Column(Boolean, default=False)  # Einwilligung zur Datenverarbeitung
+    marketing_consent = Column(Boolean, default=False)  # Einwilligung zu Marketing
+    privacy_policy_accepted = Column(Boolean, default=False)  # Datenschutzerklärung akzeptiert
+    terms_accepted = Column(Boolean, default=False)  # AGB akzeptiert
+    
+    # Datenlöschung und -archivierung
+    data_retention_until = Column(Date, nullable=True)  # Bis wann Daten aufbewahrt werden
+    data_deletion_requested = Column(Boolean, default=False)  # Löschung beantragt
+    data_deletion_requested_at = Column(DateTime(timezone=True), nullable=True)
+    data_anonymized = Column(Boolean, default=False)  # Daten anonymisiert
+    
+    # Audit-Logging
+    last_login_at = Column(DateTime(timezone=True), nullable=True)
+    failed_login_attempts = Column(Integer, default=0)
+    account_locked_until = Column(DateTime(timezone=True), nullable=True)
+    password_changed_at = Column(DateTime(timezone=True), nullable=True)
+    
+    # Firmendaten für Dienstleister (optional, nur bei Einwilligung)
     company_name = Column(String, nullable=True)
     company_address = Column(Text, nullable=True)
     company_phone = Column(String, nullable=True)
     company_website = Column(String, nullable=True)
     business_license = Column(String, nullable=True)  # Gewerbeschein
     
-    # Profilinformationen
+    # Profilinformationen (optional, nur bei Einwilligung)
     bio = Column(Text, nullable=True)
     profile_image = Column(String, nullable=True)
     region = Column(String, nullable=True)
@@ -43,9 +69,14 @@ class User(Base):
     two_factor_enabled = Column(Boolean, default=False)
     language_preference = Column(String, default="de")
     
-    # Timestamps
+    # DSGVO: Verschlüsselung und Sicherheit
+    data_encrypted = Column(Boolean, default=True)  # Sind sensible Daten verschlüsselt
+    encryption_key_id = Column(String, nullable=True)  # ID des Verschlüsselungsschlüssels
+    
+    # Timestamps mit DSGVO-Konformität
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    last_activity_at = Column(DateTime(timezone=True), nullable=True)
     
     # Relationships
     projects = relationship("Project", back_populates="owner")

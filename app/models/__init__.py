@@ -1,16 +1,18 @@
 from .base import Base
-from .user import User, UserType
+from .user import User, UserType, UserStatus
 from .project import Project, ProjectType, ProjectStatus
 from .task import Task, TaskStatus, TaskPriority
 from .document import Document, DocumentType
 from .milestone import Milestone, MilestoneStatus
 from .quote import Quote, QuoteStatus
 from .message import Message, MessageType
+from .audit_log import AuditLog, AuditAction
 
 __all__ = [
     "Base",
     "User",
     "UserType",
+    "UserStatus",
     "Project",
     "ProjectType",
     "ProjectStatus",
@@ -25,4 +27,6 @@ __all__ = [
     "QuoteStatus",
     "Message",
     "MessageType",
+    "AuditLog",
+    "AuditAction",
 ]

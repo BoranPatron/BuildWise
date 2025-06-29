@@ -51,7 +51,7 @@ class ProjectRead(ProjectBase):
     updated_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class ProjectSummary(BaseModel):
@@ -67,7 +67,7 @@ class ProjectSummary(BaseModel):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class ProjectDashboard(BaseModel):
@@ -81,4 +81,4 @@ class ProjectDashboard(BaseModel):
     recent_activities: List[dict] = []
 
     class Config:
-        orm_mode = True
+        from_attributes = True

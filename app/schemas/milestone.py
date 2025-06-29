@@ -39,7 +39,7 @@ class MilestoneRead(MilestoneBase):
     completed_at: Optional[datetime] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class MilestoneSummary(BaseModel):
@@ -52,4 +52,4 @@ class MilestoneSummary(BaseModel):
     is_critical: bool
 
     class Config:
-        orm_mode = True 
+        from_attributes = True 

@@ -46,7 +46,7 @@ class DocumentRead(DocumentBase):
     updated_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class DocumentSummary(BaseModel):
@@ -59,7 +59,7 @@ class DocumentSummary(BaseModel):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class DocumentUpload(BaseModel):

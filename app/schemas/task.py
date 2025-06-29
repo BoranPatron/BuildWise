@@ -44,7 +44,7 @@ class TaskRead(TaskBase):
     completed_at: Optional[datetime] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class TaskSummary(BaseModel):
@@ -58,4 +58,4 @@ class TaskSummary(BaseModel):
     is_milestone: bool
 
     class Config:
-        orm_mode = True 
+        from_attributes = True 

@@ -21,14 +21,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://192.168.1.65:5173",
-        "http://192.168.1.42:5173",
-        "https://localhost:5173",
-        "https://127.0.0.1:5173",
-        "https://192.168.1.65:5173",
-        "https://192.168.1.42:5173",
-        "*"  # Für Entwicklung - in Produktion entfernen!
+        "http://127.0.0.1:5173"
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -53,9 +46,13 @@ async def add_process_time_header(request: Request, call_next):
 # Exception Handler
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
     return JSONResponse(
         status_code=500,
-        content={"detail": "Ein interner Serverfehler ist aufgetreten"}
+        content={
+            "detail": str(exc),
+            "traceback": traceback.format_exc()
+        }
     )
 
 # API Router einbinden

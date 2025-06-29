@@ -52,7 +52,7 @@ class UserRead(UserBase):
     updated_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class UserProfile(BaseModel):
@@ -68,7 +68,7 @@ class UserProfile(BaseModel):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class UserLogin(BaseModel):
