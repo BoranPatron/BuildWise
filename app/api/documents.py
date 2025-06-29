@@ -1,6 +1,8 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
+from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+import os
 
 from ..core.database import get_db
 from ..api.deps import get_current_user
@@ -106,6 +108,121 @@ async def read_documents(
     return documents
 
 
+@router.get("/{document_id}/download", response_class=FileResponse)
+async def download_document(
+    document_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lädt ein Dokument herunter"""
+    document = await get_document_by_id(db, document_id)
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dokument nicht gefunden"
+        )
+    
+    # Prüfe ob die Datei existiert
+    file_path = str(document.file_path)
+    if not os.path.exists(file_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Datei nicht gefunden"
+        )
+    
+    return FileResponse(
+        path=file_path,
+        filename=str(document.file_name),
+        media_type=str(document.mime_type)
+    )
+
+
+@router.get("/{document_id}/view")
+async def view_document(
+    document_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Zeigt ein Dokument an (für Browser-Vorschau)"""
+    document = await get_document_by_id(db, document_id)
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dokument nicht gefunden"
+        )
+    
+    # Prüfe ob die Datei existiert
+    file_path = str(document.file_path)
+    if not os.path.exists(file_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Datei nicht gefunden"
+        )
+    
+    try:
+        # Lade den Dateiinhalt
+        with open(file_path, 'rb') as f:
+            content = f.read()
+        
+        mime_type = str(document.mime_type)
+        
+        # Für Textdateien: Konvertiere zu String
+        if mime_type.startswith('text/') or mime_type in ['application/json', 'application/xml']:
+            try:
+                text_content = content.decode('utf-8')
+                return {
+                    "type": "text",
+                    "content": text_content,
+                    "mime_type": mime_type,
+                    "encoding": "utf-8"
+                }
+            except UnicodeDecodeError:
+                # Fallback für andere Encodings
+                text_content = content.decode('latin-1')
+                return {
+                    "type": "text",
+                    "content": text_content,
+                    "mime_type": mime_type,
+                    "encoding": "latin-1"
+                }
+        
+        # Für Bilder: Base64-kodiert
+        elif mime_type.startswith('image/'):
+            import base64
+            encoded_content = base64.b64encode(content).decode('utf-8')
+            return {
+                "type": "image",
+                "content": encoded_content,
+                "mime_type": mime_type,
+                "encoding": "base64"
+            }
+        
+        # Für PDFs: Base64-kodiert
+        elif mime_type == 'application/pdf':
+            import base64
+            encoded_content = base64.b64encode(content).decode('utf-8')
+            return {
+                "type": "pdf",
+                "content": encoded_content,
+                "mime_type": mime_type,
+                "encoding": "base64"
+            }
+        
+        # Für andere Dateien: Nicht unterstützt
+        else:
+            return {
+                "type": "unsupported",
+                "mime_type": mime_type,
+                "message": "Dieser Dateityp wird für die Vorschau nicht unterstützt"
+            }
+            
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Lesen der Datei: {str(e)}"
+        )
+
+
 @router.get("/{document_id}", response_model=DocumentRead)
 async def read_document(
     document_id: int,
@@ -183,4 +300,66 @@ async def search_documents_endpoint(
 ):
     """Sucht nach Dokumenten"""
     documents = await search_documents(db, q, project_id, document_type)
-    return documents 
+    return documents
+
+
+@router.get("/{document_id}/content")
+async def get_document_content(
+    document_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Gibt den Inhalt eines Dokuments als JSON zurück"""
+    document = await get_document_by_id(db, document_id)
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dokument nicht gefunden"
+        )
+    
+    # Prüfe ob die Datei existiert
+    file_path = str(document.file_path)
+    if not os.path.exists(file_path):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Datei nicht gefunden"
+        )
+    
+    try:
+        # Lade den Dateiinhalt
+        with open(file_path, 'rb') as f:
+            content = f.read()
+        
+        # Für Textdateien: Konvertiere zu String
+        mime_type = str(document.mime_type)
+        if mime_type.startswith('text/') or mime_type in ['application/json', 'application/xml']:
+            try:
+                text_content = content.decode('utf-8')
+                return {
+                    "content": text_content,
+                    "mime_type": mime_type,
+                    "encoding": "utf-8"
+                }
+            except UnicodeDecodeError:
+                # Fallback für andere Encodings
+                text_content = content.decode('latin-1')
+                return {
+                    "content": text_content,
+                    "mime_type": mime_type,
+                    "encoding": "latin-1"
+                }
+        else:
+            # Für Binärdateien: Base64-kodiert
+            import base64
+            encoded_content = base64.b64encode(content).decode('utf-8')
+            return {
+                "content": encoded_content,
+                "mime_type": mime_type,
+                "encoding": "base64"
+            }
+            
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Lesen der Datei: {str(e)}"
+        ) 
