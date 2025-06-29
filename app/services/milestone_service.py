@@ -3,7 +3,7 @@ from sqlalchemy import select, update, func
 from typing import List, Optional
 from datetime import datetime
 
-from ..models import Milestone, MilestoneStatus
+from ..models import Milestone, MilestoneStatus, Project
 from ..schemas.milestone import MilestoneCreate, MilestoneUpdate
 
 
@@ -14,9 +14,17 @@ async def create_milestone(db: AsyncSession, milestone_in: MilestoneCreate, crea
         title=milestone_in.title,
         description=milestone_in.description,
         status=milestone_in.status,
+        priority=milestone_in.priority,
+        category=milestone_in.category,
         planned_date=milestone_in.planned_date,
+        start_date=milestone_in.start_date,
+        end_date=milestone_in.end_date,
+        budget=milestone_in.budget,
+        actual_costs=milestone_in.actual_costs,
+        contractor=milestone_in.contractor,
         is_critical=milestone_in.is_critical,
-        notify_on_completion=milestone_in.notify_on_completion
+        notify_on_completion=milestone_in.notify_on_completion,
+        notes=milestone_in.notes
     )
     db.add(milestone)
     await db.commit()
@@ -38,6 +46,26 @@ async def get_milestones_for_project(db: AsyncSession, project_id: int) -> List[
     return list(result.scalars().all())
 
 
+async def get_all_milestones_for_user(db: AsyncSession, user_id: int) -> List[Milestone]:
+    """Holt alle Gewerke für alle Projekte des Benutzers"""
+    # Hole alle Projekte des Benutzers
+    projects_result = await db.execute(
+        select(Project.id).where(Project.owner_id == user_id)
+    )
+    project_ids = [row[0] for row in projects_result.fetchall()]
+    
+    if not project_ids:
+        return []
+    
+    # Hole alle Gewerke für diese Projekte
+    result = await db.execute(
+        select(Milestone)
+        .where(Milestone.project_id.in_(project_ids))
+        .order_by(Milestone.planned_date)
+    )
+    return list(result.scalars().all())
+
+
 async def update_milestone(db: AsyncSession, milestone_id: int, milestone_update: MilestoneUpdate) -> Milestone | None:
     milestone = await get_milestone_by_id(db, milestone_id)
     if not milestone:
@@ -46,7 +74,8 @@ async def update_milestone(db: AsyncSession, milestone_id: int, milestone_update
     update_data = milestone_update.dict(exclude_unset=True)
     if update_data:
         # Wenn Meilenstein abgeschlossen wird, setze completed_at
-        if update_data.get('status') == MilestoneStatus.COMPLETED and milestone.status != MilestoneStatus.COMPLETED:
+        new_status = update_data.get('status')
+        if new_status == MilestoneStatus.COMPLETED and milestone.status.value != MilestoneStatus.COMPLETED.value:
             update_data['completed_at'] = datetime.utcnow()
             update_data['progress_percentage'] = 100
             update_data['actual_date'] = datetime.utcnow().date()
@@ -86,23 +115,14 @@ async def get_milestone_statistics(db: AsyncSession, project_id: int) -> dict:
     )
     
     stats = result.first()
-    if not stats:
-        return {
-            "total": 0,
-            "planned": 0,
-            "in_progress": 0,
-            "completed": 0,
-            "delayed": 0,
-            "avg_progress": 0.0
-        }
     
     return {
-        "total": stats.total or 0,
-        "planned": stats.planned or 0,
-        "in_progress": stats.in_progress or 0,
-        "completed": stats.completed or 0,
-        "delayed": stats.delayed or 0,
-        "avg_progress": round(stats.avg_progress or 0, 1)
+        "total": int(stats.total) if stats and stats.total is not None else 0,
+        "planned": int(stats.planned) if stats and stats.planned is not None else 0,
+        "in_progress": int(stats.in_progress) if stats and stats.in_progress is not None else 0,
+        "completed": int(stats.completed) if stats and stats.completed is not None else 0,
+        "delayed": int(stats.delayed) if stats and stats.delayed is not None else 0,
+        "avg_progress": round(float(stats.avg_progress), 1) if stats and stats.avg_progress is not None else 0.0
     }
 
 

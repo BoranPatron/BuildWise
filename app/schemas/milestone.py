@@ -1,16 +1,24 @@
 from datetime import date, datetime
 from typing import Optional
 from pydantic import BaseModel
-from ..models.milestone import MilestoneStatus
+from ..models.milestone import MilestoneStatus, MilestonePriority
 
 
 class MilestoneBase(BaseModel):
     title: str
     description: Optional[str] = None
     status: MilestoneStatus = MilestoneStatus.PLANNED
+    priority: MilestonePriority = MilestonePriority.MEDIUM
+    category: Optional[str] = None
     planned_date: date
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    budget: Optional[float] = None
+    actual_costs: Optional[float] = None
+    contractor: Optional[str] = None
     is_critical: bool = False
     notify_on_completion: bool = True
+    notes: Optional[str] = None
 
 
 class MilestoneCreate(MilestoneBase):
@@ -21,11 +29,19 @@ class MilestoneUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     status: Optional[MilestoneStatus] = None
+    priority: Optional[MilestonePriority] = None
+    category: Optional[str] = None
     planned_date: Optional[date] = None
     actual_date: Optional[date] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    budget: Optional[float] = None
+    actual_costs: Optional[float] = None
+    contractor: Optional[str] = None
     progress_percentage: Optional[int] = None
     is_critical: Optional[bool] = None
     notify_on_completion: Optional[bool] = None
+    notes: Optional[str] = None
 
 
 class MilestoneRead(MilestoneBase):
@@ -46,8 +62,15 @@ class MilestoneSummary(BaseModel):
     id: int
     title: str
     status: MilestoneStatus
+    priority: MilestonePriority
+    category: Optional[str] = None
     planned_date: date
     actual_date: Optional[date] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    budget: Optional[float] = None
+    actual_costs: Optional[float] = None
+    contractor: Optional[str] = None
     progress_percentage: int
     is_critical: bool
 

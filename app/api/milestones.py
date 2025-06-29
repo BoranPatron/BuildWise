@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -9,7 +9,8 @@ from ..schemas.milestone import MilestoneCreate, MilestoneRead, MilestoneUpdate,
 from ..services.milestone_service import (
     create_milestone, get_milestone_by_id, get_milestones_for_project,
     update_milestone, delete_milestone, get_milestone_statistics,
-    get_upcoming_milestones, get_overdue_milestones, search_milestones
+    get_upcoming_milestones, get_overdue_milestones, search_milestones,
+    get_all_milestones_for_user
 )
 
 router = APIRouter(prefix="/milestones", tags=["milestones"])
@@ -21,7 +22,8 @@ async def create_new_milestone(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    milestone = await create_milestone(db, milestone_in, current_user.id)
+    user_id = getattr(current_user, 'id')
+    milestone = await create_milestone(db, milestone_in, user_id)
     return milestone
 
 
@@ -32,6 +34,17 @@ async def read_milestones(
     db: AsyncSession = Depends(get_db),
 ):
     milestones = await get_milestones_for_project(db, project_id)
+    return milestones
+
+
+@router.get("/all", response_model=List[MilestoneSummary])
+async def read_all_milestones(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Holt alle Gewerke für alle Projekte des Benutzers"""
+    user_id = getattr(current_user, 'id')
+    milestones = await get_all_milestones_for_user(db, user_id)
     return milestones
 
 
@@ -104,7 +117,7 @@ async def get_project_milestone_statistics(
 
 @router.get("/upcoming", response_model=List[MilestoneSummary])
 async def get_upcoming_milestones_endpoint(
-    project_id: int = None,
+    project_id: Optional[int] = None,
     days: int = Query(30, ge=1, le=365, description="Anzahl Tage"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -116,7 +129,7 @@ async def get_upcoming_milestones_endpoint(
 
 @router.get("/overdue", response_model=List[MilestoneSummary])
 async def get_overdue_milestones_endpoint(
-    project_id: int = None,
+    project_id: Optional[int] = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -128,7 +141,7 @@ async def get_overdue_milestones_endpoint(
 @router.get("/search", response_model=List[MilestoneSummary])
 async def search_milestones_endpoint(
     q: str = Query(..., min_length=2, description="Suchbegriff"),
-    project_id: int = None,
+    project_id: Optional[int] = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
