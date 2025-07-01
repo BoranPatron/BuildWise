@@ -14,6 +14,19 @@ class UserBase(BaseModel):
 
 class UserCreate(UserBase):
     password: str
+    # DSGVO-Einwilligungen
+    data_processing_consent: bool = False
+    marketing_consent: bool = False
+    privacy_policy_accepted: bool = False
+    terms_accepted: bool = False
+    # Optionale Firmendaten
+    company_name: Optional[str] = None
+    company_address: Optional[str] = None
+    company_phone: Optional[str] = None
+    company_website: Optional[str] = None
+    business_license: Optional[str] = None
+    region: Optional[str] = None
+    languages: Optional[str] = None
 
 
 class UserUpdate(BaseModel):

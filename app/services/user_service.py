@@ -39,11 +39,19 @@ async def create_user(db: AsyncSession, user_in: UserCreate) -> User:
         last_name=user_in.last_name,
         phone=user_in.phone,
         user_type=user_in.user_type,
-        # DSGVO: Standard-Einwilligungen
-        data_processing_consent=False,  # Muss explizit gegeben werden
-        marketing_consent=False,  # Muss explizit gegeben werden
-        privacy_policy_accepted=False,  # Muss explizit akzeptiert werden
-        terms_accepted=False,  # Muss explizit akzeptiert werden
+        # DSGVO: Einwilligungen aus der Registrierung
+        data_processing_consent=user_in.data_processing_consent,
+        marketing_consent=user_in.marketing_consent,
+        privacy_policy_accepted=user_in.privacy_policy_accepted,
+        terms_accepted=user_in.terms_accepted,
+        # Firmendaten (optional)
+        company_name=user_in.company_name,
+        company_address=user_in.company_address,
+        company_phone=user_in.company_phone,
+        company_website=user_in.company_website,
+        business_license=user_in.business_license,
+        region=user_in.region,
+        languages=user_in.languages,
         data_retention_until=data_retention_until,
         status=UserStatus.ACTIVE
     )
