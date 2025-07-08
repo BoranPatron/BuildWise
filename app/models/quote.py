@@ -20,6 +20,7 @@ class Quote(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     project_id = Column(Integer, ForeignKey("projects.id", ondelete="CASCADE"))
+    milestone_id = Column(Integer, ForeignKey("milestones.id", ondelete="CASCADE"), nullable=True)  # Verknüpfung zum Gewerk
     service_provider_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"))
     
     title = Column(String, nullable=False)
@@ -54,6 +55,21 @@ class Quote(Base):
     contact_released = Column(Boolean, default=False)
     contact_released_at = Column(DateTime(timezone=True), nullable=True)
     
+    # Zusätzliche Felder für Dienstleister-Angebote
+    company_name = Column(String, nullable=True)  # Firmenname des Dienstleisters
+    contact_person = Column(String, nullable=True)  # Ansprechpartner
+    phone = Column(String, nullable=True)  # Telefonnummer
+    email = Column(String, nullable=True)  # E-Mail
+    website = Column(String, nullable=True)  # Website
+    
+    # Dokumente
+    pdf_upload_path = Column(String, nullable=True)  # Pfad zum hochgeladenen PDF
+    additional_documents = Column(Text, nullable=True)  # JSON-Array mit zusätzlichen Dokumenten
+    
+    # Bewertung und Feedback
+    rating = Column(Float, nullable=True)  # Bewertung (1-5 Sterne)
+    feedback = Column(Text, nullable=True)  # Feedback vom Bauträger
+    
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -62,4 +78,5 @@ class Quote(Base):
     
     # Relationships
     project = relationship("Project", back_populates="quotes")
+    milestone = relationship("Milestone")  # Verknüpfung zum Gewerk
     service_provider = relationship("User") 

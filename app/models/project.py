@@ -64,3 +64,4 @@ class Project(Base):
     documents = relationship("Document", back_populates="project", cascade="all, delete-orphan")
     milestones = relationship("Milestone", back_populates="project", cascade="all, delete-orphan")
     quotes = relationship("Quote", back_populates="project", cascade="all, delete-orphan")
+    cost_positions = relationship("CostPosition", back_populates="project", cascade="all, delete-orphan")

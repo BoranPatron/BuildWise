@@ -1,15 +1,16 @@
-from typing import List
+from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.database import get_db
 from ..api.deps import get_current_user
 from ..models import User, QuoteStatus
-from ..schemas.quote import QuoteCreate, QuoteRead, QuoteUpdate, QuoteSummary
+from ..schemas.quote import QuoteCreate, QuoteRead, QuoteUpdate, QuoteSummary, QuoteForMilestone
 from ..services.quote_service import (
     create_quote, get_quote_by_id, get_quotes_for_project,
     update_quote, delete_quote, submit_quote, accept_quote,
-    get_quote_statistics, analyze_quote, get_quotes_for_service_provider
+    get_quote_statistics, analyze_quote, get_quotes_for_service_provider,
+    get_quotes_for_milestone, create_mock_quotes_for_milestone
 )
 
 router = APIRouter(prefix="/quotes", tags=["quotes"])
@@ -21,21 +22,46 @@ async def create_new_quote(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    quote = await create_quote(db, quote_in, current_user.id)
+    user_id = getattr(current_user, 'id', 0)
+    quote = await create_quote(db, quote_in, user_id)
     return quote
 
 
 @router.get("/", response_model=List[QuoteSummary])
 async def read_quotes(
-    project_id: int = None,
+    project_id: Optional[int] = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if project_id:
+    if project_id is not None:
         quotes = await get_quotes_for_project(db, project_id)
     else:
         # Für Dienstleister: eigene Angebote
-        quotes = await get_quotes_for_service_provider(db, current_user.id)
+        user_id = getattr(current_user, 'id', 0)
+        quotes = await get_quotes_for_service_provider(db, user_id)
+    return quotes
+
+
+@router.get("/milestone/{milestone_id}", response_model=List[QuoteForMilestone])
+async def read_quotes_for_milestone(
+    milestone_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Holt alle Angebote für ein bestimmtes Gewerk"""
+    quotes = await get_quotes_for_milestone(db, milestone_id)
+    return quotes
+
+
+@router.post("/milestone/{milestone_id}/mock", response_model=List[QuoteForMilestone])
+async def create_mock_quotes_for_milestone_endpoint(
+    milestone_id: int,
+    project_id: int = Query(..., description="Projekt-ID für die Mock-Angebote"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Erstellt Mock-Angebote für ein Gewerk (für Demonstrationszwecke)"""
+    quotes = await create_mock_quotes_for_milestone(db, milestone_id, project_id)
     return quotes
 
 
@@ -53,7 +79,11 @@ async def read_quote(
         )
     
     # Prüfe Zugriffsberechtigung
-    if quote.service_provider_id != current_user.id and quote.project.owner_id != current_user.id:
+    user_id = getattr(current_user, 'id', 0)
+    project_owner_id = getattr(quote.project, 'owner_id', 0) if quote.project else 0
+    service_provider_id = getattr(quote, 'service_provider_id', 0)
+    
+    if service_provider_id != user_id and project_owner_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Keine Berechtigung für dieses Angebot"
@@ -77,7 +107,10 @@ async def update_quote_endpoint(
         )
     
     # Nur der Dienstleister kann sein Angebot bearbeiten
-    if quote.service_provider_id != current_user.id:
+    user_id = getattr(current_user, 'id', 0)
+    service_provider_id = getattr(quote, 'service_provider_id', 0)
+    
+    if service_provider_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Keine Berechtigung für dieses Angebot"
@@ -101,7 +134,10 @@ async def submit_quote_endpoint(
             detail="Angebot nicht gefunden"
         )
     
-    if quote.service_provider_id != current_user.id:
+    user_id = getattr(current_user, 'id', 0)
+    service_provider_id = getattr(quote, 'service_provider_id', 0)
+    
+    if service_provider_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Keine Berechtigung für dieses Angebot"
@@ -125,7 +161,10 @@ async def accept_quote_endpoint(
             detail="Angebot nicht gefunden"
         )
     
-    if quote.project.owner_id != current_user.id:
+    user_id = getattr(current_user, 'id', 0)
+    project_owner_id = getattr(quote.project, 'owner_id', 0) if quote.project else 0
+    
+    if project_owner_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Keine Berechtigung für dieses Angebot"
@@ -133,6 +172,38 @@ async def accept_quote_endpoint(
     
     accepted_quote = await accept_quote(db, quote_id)
     return accepted_quote
+
+
+@router.post("/{quote_id}/reset", response_model=QuoteRead)
+async def reset_quote_endpoint(
+    quote_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Setzt ein angenommenes Angebot zurück"""
+    quote = await get_quote_by_id(db, quote_id)
+    if not quote:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Angebot nicht gefunden"
+        )
+    
+    user_id = getattr(current_user, 'id', 0)
+    project_owner_id = getattr(quote.project, 'owner_id', 0) if quote.project else 0
+    
+    if project_owner_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Keine Berechtigung für dieses Angebot"
+        )
+    
+    # Setze das Angebot zurück auf "submitted"
+    from ..schemas.quote import QuoteUpdate
+    from ..models import QuoteStatus
+    quote_update = QuoteUpdate(status=QuoteStatus.SUBMITTED)
+    reset_quote = await update_quote(db, quote_id, quote_update)
+    
+    return reset_quote
 
 
 @router.delete("/{quote_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -149,7 +220,10 @@ async def delete_quote_endpoint(
         )
     
     # Nur der Dienstleister kann sein Angebot löschen
-    if quote.service_provider_id != current_user.id:
+    user_id = getattr(current_user, 'id', 0)
+    service_provider_id = getattr(quote, 'service_provider_id', 0)
+    
+    if service_provider_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Keine Berechtigung für dieses Angebot"
@@ -191,7 +265,10 @@ async def analyze_quote_endpoint(
         )
     
     # Nur der Projektbesitzer kann Angebote analysieren
-    if quote.project.owner_id != current_user.id:
+    user_id = getattr(current_user, 'id', 0)
+    project_owner_id = getattr(quote.project, 'owner_id', 0) if quote.project else 0
+    
+    if project_owner_id != user_id:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Keine Berechtigung für dieses Angebot"

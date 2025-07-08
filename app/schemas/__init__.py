@@ -19,10 +19,13 @@ from .milestone import (
 )
 from .quote import (
     QuoteBase, QuoteCreate, QuoteRead, QuoteUpdate, QuoteSummary, 
-    QuoteAnalysis
+    QuoteAnalysis, QuoteForMilestone
 )
 from .message import (
     MessageBase, MessageCreate, MessageRead, MessageSummary, ChatRoom
+)
+from .cost_position import (
+    CostPositionCreate, CostPositionRead, CostPositionUpdate, CostPositionSummary, CostPositionStatistics
 )
 
 __all__ = [
@@ -45,4 +48,6 @@ __all__ = [
     "QuoteAnalysis",
     # Message schemas
     "MessageBase", "MessageCreate", "MessageRead", "MessageSummary", "ChatRoom",
+    # Cost Position schemas
+    "CostPositionCreate", "CostPositionRead", "CostPositionUpdate", "CostPositionSummary", "CostPositionStatistics",
 ]

@@ -7,6 +7,7 @@ from .milestone import Milestone, MilestoneStatus, MilestonePriority
 from .quote import Quote, QuoteStatus
 from .message import Message, MessageType
 from .audit_log import AuditLog, AuditAction
+from .cost_position import CostPosition, CostCategory, CostType, CostStatus
 
 __all__ = [
     "Base",
@@ -30,4 +31,8 @@ __all__ = [
     "MessageType",
     "AuditLog",
     "AuditAction",
+    "CostPosition",
+    "CostCategory",
+    "CostType",
+    "CostStatus",
 ]
