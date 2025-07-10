@@ -91,7 +91,7 @@ async def authenticate_user(db: AsyncSession, email: str, password: str, ip_addr
         user_id = getattr(user, 'id', None)
         failed_attempts = getattr(user, 'failed_login_attempts', 0)
         if user_id:
-            await SecurityService.handle_failed_login(db, user_id, failed_attempts, ip_address or "")
+            await SecurityService.handle_failed_login(db, user, ip_address or "")
         return None
     
     # Erfolgreiche Anmeldung

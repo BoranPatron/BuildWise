@@ -10,7 +10,7 @@ from ..services.milestone_service import (
     create_milestone, get_milestone_by_id, get_milestones_for_project,
     update_milestone, delete_milestone, get_milestone_statistics,
     get_upcoming_milestones, get_overdue_milestones, search_milestones,
-    get_all_milestones_for_user
+    get_all_milestones_for_user, get_all_active_milestones
 )
 
 router = APIRouter(prefix="/milestones", tags=["milestones"])
@@ -42,9 +42,14 @@ async def read_all_milestones(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Holt alle Gewerke für alle Projekte des Benutzers"""
-    user_id = getattr(current_user, 'id')
-    milestones = await get_all_milestones_for_user(db, user_id)
+    """Holt alle Gewerke für alle Projekte des Benutzers (Bauträger) oder alle ausgeschriebenen Gewerke (Dienstleister)"""
+    if current_user.user_type == 'service_provider':
+        # Dienstleister: Alle aktiven Gewerke aus allen Projekten
+        milestones = await get_all_active_milestones(db)
+    else:
+        # Bauträger: Nur eigene Projekte
+        user_id = getattr(current_user, 'id')
+        milestones = await get_all_milestones_for_user(db, user_id)
     return milestones
 
 

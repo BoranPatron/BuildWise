@@ -2,6 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func
 from typing import List, Optional
 from datetime import datetime
+import logging
 
 from ..models import Milestone, MilestoneStatus, Project
 from ..schemas.milestone import MilestoneCreate, MilestoneUpdate
@@ -177,3 +178,41 @@ async def search_milestones(db: AsyncSession, search_term: str, project_id: Opti
     query = query.where(search_filter)
     result = await db.execute(query)
     return list(result.scalars().all()) 
+
+
+async def get_all_active_milestones(db: AsyncSession) -> List[Milestone]:
+    """Holt alle aktiven Gewerke aus öffentlichen Projekten für Dienstleister"""
+    from ..models import Project
+    
+    # Debug: Prüfe alle Projekte
+    projects_result = await db.execute(select(Project))
+    all_projects = list(projects_result.scalars().all())
+    import logging
+    logging.warning(f"[DEBUG] Alle Projekte: {len(all_projects)}")
+    for p in all_projects:
+        logging.warning(f"[DEBUG] Projekt: id={p.id}, name={p.name}, is_public={p.is_public}, allow_quotes={p.allow_quotes}")
+    
+    # Debug: Prüfe alle Milestones
+    milestones_result = await db.execute(select(Milestone))
+    all_milestones = list(milestones_result.scalars().all())
+    logging.warning(f"[DEBUG] Alle Milestones: {len(all_milestones)}")
+    for m in all_milestones:
+        logging.warning(f"[DEBUG] Milestone: id={m.id}, status={m.status}, project_id={m.project_id}")
+    
+    # Vergleiche explizit mit den String-Werten, nicht mit Enum
+    # Nur Milestones aus öffentlichen Projekten zurückgeben
+    result = await db.execute(
+        select(Milestone)
+        .join(Project, Milestone.project_id == Project.id)
+        .where(
+            Milestone.status.in_(['PLANNED', 'IN_PROGRESS']),
+            Project.is_public == True,
+            Project.allow_quotes == True
+        )
+        .order_by(Milestone.planned_date)
+    )
+    milestones = list(result.scalars().all())
+    logging.warning(f"[DEBUG] get_all_active_milestones: {len(milestones)} gefunden.")
+    for m in milestones:
+        logging.warning(f"[DEBUG] Milestone: id={m.id}, title={m.title}, status={m.status}, project_id={m.project_id}")
+    return milestones 

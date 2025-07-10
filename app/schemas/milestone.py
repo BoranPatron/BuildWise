@@ -56,13 +56,14 @@ class MilestoneRead(MilestoneBase):
 
     class Config:
         from_attributes = True
+        use_enum_values = True  # Enum als String serialisieren
 
 
 class MilestoneSummary(BaseModel):
     id: int
     title: str
-    status: MilestoneStatus
-    priority: MilestonePriority
+    status: str  # String statt Enum
+    priority: str  # String statt Enum
     category: Optional[str] = None
     planned_date: date
     actual_date: Optional[date] = None
@@ -73,6 +74,8 @@ class MilestoneSummary(BaseModel):
     contractor: Optional[str] = None
     progress_percentage: int
     is_critical: bool
+    project_id: Optional[int] = None  # Projekt-ID hinzufügen
 
     class Config:
-        from_attributes = True 
+        from_attributes = True
+        use_enum_values = True  # Enum als String serialisieren 

@@ -44,16 +44,16 @@ async def add_process_time_header(request: Request, call_next):
     return response
 
 # Exception Handler
-@app.exception_handler(Exception)
-async def global_exception_handler(request: Request, exc: Exception):
-    import traceback
-    return JSONResponse(
-        status_code=500,
-        content={
-            "detail": str(exc),
-            "traceback": traceback.format_exc()
-        }
-    )
+#@app.exception_handler(Exception)
+#async def global_exception_handler(request: Request, exc: Exception):
+#    import traceback
+#    return JSONResponse(
+#        status_code=500,
+#        content={
+#            "detail": str(exc),
+#            "traceback": traceback.format_exc()
+#        }
+#    )
 
 # API Router einbinden
 app.include_router(api_router, prefix="/api/v1")
