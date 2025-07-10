@@ -77,7 +77,7 @@ class MilestoneSummary(BaseModel):
     project_id: Optional[int] = None  # Projekt-ID hinzufügen
 
     class Config:
-        from_attributes = True
+        from_attributes = True 
         use_enum_values = True  # Enum als String serialisieren
         
     @classmethod

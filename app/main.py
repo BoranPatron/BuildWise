@@ -3,6 +3,10 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
 import time
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 from .api import api_router
 from .core.database import engine
@@ -17,12 +21,18 @@ app = FastAPI(
 )
 
 # CORS-Konfiguration für Netzwerk-Zugriff
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=[
+allowed_origins_env = os.getenv('ALLOWED_ORIGINS')
+if allowed_origins_env:
+    allowed_origins = [origin.strip() for origin in allowed_origins_env.split(',')]
+else:
+    allowed_origins = [
         "http://localhost:5173",
         "http://127.0.0.1:5173"
-    ],
+    ]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

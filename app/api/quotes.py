@@ -1,6 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel
 
 from ..core.database import get_db
 from ..api.deps import get_current_user
@@ -14,6 +15,10 @@ from ..services.quote_service import (
 )
 
 router = APIRouter(prefix="/quotes", tags=["quotes"])
+
+
+class QuoteRejectRequest(BaseModel):
+    rejection_reason: Optional[str] = None
 
 
 @router.post("/", response_model=QuoteRead, status_code=status.HTTP_201_CREATED)
@@ -276,3 +281,79 @@ async def analyze_quote_endpoint(
     
     analysis = await analyze_quote(db, quote_id)
     return analysis 
+
+
+@router.post("/{quote_id}/reject", response_model=QuoteRead)
+async def reject_quote_endpoint(
+    quote_id: int,
+    reject_request: QuoteRejectRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lehnt ein Angebot ab"""
+    quote = await get_quote_by_id(db, quote_id)
+    if not quote:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Angebot nicht gefunden"
+        )
+    
+    user_id = getattr(current_user, 'id', 0)
+    project_owner_id = getattr(quote.project, 'owner_id', 0) if quote.project else 0
+    
+    if project_owner_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Keine Berechtigung für dieses Angebot"
+        )
+    
+    # Setze das Angebot auf "rejected" und füge optional eine Ablehnungsnachricht hinzu
+    from ..schemas.quote import QuoteUpdate
+    quote_update = QuoteUpdate(
+        status=QuoteStatus.REJECTED,
+        feedback=reject_request.rejection_reason
+    )
+    rejected_quote = await update_quote(db, quote_id, quote_update)
+    
+    return rejected_quote
+
+
+@router.post("/{quote_id}/withdraw", status_code=status.HTTP_204_NO_CONTENT)
+async def withdraw_quote_endpoint(
+    quote_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Zieht ein Angebot zurück (löscht es)"""
+    quote = await get_quote_by_id(db, quote_id)
+    if not quote:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Angebot nicht gefunden"
+        )
+    
+    # Nur der Dienstleister kann sein Angebot zurückziehen
+    user_id = getattr(current_user, 'id', 0)
+    service_provider_id = getattr(quote, 'service_provider_id', 0)
+    
+    if service_provider_id != user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Keine Berechtigung für dieses Angebot"
+        )
+    
+    # Nur Angebote die noch nicht angenommen wurden können zurückgezogen werden
+    if quote.status.value == QuoteStatus.ACCEPTED.value:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Angenommene Angebote können nicht zurückgezogen werden"
+        )
+    
+    success = await delete_quote(db, quote_id)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Angebot konnte nicht zurückgezogen werden"
+        )
+    
+    return None
