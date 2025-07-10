@@ -37,19 +37,29 @@ async def read_milestones(
     return milestones
 
 
-@router.get("/all", response_model=List[MilestoneSummary])
+@router.get("/all")
 async def read_all_milestones(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Holt alle Gewerke für alle Projekte des Benutzers (Bauträger) oder alle ausgeschriebenen Gewerke (Dienstleister)"""
-    if current_user.user_type == 'service_provider':
-        # Dienstleister: Alle aktiven Gewerke aus allen Projekten
+    import logging
+    from ..models import UserType
+    logging.warning(f"[API] User: {getattr(current_user, 'id', None)}, type: {getattr(current_user, 'user_type', None)}, email: {getattr(current_user, 'email', None)}")
+    
+    # Prüfe explizit auf Dienstleister-Rolle
+    is_service_provider = current_user.user_type == UserType.SERVICE_PROVIDER
+    logging.warning(f"[API] is_service_provider: {is_service_provider}")
+    
+    if is_service_provider:
+        # Dienstleister: Alle aktiven Gewerke (Ausschreibungen)
         milestones = await get_all_active_milestones(db)
+        logging.warning(f"[API] get_all_active_milestones liefert {len(milestones)} Milestones: {milestones}")
     else:
-        # Bauträger: Nur eigene Projekte
+        # Bauträger: Nur eigene Gewerke
         user_id = getattr(current_user, 'id')
         milestones = await get_all_milestones_for_user(db, user_id)
+        logging.warning(f"[API] get_all_milestones_for_user liefert {len(milestones)} Milestones: {milestones}")
+    
     return milestones
 
 

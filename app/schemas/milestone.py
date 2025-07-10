@@ -78,4 +78,26 @@ class MilestoneSummary(BaseModel):
 
     class Config:
         from_attributes = True
-        use_enum_values = True  # Enum als String serialisieren 
+        use_enum_values = True  # Enum als String serialisieren
+        
+    @classmethod
+    def from_orm(cls, obj):
+        # Konvertiere Enum-Werte zu Strings
+        data = {
+            'id': obj.id,
+            'title': obj.title,
+            'status': str(obj.status).lower(),
+            'priority': str(obj.priority).lower(),
+            'category': obj.category,
+            'planned_date': obj.planned_date,
+            'actual_date': obj.actual_date,
+            'start_date': obj.start_date,
+            'end_date': obj.end_date,
+            'budget': obj.budget,
+            'actual_costs': obj.actual_costs,
+            'contractor': obj.contractor,
+            'progress_percentage': obj.progress_percentage,
+            'is_critical': obj.is_critical,
+            'project_id': obj.project_id
+        }
+        return cls(**data) 
