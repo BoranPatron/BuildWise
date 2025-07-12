@@ -29,6 +29,7 @@ class QuoteBase(BaseModel):
     additional_documents: Optional[str] = None
     rating: Optional[float] = None
     feedback: Optional[str] = None
+    rejection_reason: Optional[str] = None
 
 
 class QuoteCreate(QuoteBase):
@@ -61,6 +62,7 @@ class QuoteUpdate(BaseModel):
     additional_documents: Optional[str] = None
     rating: Optional[float] = None
     feedback: Optional[str] = None
+    rejection_reason: Optional[str] = None
 
 
 class QuoteRead(QuoteBase):
@@ -134,6 +136,7 @@ class QuoteForMilestone(BaseModel):
     ai_recommendation: Optional[str] = None
     rating: Optional[float] = None
     feedback: Optional[str] = None
+    rejection_reason: Optional[str] = None
     created_at: datetime
     submitted_at: Optional[datetime] = None
     accepted_at: Optional[datetime] = None

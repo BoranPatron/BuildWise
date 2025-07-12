@@ -17,6 +17,8 @@ from ..services.quote_service import (
 from ..schemas.quote import QuoteUpdate
 from ..models.quote import QuoteStatus
 from ..core.security import can_accept_or_reject_quote
+from app.services.cost_position_service import create_cost_position, get_cost_position_by_quote_id
+from app.schemas.cost_position import CostPositionCreate
 
 router = APIRouter(prefix="/quotes", tags=["quotes"])
 
@@ -61,7 +63,7 @@ async def get_quotes_endpoint(
             quotes = await get_quotes_by_project(db, project_id)
         else:
             quotes = await get_quotes_by_service_provider(db, user_id)
-        return quotes
+    return quotes
 
 
 @router.get("/milestone/{milestone_id}", response_model=List[QuoteForMilestone])
@@ -191,6 +193,32 @@ async def accept_quote_endpoint(
         )
     
     accepted_quote = await accept_quote(db, quote_id)
+    
+    # Kostenposition erzeugen, falls nicht vorhanden
+    cost_position = await get_cost_position_by_quote_id(db, quote.id)
+    if not cost_position:
+        cost_position_in = CostPositionCreate(
+            title=quote.title,
+            description=quote.description,
+            amount=quote.total_amount,
+            currency=quote.currency,
+            project_id=quote.project_id,
+            milestone_id=quote.milestone_id,
+            quote_id=quote.id,
+            contractor_name=quote.company_name,
+            contractor_contact=quote.contact_person,
+            contractor_email=quote.email,
+            payment_terms=quote.payment_terms,
+            warranty_period=quote.warranty_period,
+            estimated_duration=quote.estimated_duration,
+            start_date=quote.start_date,
+            completion_date=quote.completion_date,
+            labor_cost=quote.labor_cost,
+            material_cost=quote.material_cost,
+            overhead_cost=quote.overhead_cost
+        )
+        await create_cost_position(db, cost_position_in)
+    
     return accepted_quote
 
 
@@ -323,7 +351,7 @@ async def reject_quote_endpoint(
     # Setze das Angebot auf "rejected" und speichere optionalen Ablehnungsgrund
     quote_update = QuoteUpdate(
         status=QuoteStatus.REJECTED,
-        feedback=reject_request.rejection_reason
+        rejection_reason=reject_request.rejection_reason
     )
     rejected_quote = await update_quote(db, quote_id, quote_update)
     return rejected_quote

@@ -289,3 +289,10 @@ async def get_cost_position_statistics_for_accepted_quotes(db: AsyncSession, pro
         "status_distribution": status_distribution,
         "cost_type_distribution": cost_type_distribution
     } 
+
+
+async def get_cost_position_by_quote_id(db: AsyncSession, quote_id: int):
+    result = await db.execute(
+        select(CostPosition).where(CostPosition.quote_id == quote_id)
+    )
+    return result.scalar_one_or_none() 

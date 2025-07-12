@@ -70,6 +70,9 @@ class Quote(Base):
     rating = Column(Float, nullable=True)  # Bewertung (1-5 Sterne)
     feedback = Column(Text, nullable=True)  # Feedback vom Bauträger
     
+    # Ablehnungsgrund
+    rejection_reason = Column(Text, nullable=True)  # Grund für Ablehnung
+    
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
