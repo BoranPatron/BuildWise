@@ -177,7 +177,7 @@ async def accept_quote_endpoint(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Akzeptiert ein Angebot"""
+    """Akzeptiert ein Angebot und erstellt automatisch eine Kostenposition"""
     quote = await get_quote_by_id(db, quote_id)
     if not quote:
         raise HTTPException(
@@ -192,32 +192,18 @@ async def accept_quote_endpoint(
             detail="Nur Projekt-Owner, Admin oder Superuser dürfen Angebote annehmen."
         )
     
+    # Akzeptiere das Angebot
     accepted_quote = await accept_quote(db, quote_id)
     
     # Kostenposition erzeugen, falls nicht vorhanden
-    cost_position = await get_cost_position_by_quote_id(db, quote.id)
-    if not cost_position:
-        cost_position_in = CostPositionCreate(
-            title=quote.title,
-            description=quote.description,
-            amount=quote.total_amount,
-            currency=quote.currency,
-            project_id=quote.project_id,
-            milestone_id=quote.milestone_id,
-            quote_id=quote.id,
-            contractor_name=quote.company_name,
-            contractor_contact=quote.contact_person,
-            contractor_email=quote.email,
-            payment_terms=quote.payment_terms,
-            warranty_period=quote.warranty_period,
-            estimated_duration=quote.estimated_duration,
-            start_date=quote.start_date,
-            completion_date=quote.completion_date,
-            labor_cost=quote.labor_cost,
-            material_cost=quote.material_cost,
-            overhead_cost=quote.overhead_cost
-        )
-        await create_cost_position(db, cost_position_in)
+    try:
+        # Verwende die robuste Service-Funktion direkt
+        from ..services.quote_service import create_cost_position_from_quote
+        success = await create_cost_position_from_quote(db, quote)
+        if not success:
+            print(f"⚠️ Warnung: Kostenposition für Angebot {quote.id} konnte nicht erstellt werden")
+    except Exception as e:
+        print(f"⚠️ Fehler beim Erstellen der Kostenposition: {e}")
     
     return accepted_quote
 

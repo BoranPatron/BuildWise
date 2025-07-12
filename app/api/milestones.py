@@ -4,7 +4,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.database import get_db
 from ..api.deps import get_current_user
-from ..models import User
+from ..models import User, Milestone, Quote, CostPosition
+import os
 from ..schemas.milestone import MilestoneCreate, MilestoneRead, MilestoneUpdate, MilestoneSummary
 from ..services.milestone_service import (
     create_milestone, get_milestone_by_id, get_milestones_for_project,
@@ -29,12 +30,26 @@ async def create_new_milestone(
 
 @router.get("/", response_model=List[MilestoneSummary])
 async def read_milestones(
-    project_id: int,
+    project_id: int = Query(..., description="Projekt-ID"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    milestones = await get_milestones_for_project(db, project_id)
-    return milestones
+    try:
+        print(f"🔧 [API] read_milestones called with project_id: {project_id}")
+        print(f"🔧 [API] current_user: {current_user.id}, {current_user.email}")
+        
+        milestones = await get_milestones_for_project(db, project_id)
+        print(f"🔧 [API] Found {len(milestones)} milestones for project {project_id}")
+        
+        return milestones
+    except Exception as e:
+        print(f"❌ [API] Error in read_milestones: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Laden der Meilensteine: {str(e)}"
+        )
 
 
 @router.get("/all")
@@ -163,3 +178,24 @@ async def search_milestones_endpoint(
     """Sucht nach Meilensteinen"""
     milestones = await search_milestones(db, q, project_id)
     return milestones 
+
+
+@router.delete("/debug/delete-all-milestones-and-quotes", tags=["debug"])
+async def debug_delete_all_milestones_and_quotes(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Löscht alle Milestones, Quotes und abhängige CostPositions. Nur im Entwicklungsmodus erlaubt!
+    """
+    if os.getenv("ENVIRONMENT") != "development":
+        raise HTTPException(status_code=403, detail="Nur im Entwicklungsmodus erlaubt.")
+
+    # Kostenpositionen löschen, die zu Quotes gehören
+    await db.execute(CostPosition.__table__.delete().where(CostPosition.quote_id.isnot(None)))
+    # Quotes löschen
+    await db.execute(Quote.__table__.delete())
+    # Milestones löschen
+    await db.execute(Milestone.__table__.delete())
+    await db.commit()
+    return {"message": "Alle Gewerke, Angebote und zugehörige Kostenpositionen wurden gelöscht."} 

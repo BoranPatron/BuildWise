@@ -6,6 +6,7 @@ from sqlalchemy.orm import selectinload, joinedload
 
 from ..models import Quote, QuoteStatus
 from ..schemas.quote import QuoteCreate, QuoteUpdate, QuoteForMilestone
+from ..services.cost_position_service import get_cost_position_by_quote_id
 
 
 async def create_quote(db: AsyncSession, quote_in: QuoteCreate, service_provider_id: int) -> Quote:
@@ -207,6 +208,12 @@ async def create_cost_position_from_quote(db: AsyncSession, quote: Quote) -> boo
     try:
         from ..models import CostPosition, CostCategory, CostType, CostStatus
         
+        # Prüfe, ob bereits eine Kostenposition für dieses Quote existiert
+        existing_cost_position = await get_cost_position_by_quote_id(db, quote.id)
+        if existing_cost_position:
+            print(f"⚠️  Kostenposition für Quote {quote.id} existiert bereits (ID: {existing_cost_position.id})")
+            return True
+        
         # Bestimme die Kostenkategorie basierend auf dem Gewerk
         category_mapping = {
             'elektro': 'electrical',
@@ -296,13 +303,15 @@ async def create_cost_position_from_quote(db: AsyncSession, quote: Quote) -> boo
         
         db.add(cost_position)
         await db.commit()
+        await db.refresh(cost_position)
         
         print(f"✅ Kostenposition für Angebot '{quote.title}' erstellt (ID: {cost_position.id})")
         return True
         
     except Exception as e:
         print(f"❌ Fehler beim Erstellen der Kostenposition: {e}")
-        return False
+        # Fehler weiterwerfen, damit er im Frontend sichtbar wird
+        raise Exception(f"Fehler beim Erstellen der Kostenposition für Quote {quote.id}: {str(e)}")
 
 
 async def get_quote_statistics(db: AsyncSession, project_id: int) -> dict:

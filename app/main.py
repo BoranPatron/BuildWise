@@ -27,8 +27,13 @@ if allowed_origins_env:
 else:
     allowed_origins = [
         "http://localhost:5173",
-        "http://127.0.0.1:5173"
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000"
     ]
+
+# Debug-Ausgabe für CORS-Konfiguration
+print(f"🔧 CORS allowed origins: {allowed_origins}")
 
 app.add_middleware(
     CORSMiddleware,

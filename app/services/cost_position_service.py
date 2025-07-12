@@ -236,9 +236,9 @@ async def get_cost_positions_from_accepted_quotes(db: AsyncSession, project_id: 
             select(CostPosition)
             .where(CostPosition.quote_id == quote.id)
         )
-        cost_position = cost_position_result.scalar_one_or_none()
-        if cost_position:
-            cost_positions.append(cost_position)
+        # Verwende all() statt scalar_one_or_none() um mehrere CostPositions zu erlauben
+        quote_cost_positions = cost_position_result.scalars().all()
+        cost_positions.extend(quote_cost_positions)
     
     return cost_positions
 
