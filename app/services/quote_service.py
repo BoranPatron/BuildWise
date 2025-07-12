@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func, and_
 from typing import List, Optional
 from datetime import datetime, date
-from sqlalchemy.orm import selectinload
+from sqlalchemy.orm import selectinload, joinedload
 
 from ..models import Quote, QuoteStatus
 from ..schemas.quote import QuoteCreate, QuoteUpdate, QuoteForMilestone
@@ -80,6 +80,30 @@ async def get_quotes_for_service_provider(db: AsyncSession, service_provider_id:
         select(Quote)
         .where(Quote.service_provider_id == service_provider_id)
         .order_by(Quote.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def get_all_quotes(db: AsyncSession) -> List[Quote]:
+    """Ruft alle Angebote ab (für Admin)"""
+    result = await db.execute(select(Quote).options(joinedload(Quote.project)))
+    return list(result.scalars().all())
+
+async def get_quotes_by_project(db: AsyncSession, project_id: int) -> List[Quote]:
+    """Ruft Angebote für ein bestimmtes Projekt ab"""
+    result = await db.execute(
+        select(Quote)
+        .options(joinedload(Quote.project))
+        .where(Quote.project_id == project_id)
+    )
+    return list(result.scalars().all())
+
+async def get_quotes_by_service_provider(db: AsyncSession, service_provider_id: int) -> List[Quote]:
+    """Ruft Angebote eines bestimmten Dienstleisters ab"""
+    result = await db.execute(
+        select(Quote)
+        .options(joinedload(Quote.project))
+        .where(Quote.service_provider_id == service_provider_id)
     )
     return list(result.scalars().all())
 

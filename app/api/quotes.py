@@ -11,8 +11,12 @@ from ..services.quote_service import (
     create_quote, get_quote_by_id, get_quotes_for_project,
     update_quote, delete_quote, submit_quote, accept_quote,
     get_quote_statistics, analyze_quote, get_quotes_for_service_provider,
-    get_quotes_for_milestone, create_mock_quotes_for_milestone
+    get_quotes_for_milestone, create_mock_quotes_for_milestone,
+    get_all_quotes, get_quotes_by_project, get_quotes_by_service_provider
 )
+from ..schemas.quote import QuoteUpdate
+from ..models.quote import QuoteStatus
+from ..core.security import can_accept_or_reject_quote
 
 router = APIRouter(prefix="/quotes", tags=["quotes"])
 
@@ -32,19 +36,32 @@ async def create_new_quote(
     return quote
 
 
-@router.get("/", response_model=List[QuoteSummary])
-async def read_quotes(
-    project_id: Optional[int] = None,
+@router.get("/", response_model=List[QuoteRead])
+async def get_quotes_endpoint(
+    project_id: Optional[int] = Query(None, description="Filter by project ID"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if project_id is not None:
-        quotes = await get_quotes_for_project(db, project_id)
+    """Ruft Angebote ab - für Admin alle, für andere projektbasiert"""
+    user_id = getattr(current_user, 'id', 0)
+    user_type = getattr(current_user, 'user_type', '')
+    user_email = getattr(current_user, 'email', '')
+    
+    # Admin-User sehen alle Angebote
+    is_admin = (user_type in ("admin", "superuser", "super_admin") or 
+                user_email == "admin@buildwise.de")
+    
+    if is_admin:
+        # Admin: Alle Angebote zurückgeben
+        quotes = await get_all_quotes(db)
+        return quotes
     else:
-        # Für Dienstleister: eigene Angebote
-        user_id = getattr(current_user, 'id', 0)
-        quotes = await get_quotes_for_service_provider(db, user_id)
-    return quotes
+        # Nicht-Admin: Projektbasierte Filterung
+        if project_id:
+            quotes = await get_quotes_by_project(db, project_id)
+        else:
+            quotes = await get_quotes_by_service_provider(db, user_id)
+        return quotes
 
 
 @router.get("/milestone/{milestone_id}", response_model=List[QuoteForMilestone])
@@ -166,13 +183,11 @@ async def accept_quote_endpoint(
             detail="Angebot nicht gefunden"
         )
     
-    user_id = getattr(current_user, 'id', 0)
-    project_owner_id = getattr(quote.project, 'owner_id', 0) if quote.project else 0
-    
-    if project_owner_id != user_id:
+    # Robuste Berechtigungsprüfung
+    if not can_accept_or_reject_quote(current_user, quote):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Keine Berechtigung für dieses Angebot"
+            detail="Nur Projekt-Owner, Admin oder Superuser dürfen Angebote annehmen."
         )
     
     accepted_quote = await accept_quote(db, quote_id)
@@ -290,7 +305,7 @@ async def reject_quote_endpoint(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Lehnt ein Angebot ab"""
+    """Lehnt ein Angebot ab (mit optionalem Ablehnungsgrund)"""
     quote = await get_quote_by_id(db, quote_id)
     if not quote:
         raise HTTPException(
@@ -298,23 +313,19 @@ async def reject_quote_endpoint(
             detail="Angebot nicht gefunden"
         )
     
-    user_id = getattr(current_user, 'id', 0)
-    project_owner_id = getattr(quote.project, 'owner_id', 0) if quote.project else 0
-    
-    if project_owner_id != user_id:
+    # Robuste Berechtigungsprüfung
+    if not can_accept_or_reject_quote(current_user, quote):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Keine Berechtigung für dieses Angebot"
+            detail="Nur Projekt-Owner, Admin oder Superuser dürfen Angebote ablehnen."
         )
     
-    # Setze das Angebot auf "rejected" und füge optional eine Ablehnungsnachricht hinzu
-    from ..schemas.quote import QuoteUpdate
+    # Setze das Angebot auf "rejected" und speichere optionalen Ablehnungsgrund
     quote_update = QuoteUpdate(
         status=QuoteStatus.REJECTED,
         feedback=reject_request.rejection_reason
     )
     rejected_quote = await update_quote(db, quote_id, quote_update)
-    
     return rejected_quote
 
 

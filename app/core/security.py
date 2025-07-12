@@ -40,3 +40,19 @@ def decode_access_token(token: str) -> Optional[dict]:
         return payload
     except JWTError:
         return None
+
+
+def can_accept_or_reject_quote(user, quote):
+    """Prüft, ob der User ein Angebot annehmen/ablehnen darf (Owner, Admin, Superuser)"""
+    if not quote or not getattr(quote, 'project', None):
+        return False
+    if getattr(user, 'id', None) == getattr(quote.project, 'owner_id', None):
+        return True
+    # Erlaube auch Admin-User (nicht nur 'admin' und 'superuser')
+    user_type = getattr(user, 'user_type', '')
+    if user_type in ("admin", "superuser", "super_admin"):
+        return True
+    # Zusätzlich: Erlaube User mit E-Mail admin@buildwise.de (Fallback)
+    if getattr(user, 'email', '') == 'admin@buildwise.de':
+        return True
+    return False
