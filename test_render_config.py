@@ -60,11 +60,11 @@ def test_database_url():
     if database_url.startswith("postgres://"):
         print("✅ PostgreSQL-URL erkannt (postgres://)")
         # Konvertiere für SQLAlchemy
-        converted_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1)
+        converted_url = database_url.replace("postgres://", "postgresql+psycopg2://", 1)
         print(f"🔄 Konvertiert zu: {converted_url}")
     elif database_url.startswith("postgresql://"):
         print("✅ PostgreSQL-URL erkannt (postgresql://)")
-        converted_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        converted_url = database_url.replace("postgresql://", "postgresql+psycopg2://", 1)
         print(f"🔄 Konvertiert zu: {converted_url}")
     elif database_url.startswith("sqlite"):
         print("✅ SQLite-URL erkannt")
@@ -86,9 +86,9 @@ async def test_database_connection():
     
     # Konvertiere URL für SQLAlchemy
     if database_url.startswith("postgres://"):
-        database_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1)
+        database_url = database_url.replace("postgres://", "postgresql+psycopg2://", 1)
     elif database_url.startswith("postgresql://"):
-        database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+        database_url = database_url.replace("postgresql://", "postgresql+psycopg2://", 1)
     
     try:
         print(f"🔗 Verbinde mit: {database_url.split('@')[1] if '@' in database_url else database_url}")
@@ -140,10 +140,10 @@ def test_imports():
         return False
     
     try:
-        import asyncpg
-        print("✅ asyncpg verfügbar")
+        import psycopg2
+        print("✅ psycopg2 verfügbar")
     except ImportError as e:
-        print(f"❌ asyncpg Import fehlgeschlagen: {e}")
+        print(f"❌ psycopg2 Import fehlgeschlagen: {e}")
         return False
     
     try:
