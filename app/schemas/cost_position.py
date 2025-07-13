@@ -1,7 +1,6 @@
-from pydantic import BaseModel
+from datetime import datetime
 from typing import Optional
-from datetime import date, datetime
-from ..models.cost_position import CostCategory, CostType, CostStatus
+from pydantic import BaseModel, ConfigDict
 
 
 class CostPositionBase(BaseModel):
@@ -9,30 +8,32 @@ class CostPositionBase(BaseModel):
     description: Optional[str] = None
     amount: float
     currency: str = "EUR"
-    category: CostCategory = CostCategory.OTHER
-    cost_type: CostType = CostType.MANUAL
-    status: CostStatus = CostStatus.ACTIVE
-    payment_terms: Optional[str] = None
-    warranty_period: Optional[int] = None
-    estimated_duration: Optional[int] = None
-    start_date: Optional[date] = None
-    completion_date: Optional[date] = None
+    category: str
+    cost_type: str = "material"
+    status: str = "planned"
     contractor_name: Optional[str] = None
     contractor_contact: Optional[str] = None
     contractor_phone: Optional[str] = None
     contractor_email: Optional[str] = None
     contractor_website: Optional[str] = None
+    payment_terms: Optional[str] = None
+    warranty_period: Optional[int] = None
+    estimated_duration: Optional[int] = None
+    start_date: Optional[datetime] = None
+    completion_date: Optional[datetime] = None
     labor_cost: Optional[float] = None
     material_cost: Optional[float] = None
     overhead_cost: Optional[float] = None
-    notes: Optional[str] = None
+    risk_score: Optional[float] = None
+    price_deviation: Optional[float] = None
+    ai_recommendation: Optional[str] = None
+    quote_id: Optional[int] = None
+    milestone_id: Optional[int] = None
+    project_id: int
 
 
 class CostPositionCreate(CostPositionBase):
-    project_id: int
-    quote_id: Optional[int] = None
-    milestone_id: Optional[int] = None
-    service_provider_id: Optional[int] = None
+    pass
 
 
 class CostPositionUpdate(BaseModel):
@@ -40,46 +41,37 @@ class CostPositionUpdate(BaseModel):
     description: Optional[str] = None
     amount: Optional[float] = None
     currency: Optional[str] = None
-    category: Optional[CostCategory] = None
-    status: Optional[CostStatus] = None
-    payment_terms: Optional[str] = None
-    warranty_period: Optional[int] = None
-    estimated_duration: Optional[int] = None
-    start_date: Optional[date] = None
-    completion_date: Optional[date] = None
+    category: Optional[str] = None
+    cost_type: Optional[str] = None
+    status: Optional[str] = None
     contractor_name: Optional[str] = None
     contractor_contact: Optional[str] = None
     contractor_phone: Optional[str] = None
     contractor_email: Optional[str] = None
     contractor_website: Optional[str] = None
+    progress_percentage: Optional[int] = None
+    paid_amount: Optional[float] = None
+    payment_terms: Optional[str] = None
+    warranty_period: Optional[int] = None
+    estimated_duration: Optional[int] = None
+    start_date: Optional[datetime] = None
+    completion_date: Optional[datetime] = None
     labor_cost: Optional[float] = None
     material_cost: Optional[float] = None
     overhead_cost: Optional[float] = None
-    progress_percentage: Optional[float] = None
-    paid_amount: Optional[float] = None
-    last_payment_date: Optional[date] = None
-    notes: Optional[str] = None
+    risk_score: Optional[float] = None
+    price_deviation: Optional[float] = None
+    ai_recommendation: Optional[str] = None
 
 
 class CostPositionRead(CostPositionBase):
     id: int
-    project_id: int
-    quote_id: Optional[int] = None
-    milestone_id: Optional[int] = None
-    service_provider_id: Optional[int] = None
-    risk_score: Optional[float] = None
-    price_deviation: Optional[float] = None
-    ai_recommendation: Optional[str] = None
-    progress_percentage: float
+    progress_percentage: int
     paid_amount: float
-    last_payment_date: Optional[date] = None
-    invoice_references: Optional[str] = None
     created_at: datetime
     updated_at: datetime
-    completed_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CostPositionSummary(BaseModel):
@@ -87,16 +79,13 @@ class CostPositionSummary(BaseModel):
     title: str
     amount: float
     currency: str
-    category: CostCategory
-    cost_type: CostType
-    status: CostStatus
-    contractor_name: Optional[str] = None
-    progress_percentage: float
+    category: str
+    status: str
+    progress_percentage: int
     paid_amount: float
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class CostPositionStatistics(BaseModel):
@@ -104,6 +93,9 @@ class CostPositionStatistics(BaseModel):
     total_amount: float
     total_paid: float
     total_remaining: float
-    category_distribution: dict
-    status_distribution: dict
-    cost_type_distribution: dict 
+    average_risk_score: float
+    average_price_deviation: float
+    category_breakdown: list[dict]
+    status_breakdown: list[dict]
+
+    model_config = ConfigDict(from_attributes=True) 

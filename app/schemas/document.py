@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from ..models.document import DocumentType
 
 
@@ -8,17 +8,14 @@ class DocumentBase(BaseModel):
     title: str
     description: Optional[str] = None
     document_type: DocumentType = DocumentType.OTHER
+    project_id: int
     tags: Optional[str] = None
     category: Optional[str] = None
-    is_public: bool = False
+    is_public: bool = True
 
 
 class DocumentCreate(DocumentBase):
-    project_id: int
-    file_name: str
-    file_path: str
-    file_size: int
-    mime_type: str
+    pass
 
 
 class DocumentUpdate(BaseModel):
@@ -32,7 +29,6 @@ class DocumentUpdate(BaseModel):
 
 class DocumentRead(DocumentBase):
     id: int
-    project_id: int
     uploaded_by: int
     file_name: str
     file_path: str
@@ -40,13 +36,11 @@ class DocumentRead(DocumentBase):
     mime_type: str
     version: int
     is_latest: bool
-    parent_document_id: Optional[int] = None
     is_encrypted: bool
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DocumentSummary(BaseModel):
@@ -55,17 +49,17 @@ class DocumentSummary(BaseModel):
     document_type: DocumentType
     file_name: str
     file_size: int
-    mime_type: str
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class DocumentUpload(BaseModel):
+    file: bytes
     title: str
     description: Optional[str] = None
     document_type: DocumentType = DocumentType.OTHER
+    project_id: int
     tags: Optional[str] = None
     category: Optional[str] = None
-    is_public: bool = False 
+    is_public: bool = True 

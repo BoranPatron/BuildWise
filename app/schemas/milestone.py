@@ -1,20 +1,20 @@
-from datetime import date, datetime
+from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from ..models.milestone import MilestoneStatus, MilestonePriority
 
 
 class MilestoneBase(BaseModel):
     title: str
     description: Optional[str] = None
+    project_id: int
     status: MilestoneStatus = MilestoneStatus.PLANNED
     priority: MilestonePriority = MilestonePriority.MEDIUM
+    planned_date: datetime
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
     category: Optional[str] = None
-    planned_date: date
-    start_date: Optional[date] = None
-    end_date: Optional[date] = None
     budget: Optional[float] = None
-    actual_costs: Optional[float] = None
     contractor: Optional[str] = None
     is_critical: bool = False
     notify_on_completion: bool = True
@@ -22,7 +22,7 @@ class MilestoneBase(BaseModel):
 
 
 class MilestoneCreate(MilestoneBase):
-    project_id: int
+    pass
 
 
 class MilestoneUpdate(BaseModel):
@@ -30,11 +30,10 @@ class MilestoneUpdate(BaseModel):
     description: Optional[str] = None
     status: Optional[MilestoneStatus] = None
     priority: Optional[MilestonePriority] = None
+    planned_date: Optional[datetime] = None
+    start_date: Optional[datetime] = None
+    end_date: Optional[datetime] = None
     category: Optional[str] = None
-    planned_date: Optional[date] = None
-    actual_date: Optional[date] = None
-    start_date: Optional[date] = None
-    end_date: Optional[date] = None
     budget: Optional[float] = None
     actual_costs: Optional[float] = None
     contractor: Optional[str] = None
@@ -46,58 +45,25 @@ class MilestoneUpdate(BaseModel):
 
 class MilestoneRead(MilestoneBase):
     id: int
-    project_id: int
-    created_by: int
-    actual_date: Optional[date] = None
+    actual_costs: Optional[float] = None
     progress_percentage: int
+    completed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
-    completed_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
-        use_enum_values = True  # Enum als String serialisieren
+    model_config = ConfigDict(from_attributes=True)
 
 
 class MilestoneSummary(BaseModel):
     id: int
     title: str
-    status: str  # String statt Enum
-    priority: str  # String statt Enum
-    category: Optional[str] = None
-    planned_date: date
-    actual_date: Optional[date] = None
-    start_date: Optional[date] = None
-    end_date: Optional[date] = None
+    status: MilestoneStatus
+    priority: MilestonePriority
+    planned_date: datetime
+    progress_percentage: int
     budget: Optional[float] = None
     actual_costs: Optional[float] = None
-    contractor: Optional[str] = None
-    progress_percentage: int
     is_critical: bool
-    project_id: Optional[int] = None  # Projekt-ID hinzufügen
+    created_at: datetime
 
-    class Config:
-        from_attributes = True 
-        use_enum_values = True  # Enum als String serialisieren
-        
-    @classmethod
-    def from_orm(cls, obj):
-        # Konvertiere Enum-Werte zu Strings
-        data = {
-            'id': obj.id,
-            'title': obj.title,
-            'status': str(obj.status).lower(),
-            'priority': str(obj.priority).lower(),
-            'category': obj.category,
-            'planned_date': obj.planned_date,
-            'actual_date': obj.actual_date,
-            'start_date': obj.start_date,
-            'end_date': obj.end_date,
-            'budget': obj.budget,
-            'actual_costs': obj.actual_costs,
-            'contractor': obj.contractor,
-            'progress_percentage': obj.progress_percentage,
-            'is_critical': obj.is_critical,
-            'project_id': obj.project_id
-        }
-        return cls(**data) 
+    model_config = ConfigDict(from_attributes=True) 

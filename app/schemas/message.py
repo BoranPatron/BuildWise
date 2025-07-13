@@ -1,49 +1,54 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from ..models.message import MessageType
 
 
 class MessageBase(BaseModel):
-    message_type: MessageType = MessageType.TEXT
     content: str
-    document_id: Optional[int] = None
+    sender_id: int
+    recipient_id: Optional[int] = None
+    message_type: MessageType = MessageType.TEXT
+    project_id: int
 
 
 class MessageCreate(MessageBase):
-    project_id: int
-    recipient_id: Optional[int] = None
+    pass
+
+
+class MessageUpdate(BaseModel):
+    content: Optional[str] = None
+    message_type: Optional[MessageType] = None
+    is_read: Optional[bool] = None
 
 
 class MessageRead(MessageBase):
     id: int
-    project_id: int
-    sender_id: int
-    recipient_id: Optional[int] = None
     is_read: bool
-    read_at: Optional[datetime] = None
-    is_system_message: bool
-    is_encrypted: bool
     created_at: datetime
     updated_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class MessageSummary(BaseModel):
     id: int
-    message_type: MessageType
     content: str
-    sender_id: int
+    message_type: MessageType
     is_read: bool
     created_at: datetime
+    sender: Optional[dict] = None
+    recipient: Optional[dict] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ChatRoom(BaseModel):
+    id: int
+    name: str
     project_id: int
-    messages: list[MessageRead]
-    unread_count: int 
+    message_count: int
+    last_message_at: Optional[datetime] = None
+    participants: list[dict]
+
+    model_config = ConfigDict(from_attributes=True) 

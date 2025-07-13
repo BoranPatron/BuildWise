@@ -1,6 +1,6 @@
-from datetime import date, datetime
+from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from ..models.task import TaskStatus, TaskPriority
 
 
@@ -9,14 +9,15 @@ class TaskBase(BaseModel):
     description: Optional[str] = None
     status: TaskStatus = TaskStatus.TODO
     priority: TaskPriority = TaskPriority.MEDIUM
-    due_date: Optional[date] = None
+    project_id: int
+    assigned_to: Optional[int] = None
+    due_date: Optional[datetime] = None
     estimated_hours: Optional[int] = None
     is_milestone: bool = False
 
 
 class TaskCreate(TaskBase):
-    project_id: int
-    assigned_to: Optional[int] = None
+    pass
 
 
 class TaskUpdate(BaseModel):
@@ -25,7 +26,7 @@ class TaskUpdate(BaseModel):
     status: Optional[TaskStatus] = None
     priority: Optional[TaskPriority] = None
     assigned_to: Optional[int] = None
-    due_date: Optional[date] = None
+    due_date: Optional[datetime] = None
     estimated_hours: Optional[int] = None
     actual_hours: Optional[int] = None
     progress_percentage: Optional[int] = None
@@ -34,17 +35,14 @@ class TaskUpdate(BaseModel):
 
 class TaskRead(TaskBase):
     id: int
-    project_id: int
-    assigned_to: Optional[int] = None
     created_by: int
     actual_hours: Optional[int] = None
     progress_percentage: int
+    completed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
-    completed_at: Optional[datetime] = None
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 
 class TaskSummary(BaseModel):
@@ -53,9 +51,8 @@ class TaskSummary(BaseModel):
     status: TaskStatus
     priority: TaskPriority
     progress_percentage: int
-    due_date: Optional[date] = None
-    assigned_to: Optional[int] = None
+    due_date: Optional[datetime] = None
     is_milestone: bool
+    created_at: datetime
 
-    class Config:
-        from_attributes = True 
+    model_config = ConfigDict(from_attributes=True) 
