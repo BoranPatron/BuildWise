@@ -215,6 +215,60 @@ async def test_routes():
         ]
     }
 
+# Test-Route für Model-Imports
+@app.get("/test-models")
+async def test_models():
+    """Test-Route um Model-Imports zu überprüfen"""
+    try:
+        from app.models.project import Project, ProjectType, ProjectStatus
+        from app.models.user import User
+        from app.models.task import Task
+        from app.models.document import Document
+        from app.models.milestone import Milestone
+        from app.models.quote import Quote
+        from app.models.cost_position import CostPosition
+        
+        return {
+            "message": "Alle Models erfolgreich importiert",
+            "models": [
+                "Project", "User", "Task", "Document", 
+                "Milestone", "Quote", "CostPosition"
+            ],
+            "enums": [
+                "ProjectType", "ProjectStatus"
+            ]
+        }
+    except Exception as e:
+        return {
+            "message": "Model-Import-Fehler",
+            "error": str(e),
+            "error_type": type(e).__name__
+        }
+
+# Test-Route für Service-Imports
+@app.get("/test-services")
+async def test_services():
+    """Test-Route um Service-Imports zu überprüfen"""
+    try:
+        from app.services import project_service, user_service, task_service
+        from app.services import document_service, message_service, milestone_service
+        from app.services import quote_service, cost_position_service
+        
+        return {
+            "message": "Alle Services erfolgreich importiert",
+            "services": [
+                "project_service", "user_service", "task_service",
+                "document_service", "message_service", "milestone_service",
+                "quote_service", "cost_position_service"
+            ]
+        }
+    except Exception as e:
+        return {
+            "message": "Service-Import-Fehler",
+            "error": str(e),
+            "error_type": type(e).__name__
+        }
+
 # Error Handler für Render.com
 @app.exception_handler(404)
 async def not_found_handler(request, exc):
