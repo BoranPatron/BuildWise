@@ -1,92 +1,80 @@
-import asyncio
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+import sqlite3
 
-from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
-from sqlalchemy.orm import sessionmaker
-from sqlalchemy import select, func
-from app.core.config import get_settings
-from app.models.quote import Quote, QuoteStatus
-from app.models.cost_position import CostPosition
-from app.models.project import Project
+print("=== DEBUG: Kostenpositionen und Quotes für Projekt 4 ===\n")
 
-async def debug_cost_positions():
-    """Debug-Skript um Kostenpositionen und Angebote zu prüfen"""
-    settings = get_settings()
+try:
+    # Verbinde zur Datenbank
+    conn = sqlite3.connect('buildwise.db')
+    cursor = conn.cursor()
     
-    # Datenbankverbindung
-    database_url = f"sqlite+aiosqlite:///{settings.db_name}"
-    engine = create_async_engine(database_url, echo=True)
-    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    print("✅ Datenbankverbindung erfolgreich")
     
-    async with async_session() as db:
-        print("🔍 Debug: Prüfe Datenbank-Inhalt...")
-        
-        # 1. Prüfe alle Projekte
-        projects_result = await db.execute(select(Project))
-        projects = projects_result.scalars().all()
-        print(f"📊 Projekte gefunden: {len(projects)}")
-        for project in projects:
-            print(f"  - Projekt {project.id}: {project.name}")
-        
-        # 2. Prüfe alle Angebote
-        quotes_result = await db.execute(select(Quote))
-        quotes = quotes_result.scalars().all()
-        print(f"📋 Angebote gefunden: {len(quotes)}")
-        for quote in quotes:
-            print(f"  - Angebot {quote.id}: {quote.title} (Status: {quote.status}, Projekt: {quote.project_id})")
-        
-        # 3. Prüfe akzeptierte Angebote
-        accepted_quotes_result = await db.execute(
-            select(Quote).where(Quote.status == QuoteStatus.ACCEPTED)
-        )
-        accepted_quotes = accepted_quotes_result.scalars().all()
-        print(f"✅ Akzeptierte Angebote: {len(accepted_quotes)}")
-        for quote in accepted_quotes:
-            print(f"  - Akzeptiert: {quote.title} (Projekt: {quote.project_id})")
-        
-        # 4. Prüfe alle Kostenpositionen
-        cost_positions_result = await db.execute(select(CostPosition))
-        cost_positions = cost_positions_result.scalars().all()
-        print(f"💰 Kostenpositionen gefunden: {len(cost_positions)}")
-        for cp in cost_positions:
-            print(f"  - Kostenposition {cp.id}: {cp.title} (Projekt: {cp.project_id}, Quote: {cp.quote_id})")
-        
-        # 5. Prüfe Kostenpositionen für Projekt 4
-        project4_cp_result = await db.execute(
-            select(CostPosition).where(CostPosition.project_id == 4)
-        )
-        project4_cp = project4_cp_result.scalars().all()
-        print(f"🏗️ Kostenpositionen für Projekt 4: {len(project4_cp)}")
-        for cp in project4_cp:
-            print(f"  - {cp.title} (Quote-ID: {cp.quote_id}, Status: {cp.status})")
-        
-        # 6. Prüfe akzeptierte Angebote für Projekt 4
-        project4_quotes_result = await db.execute(
-            select(Quote).where(
-                Quote.project_id == 4,
-                Quote.status == QuoteStatus.ACCEPTED
-            )
-        )
-        project4_quotes = project4_quotes_result.scalars().all()
-        print(f"📋 Akzeptierte Angebote für Projekt 4: {len(project4_quotes)}")
-        for quote in project4_quotes:
-            print(f"  - {quote.title} (ID: {quote.id})")
-        
-        # 7. Prüfe ob Kostenpositionen für akzeptierte Angebote existieren
-        for quote in project4_quotes:
-            cp_result = await db.execute(
-                select(CostPosition).where(CostPosition.quote_id == quote.id)
-            )
-            cp = cp_result.scalar_one_or_none()
-            if cp:
-                print(f"✅ Kostenposition für Angebot {quote.id} gefunden: {cp.title}")
-            else:
-                print(f"❌ KEINE Kostenposition für Angebot {quote.id} gefunden!")
+    # Prüfe ob die Tabellen existieren
+    cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    tables = cursor.fetchall()
+    print(f"📋 Verfügbare Tabellen: {[t[0] for t in tables]}")
+    
+    print()
+    
+    # Prüfe Quotes für Projekt 4
+    cursor.execute('SELECT id, status, project_id FROM quotes WHERE project_id = 4')
+    quotes = cursor.fetchall()
+    print(f"Quotes für Projekt 4: {len(quotes)}")
+    for quote in quotes:
+        print(f"  Quote {quote[0]}: status='{quote[1]}', project_id={quote[2]}")
+    
+    print()
+    
+    # Prüfe alle Quotes
+    cursor.execute('SELECT id, status, project_id FROM quotes')
+    all_quotes = cursor.fetchall()
+    print(f"Alle Quotes: {len(all_quotes)}")
+    for quote in all_quotes:
+        print(f"  Quote {quote[0]}: status='{quote[1]}', project_id={quote[2]}")
+    
+    print()
+    
+    # Prüfe Kostenpositionen für Projekt 4
+    cursor.execute('SELECT id, quote_id, project_id, cost_type, status FROM cost_positions WHERE project_id = 4')
+    cost_positions = cursor.fetchall()
+    print(f"Kostenpositionen für Projekt 4: {len(cost_positions)}")
+    for cp in cost_positions:
+        print(f"  CP {cp[0]}: quote_id={cp[1]}, project_id={cp[2]}, cost_type='{cp[3]}', status='{cp[4]}'")
+    
+    print()
+    
+    # Prüfe alle Kostenpositionen
+    cursor.execute('SELECT id, quote_id, project_id, cost_type, status FROM cost_positions')
+    all_cost_positions = cursor.fetchall()
+    print(f"Alle Kostenpositionen: {len(all_cost_positions)}")
+    for cp in all_cost_positions:
+        print(f"  CP {cp[0]}: quote_id={cp[1]}, project_id={cp[2]}, cost_type='{cp[3]}', status='{cp[4]}'")
+    
+    print()
+    
+    # Prüfe alle Quote-Status in der Datenbank
+    cursor.execute('SELECT DISTINCT status FROM quotes')
+    all_statuses = cursor.fetchall()
+    print(f"Alle Quote-Status in der DB: {[s[0] for s in all_statuses]}")
+    
+    print()
+    
+    # Prüfe alle CostPosition-Status in der Datenbank
+    cursor.execute('SELECT DISTINCT status FROM cost_positions')
+    all_cp_statuses = cursor.fetchall()
+    print(f"Alle CostPosition-Status in der DB: {[s[0] for s in all_cp_statuses]}")
+    
+    print()
+    
+    # Prüfe alle CostPosition-Typen in der Datenbank
+    cursor.execute('SELECT DISTINCT cost_type FROM cost_positions')
+    all_cp_types = cursor.fetchall()
+    print(f"Alle CostPosition-Typen in der DB: {[t[0] for t in all_cp_types]}")
+    
+    conn.close()
+    print("\n✅ Debug abgeschlossen")
 
-async def main():
-    await debug_cost_positions()
-
-if __name__ == "__main__":
-    asyncio.run(main()) 
+except Exception as e:
+    print(f"❌ Fehler: {e}")
+    import traceback
+    traceback.print_exc() 

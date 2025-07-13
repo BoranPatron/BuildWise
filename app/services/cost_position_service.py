@@ -1,6 +1,6 @@
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, and_, func
+from sqlalchemy import select, update, and_, or_, func
 from sqlalchemy.orm import selectinload
 
 from ..models import CostPosition, CostCategory, CostType, CostStatus, Quote, QuoteStatus
@@ -217,30 +217,31 @@ async def record_payment(db: AsyncSession, cost_position_id: int, payment_amount
 
 async def get_cost_positions_from_accepted_quotes(db: AsyncSession, project_id: int) -> List[CostPosition]:
     """Holt nur Kostenpositionen, die aus akzeptierten Angeboten erstellt wurden"""
-    # Hole alle akzeptierten Angebote für das Projekt
+    # Verwende raw SQL um das Enum-Problem zu umgehen
+    from sqlalchemy import text
+    
+    # Hole alle akzeptierten Angebote für das Projekt (case-insensitive)
     accepted_quotes_result = await db.execute(
-        select(Quote)
-        .where(
-            and_(
-                Quote.project_id == project_id,
-                Quote.status == QuoteStatus.ACCEPTED
-            )
-        )
+        text("""
+            SELECT id FROM quotes 
+            WHERE project_id = :project_id 
+            AND LOWER(status) = 'accepted'
+        """),
+        {"project_id": project_id}
     )
-    accepted_quotes = accepted_quotes_result.scalars().all()
+    accepted_quote_ids = [row[0] for row in accepted_quotes_result.fetchall()]
+    
+    if not accepted_quote_ids:
+        return []
     
     # Hole die entsprechenden Kostenpositionen
-    cost_positions = []
-    for quote in accepted_quotes:
-        cost_position_result = await db.execute(
-            select(CostPosition)
-            .where(CostPosition.quote_id == quote.id)
-        )
-        # Verwende all() statt scalar_one_or_none() um mehrere CostPositions zu erlauben
-        quote_cost_positions = cost_position_result.scalars().all()
-        cost_positions.extend(quote_cost_positions)
+    cost_positions_result = await db.execute(
+        select(CostPosition)
+        .where(CostPosition.quote_id.in_(accepted_quote_ids))
+    )
+    cost_positions = cost_positions_result.scalars().all()
     
-    return cost_positions
+    return list(cost_positions)
 
 
 async def get_cost_position_statistics_for_accepted_quotes(db: AsyncSession, project_id: int) -> dict:
