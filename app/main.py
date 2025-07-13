@@ -56,10 +56,10 @@ def get_cors_origins():
     if os.environ.get("ENVIRONMENT") == "production":
         # Produktions-Origins
         origins = [
+            "https://frontend-x98q.onrender.com",  # Dein aktuelles Frontend auf Render.com
             "https://buildwise-frontend.onrender.com",
             "https://buildwise-app.onrender.com",
-            "https://dein-frontend-name.onrender.com",  # Ersetze mit deinem Frontend-Namen
-            os.environ.get("FRONTEND_URL", "https://buildwise-frontend.onrender.com")  # Dynamische Frontend-URL
+            os.environ.get("FRONTEND_URL", "https://frontend-x98q.onrender.com")  # Dynamische Frontend-URL
         ]
         # Füge auch lokale Entwicklung hinzu
         origins.extend([
