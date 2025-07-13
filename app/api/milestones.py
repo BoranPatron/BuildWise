@@ -14,7 +14,7 @@ from ..services.milestone_service import (
     get_all_milestones_for_user, get_all_active_milestones
 )
 
-router = APIRouter(prefix="/milestones", tags=["milestones"])
+router = APIRouter(tags=["milestones"])
 
 
 @router.post("/", response_model=MilestoneRead, status_code=status.HTTP_201_CREATED)

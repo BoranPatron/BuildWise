@@ -13,7 +13,7 @@ from ..services.project_service import (
     delete_project, get_public_projects, get_project_dashboard_data, search_projects
 )
 
-router = APIRouter(prefix="/projects", tags=["projects"])
+router = APIRouter(tags=["projects"])
 
 
 @router.post("/", response_model=ProjectRead, status_code=status.HTTP_201_CREATED)

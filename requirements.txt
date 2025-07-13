@@ -10,6 +10,7 @@ python-jose[cryptography]
 pytest
 httpx
 pydantic[email]
+pydantic-settings
 python-multipart
 aiofiles
 pillow

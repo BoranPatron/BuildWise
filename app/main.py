@@ -1,99 +1,202 @@
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.middleware.trustedhost import TrustedHostMiddleware
-from fastapi.responses import JSONResponse
-import time
 import os
-from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from contextlib import asynccontextmanager
+import uvicorn
+from fastapi.responses import JSONResponse
 
-load_dotenv()
+# Render.com-spezifische Konfiguration
+def get_port():
+    """Hole Port von Render.com oder verwende Standard"""
+    return int(os.environ.get("PORT", 8000))
 
-from .api import api_router
-from .core.database import engine
-from .models import Base
+def get_host():
+    """Hole Host von Render.com oder verwende Standard"""
+    return os.environ.get("HOST", "0.0.0.0")
 
+# Lebenszyklus-Manager für die Anwendung
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    print("🚀 Starte BuildWise Backend...")
+    print(f"🌐 Host: {get_host()}")
+    print(f"🔌 Port: {get_port()}")
+    print(f"🔧 Environment: {os.environ.get('ENVIRONMENT', 'development')}")
+    
+    # Datenbank-Tabellen erstellen
+    try:
+        from app.core.database import engine
+        from app.models import Base
+        Base.metadata.create_all(bind=engine)
+        print("✅ Datenbank-Tabellen erstellt")
+    except Exception as e:
+        print(f"⚠️ Warnung beim Erstellen der Datenbank-Tabellen: {e}")
+    
+    print("✅ BuildWise Backend erfolgreich gestartet")
+    
+    yield
+    
+    # Shutdown
+    print("🛑 Beende BuildWise Backend...")
+
+# FastAPI-App erstellen
 app = FastAPI(
     title="BuildWise API",
-    description="Digitaler Assistent für Immobilienprojekte - Vollständige Backend-API",
+    description="Bauprojektmanagement-API für BuildWise",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    lifespan=lifespan
 )
 
-# CORS-Konfiguration für Netzwerk-Zugriff
-allowed_origins_env = os.getenv('ALLOWED_ORIGINS')
-if allowed_origins_env:
-    allowed_origins = [origin.strip() for origin in allowed_origins_env.split(',')]
-else:
-    allowed_origins = [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000",
-        "http://127.0.0.1:3000"
-    ]
+# CORS-Konfiguration für Render.com
+def get_cors_origins():
+    """Hole CORS-Origins basierend auf Environment"""
+    if os.environ.get("ENVIRONMENT") == "production":
+        # Produktions-Origins
+        origins = [
+            "https://buildwise-frontend.onrender.com",
+            "https://buildwise-app.onrender.com",
+            "https://dein-frontend-name.onrender.com"  # Ersetze mit deinem Frontend-Namen
+        ]
+        # Füge auch lokale Entwicklung hinzu
+        origins.extend([
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173"
+        ])
+        return origins
+    else:
+        # Entwicklungs-Origins
+        return [
+            "http://localhost:3000",
+            "http://localhost:5173",
+            "http://127.0.0.1:5173",
+            "http://localhost:8000",
+            "http://127.0.0.1:8000"
+        ]
 
-# Debug-Ausgabe für CORS-Konfiguration
-print(f"🔧 CORS allowed origins: {allowed_origins}")
-
+# CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=get_cors_origins(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Trusted Host Middleware
-app.add_middleware(
-    TrustedHostMiddleware,
-    allowed_hosts=["*"]  # In Produktion spezifische Hosts angeben
-)
+# API-Router einbinden - mit try-catch für Robustheit
+try:
+    from app.api import auth
+    app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
+    print("✅ Auth-Router geladen")
+except Exception as e:
+    print(f"⚠️ Auth-Router konnte nicht geladen werden: {e}")
 
-# Request Timing Middleware
-@app.middleware("http")
-async def add_process_time_header(request: Request, call_next):
-    start_time = time.time()
-    response = await call_next(request)
-    process_time = time.time() - start_time
-    response.headers["X-Process-Time"] = str(process_time)
-    return response
+try:
+    from app.api import users
+    app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
+    print("✅ Users-Router geladen")
+except Exception as e:
+    print(f"⚠️ Users-Router konnte nicht geladen werden: {e}")
 
-# Exception Handler
-#@app.exception_handler(Exception)
-#async def global_exception_handler(request: Request, exc: Exception):
-#    import traceback
-#    return JSONResponse(
-#        status_code=500,
-#        content={
-#            "detail": str(exc),
-#            "traceback": traceback.format_exc()
-#        }
-#    )
+try:
+    from app.api import projects
+    app.include_router(projects.router, prefix="/api/v1/projects", tags=["Projects"])
+    print("✅ Projects-Router geladen")
+except Exception as e:
+    print(f"⚠️ Projects-Router konnte nicht geladen werden: {e}")
 
-# API Router einbinden
-app.include_router(api_router, prefix="/api/v1")
+try:
+    from app.api import tasks
+    app.include_router(tasks.router, prefix="/api/v1/tasks", tags=["Tasks"])
+    print("✅ Tasks-Router geladen")
+except Exception as e:
+    print(f"⚠️ Tasks-Router konnte nicht geladen werden: {e}")
 
-# Datenbank-Tabellen erstellen
-#@app.on_event("startup")
-#async def on_startup():
-#    async with engine.begin() as conn:
-#        await conn.run_sync(Base.metadata.create_all)
+try:
+    from app.api import documents
+    app.include_router(documents.router, prefix="/api/v1/documents", tags=["Documents"])
+    print("✅ Documents-Router geladen")
+except Exception as e:
+    print(f"⚠️ Documents-Router konnte nicht geladen werden: {e}")
 
-# Health Check
+try:
+    from app.api import messages
+    app.include_router(messages.router, prefix="/api/v1/messages", tags=["Messages"])
+    print("✅ Messages-Router geladen")
+except Exception as e:
+    print(f"⚠️ Messages-Router konnte nicht geladen werden: {e}")
+
+try:
+    from app.api import milestones
+    app.include_router(milestones.router, prefix="/api/v1/milestones", tags=["Milestones"])
+    print("✅ Milestones-Router geladen")
+except Exception as e:
+    print(f"⚠️ Milestones-Router konnte nicht geladen werden: {e}")
+
+try:
+    from app.api import quotes
+    app.include_router(quotes.router, prefix="/api/v1/quotes", tags=["Quotes"])
+    print("✅ Quotes-Router geladen")
+except Exception as e:
+    print(f"⚠️ Quotes-Router konnte nicht geladen werden: {e}")
+
+try:
+    from app.api import cost_positions
+    app.include_router(cost_positions.router, prefix="/api/v1/cost-positions", tags=["Cost Positions"])
+    print("✅ Cost Positions-Router geladen")
+except Exception as e:
+    print(f"⚠️ Cost Positions-Router konnte nicht geladen werden: {e}")
+
+# Health Check Endpoint für Render.com
+@app.get("/")
+async def root():
+    return {
+        "message": "BuildWise API läuft!",
+        "version": "1.0.0",
+        "environment": os.environ.get("ENVIRONMENT", "development"),
+        "docs": "/docs"
+    }
+
 @app.get("/health")
 async def health_check():
     return {
         "status": "healthy",
-        "service": "BuildWise API",
-        "version": "1.0.0"
+        "timestamp": "2024-01-01T00:00:00Z",
+        "service": "buildwise-backend"
     }
 
-# Root Endpoint
-@app.get("/")
-async def read_root():
-    return {
-        "message": "Willkommen bei der BuildWise API",
-        "version": "1.0.0",
-        "docs": "/docs",
-        "health": "/health"
-    }
+# Error Handler für Render.com
+@app.exception_handler(404)
+async def not_found_handler(request, exc):
+    return JSONResponse(
+        status_code=404,
+        content={
+            "error": "Endpoint nicht gefunden",
+            "message": "Die angeforderte URL existiert nicht",
+            "docs": "/docs"
+        }
+    )
+
+@app.exception_handler(500)
+async def internal_error_handler(request, exc):
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Interner Server-Fehler",
+            "message": "Ein unerwarteter Fehler ist aufgetreten"
+        }
+    )
+
+# Nur ausführen, wenn direkt gestartet
+if __name__ == "__main__":
+    print("🚀 Starte BuildWise Backend lokal...")
+    uvicorn.run(
+        "app.main:app",
+        host=get_host(),
+        port=get_port(),
+        reload=True if os.environ.get("ENVIRONMENT") == "development" else False,
+        log_level="info"
+    )

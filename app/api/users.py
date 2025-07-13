@@ -11,7 +11,7 @@ from ..services.user_service import (
     search_users, deactivate_user
 )
 
-router = APIRouter(prefix="/users", tags=["users"])
+router = APIRouter(tags=["users"])
 
 
 @router.get("/me", response_model=UserRead)
