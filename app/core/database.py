@@ -9,11 +9,11 @@ def get_database_url():
     # Prüfe auf PostgreSQL-URL (für Render.com)
     database_url = os.environ.get("DATABASE_URL")
     if database_url:
-        # Render.com verwendet PostgreSQL mit postgres://, aber SQLAlchemy erwartet postgresql+asyncpg://
+        # Render.com verwendet PostgreSQL mit postgres://, aber SQLAlchemy erwartet postgresql+psycopg2://
         if database_url.startswith("postgres://"):
-            database_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1)
+            database_url = database_url.replace("postgres://", "postgresql+psycopg2://", 1)
         elif database_url.startswith("postgresql://"):
-            database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            database_url = database_url.replace("postgresql://", "postgresql+psycopg2://", 1)
         return database_url
     
     # Fallback: SQLite für lokale Entwicklung
@@ -31,7 +31,7 @@ if DATABASE_URL.startswith("sqlite"):
         connect_args={"check_same_thread": False}
     )
 else:
-    # PostgreSQL-Konfiguration mit asyncpg
+    # PostgreSQL-Konfiguration mit psycopg2
     engine = create_async_engine(
         DATABASE_URL, 
         echo=False, 
