@@ -130,9 +130,10 @@ except Exception as e:
 try:
     from app.api import projects
     app.include_router(projects.router, prefix="/api/v1/projects", tags=["Projects"])
-    print("✅ Projects-Router geladen")
+    print("✅ Projects-Router geladen - PostgreSQL-Migration aktiviert")
 except Exception as e:
     print(f"⚠️ Projects-Router konnte nicht geladen werden: {e}")
+    print(f"🔍 Import-Fehler Details: {type(e).__name__}: {str(e)}")
 
 try:
     from app.api import tasks
@@ -175,6 +176,7 @@ try:
     print("✅ Cost Positions-Router geladen - PostgreSQL-Migration aktiviert")
 except Exception as e:
     print(f"⚠️ Cost Positions-Router konnte nicht geladen werden: {e}")
+    print(f"🔍 Import-Fehler Details: {type(e).__name__}: {str(e)}")
 
 # Health Check Endpoint für Render.com
 @app.get("/")
