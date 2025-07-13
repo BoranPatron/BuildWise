@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, EmailStr, ConfigDict
+from pydantic import BaseModel, EmailStr
 from ..models.user import UserType
 
 
@@ -10,6 +10,9 @@ class UserBase(BaseModel):
     last_name: str
     phone: Optional[str] = None
     user_type: UserType = UserType.PRIVATE
+
+    class Config:
+        orm_mode = True
 
 
 class UserCreate(UserBase):
@@ -29,29 +32,18 @@ class UserUpdate(BaseModel):
     profile_image: Optional[str] = None
     region: Optional[str] = None
     languages: Optional[str] = None
-    language_preference: Optional[str] = None
+    class Config:
+        orm_mode = True
 
 
 class UserRead(UserBase):
     id: int
-    company_name: Optional[str] = None
-    company_address: Optional[str] = None
-    company_phone: Optional[str] = None
-    company_website: Optional[str] = None
-    business_license: Optional[str] = None
-    bio: Optional[str] = None
-    profile_image: Optional[str] = None
-    region: Optional[str] = None
-    languages: Optional[str] = None
     is_active: bool
-    is_verified: bool
-    email_verified: bool
-    two_factor_enabled: bool
-    language_preference: str
+    is_superuser: bool
     created_at: datetime
     updated_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
+    class Config:
+        orm_mode = True
 
 
 class UserProfile(BaseModel):

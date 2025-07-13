@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 from ..models.milestone import MilestoneStatus, MilestonePriority
 
 
@@ -19,6 +19,8 @@ class MilestoneBase(BaseModel):
     is_critical: bool = False
     notify_on_completion: bool = True
     notes: Optional[str] = None
+    class Config:
+        orm_mode = True
 
 
 class MilestoneCreate(MilestoneBase):
@@ -41,6 +43,8 @@ class MilestoneUpdate(BaseModel):
     is_critical: Optional[bool] = None
     notify_on_completion: Optional[bool] = None
     notes: Optional[str] = None
+    class Config:
+        orm_mode = True
 
 
 class MilestoneRead(MilestoneBase):
@@ -50,8 +54,8 @@ class MilestoneRead(MilestoneBase):
     completed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
+    class Config:
+        orm_mode = True
 
 
 class MilestoneSummary(BaseModel):

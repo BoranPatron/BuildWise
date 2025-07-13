@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 
 class CostPositionBase(BaseModel):
@@ -30,6 +30,8 @@ class CostPositionBase(BaseModel):
     quote_id: Optional[int] = None
     milestone_id: Optional[int] = None
     project_id: int
+    class Config:
+        orm_mode = True
 
 
 class CostPositionCreate(CostPositionBase):
@@ -49,8 +51,6 @@ class CostPositionUpdate(BaseModel):
     contractor_phone: Optional[str] = None
     contractor_email: Optional[str] = None
     contractor_website: Optional[str] = None
-    progress_percentage: Optional[int] = None
-    paid_amount: Optional[float] = None
     payment_terms: Optional[str] = None
     warranty_period: Optional[int] = None
     estimated_duration: Optional[int] = None
@@ -62,16 +62,21 @@ class CostPositionUpdate(BaseModel):
     risk_score: Optional[float] = None
     price_deviation: Optional[float] = None
     ai_recommendation: Optional[str] = None
+    quote_id: Optional[int] = None
+    milestone_id: Optional[int] = None
+    project_id: Optional[int] = None
+    class Config:
+        orm_mode = True
 
 
 class CostPositionRead(CostPositionBase):
     id: int
-    progress_percentage: int
+    progress_percentage: float
     paid_amount: float
     created_at: datetime
     updated_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
+    class Config:
+        orm_mode = True
 
 
 class CostPositionSummary(BaseModel):

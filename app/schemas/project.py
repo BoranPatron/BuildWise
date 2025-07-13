@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 from ..models.project import ProjectType, ProjectStatus
 
 
@@ -18,6 +18,8 @@ class ProjectBase(BaseModel):
     estimated_duration: Optional[int] = None
     is_public: bool = True
     allow_quotes: bool = True
+    class Config:
+        orm_mode = True
 
 
 class ProjectCreate(ProjectBase):
@@ -38,6 +40,8 @@ class ProjectUpdate(BaseModel):
     estimated_duration: Optional[int] = None
     is_public: Optional[bool] = None
     allow_quotes: Optional[bool] = None
+    class Config:
+        orm_mode = True
 
 
 class ProjectRead(ProjectBase):
@@ -47,8 +51,8 @@ class ProjectRead(ProjectBase):
     current_costs: float
     created_at: datetime
     updated_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
+    class Config:
+        orm_mode = True
 
 
 class ProjectSummary(BaseModel):

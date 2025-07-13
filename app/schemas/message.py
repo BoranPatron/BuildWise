@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 from ..models.message import MessageType
 
 
@@ -10,6 +10,8 @@ class MessageBase(BaseModel):
     recipient_id: Optional[int] = None
     message_type: MessageType = MessageType.TEXT
     project_id: int
+    class Config:
+        orm_mode = True
 
 
 class MessageCreate(MessageBase):
@@ -20,6 +22,8 @@ class MessageUpdate(BaseModel):
     content: Optional[str] = None
     message_type: Optional[MessageType] = None
     is_read: Optional[bool] = None
+    class Config:
+        orm_mode = True
 
 
 class MessageRead(MessageBase):
@@ -27,8 +31,8 @@ class MessageRead(MessageBase):
     is_read: bool
     created_at: datetime
     updated_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
+    class Config:
+        orm_mode = True
 
 
 class MessageSummary(BaseModel):
@@ -37,10 +41,9 @@ class MessageSummary(BaseModel):
     message_type: MessageType
     is_read: bool
     created_at: datetime
-    sender: Optional[dict] = None
-    recipient: Optional[dict] = None
-
-    model_config = ConfigDict(from_attributes=True)
+    updated_at: datetime
+    class Config:
+        orm_mode = True
 
 
 class ChatRoom(BaseModel):

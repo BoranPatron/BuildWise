@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 from ..models.quote import QuoteStatus
 
 
@@ -26,6 +26,8 @@ class QuoteBase(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     website: Optional[str] = None
+    class Config:
+        orm_mode = True
 
 
 class QuoteCreate(QuoteBase):
@@ -51,6 +53,8 @@ class QuoteUpdate(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     website: Optional[str] = None
+    class Config:
+        orm_mode = True
 
 
 class QuoteRead(QuoteBase):
@@ -69,8 +73,8 @@ class QuoteRead(QuoteBase):
     accepted_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
+    class Config:
+        orm_mode = True
 
 
 class QuoteSummary(BaseModel):

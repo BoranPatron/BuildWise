@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 from ..models.document import DocumentType
 
 
@@ -12,6 +12,8 @@ class DocumentBase(BaseModel):
     tags: Optional[str] = None
     category: Optional[str] = None
     is_public: bool = True
+    class Config:
+        orm_mode = True
 
 
 class DocumentCreate(DocumentBase):
@@ -25,6 +27,8 @@ class DocumentUpdate(BaseModel):
     tags: Optional[str] = None
     category: Optional[str] = None
     is_public: Optional[bool] = None
+    class Config:
+        orm_mode = True
 
 
 class DocumentRead(DocumentBase):
@@ -39,8 +43,8 @@ class DocumentRead(DocumentBase):
     is_encrypted: bool
     created_at: datetime
     updated_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
+    class Config:
+        orm_mode = True
 
 
 class DocumentSummary(BaseModel):
