@@ -67,7 +67,7 @@ async def setup_database():
                     hashed_password=get_password_hash("admin123"),
                     first_name="Admin",
                     last_name="BuildWise",
-                    user_type="professional",  # Enum-konform
+                    user_type="PROFESSIONAL",  # Korrekter Enum-Wert
                     is_active=True,
                     is_verified=True
                 )
@@ -85,7 +85,7 @@ async def setup_database():
                     hashed_password=get_password_hash("test1234"),
                     first_name="Test",
                     last_name="Dienstleister",
-                    user_type="service_provider",  # Enum-konform
+                    user_type="SERVICE_PROVIDER",  # Korrekter Enum-Wert
                     is_active=True,
                     is_verified=True
                 )

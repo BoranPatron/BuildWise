@@ -18,7 +18,7 @@ from app.models import Quote, QuoteStatus, CostPosition, Project
 async def fix_cost_positions():
     """Behebt das Problem mit fehlenden Kostenpositionen nachhaltig"""
     try:
-        async for db in get_db():
+    async for db in get_db():
             print("🔧 Starte nachhaltige Behebung der Kostenpositionen...")
             
             # 1. Analysiere aktuelle Datenlage
@@ -181,9 +181,9 @@ async def fix_cost_positions():
             # Commit der Änderungen
             await db.commit()
             print("\n🎉 Nachhaltige Behebung erfolgreich abgeschlossen!")
-            
-            break
-            
+        
+        break
+
     except Exception as e:
         print(f"❌ Fehler bei der nachhaltigen Behebung: {e}")
         import traceback
