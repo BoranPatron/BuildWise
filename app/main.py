@@ -172,7 +172,7 @@ except Exception as e:
 try:
     from app.api import cost_positions
     app.include_router(cost_positions.router, prefix="/api/v1/cost-positions", tags=["Cost Positions"])
-    print("✅ Cost Positions-Router geladen")
+    print("✅ Cost Positions-Router geladen - PostgreSQL-Migration aktiviert")
 except Exception as e:
     print(f"⚠️ Cost Positions-Router konnte nicht geladen werden: {e}")
 
