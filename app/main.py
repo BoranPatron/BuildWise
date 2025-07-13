@@ -84,13 +84,32 @@ def get_cors_origins():
         print(f"🔧 CORS Origins (Entwicklung): {origins}")
         return origins
 
+# Erweiterte CORS-Konfiguration für bessere Kompatibilität
+def get_cors_config():
+    """Erweiterte CORS-Konfiguration"""
+    origins = get_cors_origins()
+    
+    # Füge zusätzliche Origins für bessere Kompatibilität hinzu
+    additional_origins = [
+        "https://buildwise-backend.onrender.com",
+        "https://*.onrender.com",
+        "https://*.render.com"
+    ]
+    
+    # Kombiniere alle Origins
+    all_origins = origins + additional_origins
+    
+    print(f"🔧 Finale CORS Origins: {all_origins}")
+    return all_origins
+
 # CORS Middleware
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=get_cors_origins(),
+    allow_origins=get_cors_config(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"],
 )
 
 # API-Router einbinden - mit try-catch für Robustheit
