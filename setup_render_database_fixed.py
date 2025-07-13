@@ -8,6 +8,7 @@ import asyncio
 import os
 import sys
 from pathlib import Path
+from datetime import datetime
 
 # Füge das Projektverzeichnis zum Python-Pfad hinzu
 project_root = Path(__file__).parent
@@ -69,7 +70,9 @@ async def setup_database():
                     last_name="BuildWise",
                     user_type="PROFESSIONAL",  # Korrekter Enum-Wert
                     is_active=True,
-                    is_verified=True
+                    is_verified=True,
+                    gdpr_consent=True,  # GDPR-Einwilligung setzen
+                    gdpr_consent_date=datetime.utcnow()  # Einwilligungsdatum setzen
                 )
                 db.add(admin_user)
                 print("✅ Admin-User erstellt")
@@ -87,7 +90,9 @@ async def setup_database():
                     last_name="Dienstleister",
                     user_type="SERVICE_PROVIDER",  # Korrekter Enum-Wert
                     is_active=True,
-                    is_verified=True
+                    is_verified=True,
+                    gdpr_consent=True,  # GDPR-Einwilligung setzen
+                    gdpr_consent_date=datetime.utcnow()  # Einwilligungsdatum setzen
                 )
                 db.add(service_provider)
                 print("✅ Service-Provider erstellt")
