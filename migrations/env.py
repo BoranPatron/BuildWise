@@ -16,8 +16,12 @@ config = context.config
 if config.config_file_name:
     fileConfig(config.config_file_name)
 
-# Verwende SQLite für die Entwicklung
-DATABASE_URL = "sqlite:///./buildwise.db"
+# Verwende PostgreSQL für Render.com
+DATABASE_URL = os.environ.get("DATABASE_URL", "sqlite:///./buildwise.db")
+
+# Für PostgreSQL: Ersetze postgres:// durch postgresql:// (SQLAlchemy erwartet das)
+if DATABASE_URL.startswith("postgres://"):
+    DATABASE_URL = DATABASE_URL.replace("postgres://", "postgresql://", 1)
 
 
 def run_migrations_offline() -> None:
