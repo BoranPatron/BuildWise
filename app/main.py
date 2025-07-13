@@ -194,6 +194,25 @@ async def health_check():
         "service": "buildwise-backend"
     }
 
+# Test-Route für Router-Debugging
+@app.get("/test-routes")
+async def test_routes():
+    """Test-Route um zu überprüfen, ob Router geladen werden"""
+    return {
+        "message": "Test-Route funktioniert",
+        "available_routes": [
+            "/api/v1/auth",
+            "/api/v1/users", 
+            "/api/v1/projects",
+            "/api/v1/tasks",
+            "/api/v1/documents",
+            "/api/v1/messages",
+            "/api/v1/milestones",
+            "/api/v1/quotes",
+            "/api/v1/cost-positions"
+        ]
+    }
+
 # Error Handler für Render.com
 @app.exception_handler(404)
 async def not_found_handler(request, exc):
