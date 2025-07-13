@@ -71,8 +71,9 @@ async def setup_database():
                     user_type="PROFESSIONAL",  # Korrekter Enum-Wert
                     is_active=True,
                     is_verified=True,
-                    gdpr_consent=True,  # GDPR-Einwilligung setzen
-                    gdpr_consent_date=datetime.utcnow()  # Einwilligungsdatum setzen
+                    data_processing_consent=True,  # GDPR-Einwilligung setzen
+                    privacy_policy_accepted=True,  # Datenschutzerklärung akzeptiert
+                    terms_accepted=True  # AGB akzeptiert
                 )
                 db.add(admin_user)
                 print("✅ Admin-User erstellt")
@@ -91,8 +92,9 @@ async def setup_database():
                     user_type="SERVICE_PROVIDER",  # Korrekter Enum-Wert
                     is_active=True,
                     is_verified=True,
-                    gdpr_consent=True,  # GDPR-Einwilligung setzen
-                    gdpr_consent_date=datetime.utcnow()  # Einwilligungsdatum setzen
+                    data_processing_consent=True,  # GDPR-Einwilligung setzen
+                    privacy_policy_accepted=True,  # Datenschutzerklärung akzeptiert
+                    terms_accepted=True  # AGB akzeptiert
                 )
                 db.add(service_provider)
                 print("✅ Service-Provider erstellt")
