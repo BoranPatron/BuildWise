@@ -101,7 +101,7 @@ async def setup_database():
                 test_project = Project(
                     name="Test-Projekt",
                     description="Ein Test-Projekt für BuildWise",
-                    project_type="residential",
+                    project_type="NEW_BUILD",  # Korrekter Enum-Wert
                     status="active",
                     budget=100000,
                     is_public=True,
