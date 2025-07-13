@@ -221,28 +221,21 @@ async def test_models():
     """Test-Route um Model-Imports zu überprüfen"""
     try:
         from app.models.project import Project, ProjectType, ProjectStatus
-        from app.models.user import User
-        from app.models.task import Task
-        from app.models.document import Document
-        from app.models.milestone import Milestone
-        from app.models.quote import Quote
+        from app.models.user import User, UserType, UserStatus
+        from app.models.task import Task, TaskStatus, TaskPriority
+        from app.models.milestone import Milestone, MilestoneStatus, MilestonePriority
+        from app.models.quote import Quote, QuoteStatus
         from app.models.cost_position import CostPosition
         
         return {
             "message": "Alle Models erfolgreich importiert",
-            "models": [
-                "Project", "User", "Task", "Document", 
-                "Milestone", "Quote", "CostPosition"
-            ],
-            "enums": [
-                "ProjectType", "ProjectStatus"
-            ]
+            "models": ["Project", "User", "Task", "Document", "Milestone", "Quote", "CostPosition"],
+            "enums": ["ProjectType", "ProjectStatus"]
         }
     except Exception as e:
         return {
-            "message": "Model-Import-Fehler",
-            "error": str(e),
-            "error_type": type(e).__name__
+            "message": f"Model-Import-Fehler: {str(e)}",
+            "error": str(e)
         }
 
 # Test-Route für Service-Imports
@@ -250,23 +243,56 @@ async def test_models():
 async def test_services():
     """Test-Route um Service-Imports zu überprüfen"""
     try:
-        from app.services import project_service, user_service, task_service
-        from app.services import document_service, message_service, milestone_service
-        from app.services import quote_service, cost_position_service
+        from app.services import project_service, user_service, task_service, document_service, message_service, milestone_service, quote_service, cost_position_service
         
         return {
             "message": "Alle Services erfolgreich importiert",
-            "services": [
-                "project_service", "user_service", "task_service",
-                "document_service", "message_service", "milestone_service",
-                "quote_service", "cost_position_service"
-            ]
+            "services": ["project_service", "user_service", "task_service", "document_service", "message_service", "milestone_service", "quote_service", "cost_position_service"]
         }
     except Exception as e:
         return {
-            "message": "Service-Import-Fehler",
-            "error": str(e),
-            "error_type": type(e).__name__
+            "message": f"Service-Import-Fehler: {str(e)}",
+            "error": str(e)
+        }
+
+# Test-Route für API-Endpunkte
+@app.get("/test-api-endpoints")
+async def test_api_endpoints():
+    """Test-Route um API-Endpunkte zu überprüfen"""
+    try:
+        from app.api import projects, users, tasks, documents, messages, milestones, quotes, cost_positions
+        
+        return {
+            "message": "Alle API-Module erfolgreich importiert",
+            "api_modules": ["projects", "users", "tasks", "documents", "messages", "milestones", "quotes", "cost_positions"]
+        }
+    except Exception as e:
+        return {
+            "message": f"API-Modul-Import-Fehler: {str(e)}",
+            "error": str(e)
+        }
+
+# Test-Route für Datenbankverbindung
+@app.get("/test-database")
+async def test_database():
+    """Test-Route um Datenbankverbindung zu überprüfen"""
+    try:
+        from app.core.database import engine
+        from sqlalchemy import text
+        
+        # Einfache Datenbankverbindung testen
+        with engine.connect() as connection:
+            result = connection.execute(text("SELECT COUNT(*) FROM projects"))
+            project_count = result.scalar()
+        
+        return {
+            "message": "Datenbankverbindung erfolgreich",
+            "project_count": project_count
+        }
+    except Exception as e:
+        return {
+            "message": f"Datenbankfehler: {str(e)}",
+            "error": str(e)
         }
 
 # Error Handler für Render.com
