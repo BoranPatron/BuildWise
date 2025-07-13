@@ -53,30 +53,36 @@ app = FastAPI(
 # CORS-Konfiguration für Render.com
 def get_cors_origins():
     """Hole CORS-Origins basierend auf Environment"""
+    # Hole CORS-Origins aus Environment-Variable
+    allowed_origins = os.environ.get("ALLOWED_ORIGINS", "")
+    
+    if allowed_origins:
+        # Verwende die Environment-Variable
+        origins = [origin.strip() for origin in allowed_origins.split(",") if origin.strip()]
+        print(f"🔧 CORS Origins aus Environment: {origins}")
+        return origins
+    
+    # Fallback für Produktion
     if os.environ.get("ENVIRONMENT") == "production":
-        # Produktions-Origins
         origins = [
             "https://frontend-x98q.onrender.com",  # Dein aktuelles Frontend auf Render.com
             "https://buildwise-frontend.onrender.com",
             "https://buildwise-app.onrender.com",
-            os.environ.get("FRONTEND_URL", "https://frontend-x98q.onrender.com")  # Dynamische Frontend-URL
+            os.environ.get("FRONTEND_URL", "https://frontend-x98q.onrender.com")
         ]
-        # Füge auch lokale Entwicklung hinzu
-        origins.extend([
-            "http://localhost:3000",
-            "http://localhost:5173",
-            "http://127.0.0.1:5173"
-        ])
+        print(f"🔧 CORS Origins (Produktion): {origins}")
         return origins
     else:
         # Entwicklungs-Origins
-        return [
+        origins = [
             "http://localhost:3000",
             "http://localhost:5173",
             "http://127.0.0.1:5173",
             "http://localhost:8000",
             "http://127.0.0.1:8000"
         ]
+        print(f"🔧 CORS Origins (Entwicklung): {origins}")
+        return origins
 
 # CORS Middleware
 app.add_middleware(
