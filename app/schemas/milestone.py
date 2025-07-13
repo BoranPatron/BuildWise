@@ -13,12 +13,14 @@ class MilestoneBase(BaseModel):
     planned_date: datetime
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
-    category: Optional[str] = None
     budget: Optional[float] = None
+    actual_costs: Optional[float] = None
     contractor: Optional[str] = None
+    progress_percentage: int = 0
     is_critical: bool = False
     notify_on_completion: bool = True
     notes: Optional[str] = None
+
     class Config:
         orm_mode = True
 
@@ -35,7 +37,6 @@ class MilestoneUpdate(BaseModel):
     planned_date: Optional[datetime] = None
     start_date: Optional[datetime] = None
     end_date: Optional[datetime] = None
-    category: Optional[str] = None
     budget: Optional[float] = None
     actual_costs: Optional[float] = None
     contractor: Optional[str] = None
@@ -43,31 +44,28 @@ class MilestoneUpdate(BaseModel):
     is_critical: Optional[bool] = None
     notify_on_completion: Optional[bool] = None
     notes: Optional[str] = None
+
     class Config:
         orm_mode = True
 
 
 class MilestoneRead(MilestoneBase):
     id: int
-    actual_costs: Optional[float] = None
-    progress_percentage: int
-    completed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+
     class Config:
         orm_mode = True
 
 
-class MilestoneSummary(BaseModel):
-    id: int
-    title: str
-    status: MilestoneStatus
-    priority: MilestonePriority
-    planned_date: datetime
-    progress_percentage: int
-    budget: Optional[float] = None
-    actual_costs: Optional[float] = None
-    is_critical: bool
-    created_at: datetime
+class MilestoneStatistics(BaseModel):
+    total_milestones: int
+    completed_milestones: int
+    in_progress_milestones: int
+    overdue_milestones: int
+    average_progress: float
+    total_budget: float
+    total_actual_costs: float
 
-    model_config = ConfigDict(from_attributes=True) 
+    class Config:
+        orm_mode = True 

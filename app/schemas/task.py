@@ -12,8 +12,11 @@ class TaskBase(BaseModel):
     project_id: int
     assigned_to: Optional[int] = None
     due_date: Optional[datetime] = None
-    estimated_hours: Optional[int] = None
+    estimated_hours: Optional[float] = None
+    actual_hours: Optional[float] = None
+    progress_percentage: int = 0
     is_milestone: bool = False
+
     class Config:
         orm_mode = True
 
@@ -29,10 +32,11 @@ class TaskUpdate(BaseModel):
     priority: Optional[TaskPriority] = None
     assigned_to: Optional[int] = None
     due_date: Optional[datetime] = None
-    estimated_hours: Optional[int] = None
-    actual_hours: Optional[int] = None
+    estimated_hours: Optional[float] = None
+    actual_hours: Optional[float] = None
     progress_percentage: Optional[int] = None
     is_milestone: Optional[bool] = None
+
     class Config:
         orm_mode = True
 
@@ -40,23 +44,22 @@ class TaskUpdate(BaseModel):
 class TaskRead(TaskBase):
     id: int
     created_by: int
-    actual_hours: Optional[int] = None
-    progress_percentage: int
-    completed_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    completed_at: Optional[datetime] = None
+
     class Config:
         orm_mode = True
 
 
-class TaskSummary(BaseModel):
-    id: int
-    title: str
-    status: TaskStatus
-    priority: TaskPriority
-    progress_percentage: int
-    due_date: Optional[datetime] = None
-    is_milestone: bool
-    created_at: datetime
+class TaskStatistics(BaseModel):
+    total_tasks: int
+    completed_tasks: int
+    in_progress_tasks: int
+    overdue_tasks: int
+    average_progress: float
+    total_estimated_hours: float
+    total_actual_hours: float
 
-    model_config = ConfigDict(from_attributes=True) 
+    class Config:
+        orm_mode = True 

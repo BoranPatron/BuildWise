@@ -9,9 +9,17 @@ class DocumentBase(BaseModel):
     description: Optional[str] = None
     document_type: DocumentType = DocumentType.OTHER
     project_id: int
+    file_name: str
+    file_path: str
+    file_size: int
+    mime_type: str
+    version: int = 1
+    is_latest: bool = True
     tags: Optional[str] = None
     category: Optional[str] = None
     is_public: bool = True
+    is_encrypted: bool = False
+
     class Config:
         orm_mode = True
 
@@ -27,6 +35,7 @@ class DocumentUpdate(BaseModel):
     tags: Optional[str] = None
     category: Optional[str] = None
     is_public: Optional[bool] = None
+
     class Config:
         orm_mode = True
 
@@ -34,36 +43,21 @@ class DocumentUpdate(BaseModel):
 class DocumentRead(DocumentBase):
     id: int
     uploaded_by: int
-    file_name: str
-    file_path: str
-    file_size: int
-    mime_type: str
-    version: int
-    is_latest: bool
-    is_encrypted: bool
     created_at: datetime
     updated_at: datetime
+
     class Config:
         orm_mode = True
 
 
-class DocumentSummary(BaseModel):
-    id: int
-    title: str
-    document_type: DocumentType
-    file_name: str
-    file_size: int
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
-
-
 class DocumentUpload(BaseModel):
-    file: bytes
     title: str
     description: Optional[str] = None
     document_type: DocumentType = DocumentType.OTHER
     project_id: int
     tags: Optional[str] = None
     category: Optional[str] = None
-    is_public: bool = True 
+    is_public: bool = True
+
+    class Config:
+        orm_mode = True 

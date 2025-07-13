@@ -26,6 +26,7 @@ class QuoteBase(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     website: Optional[str] = None
+
     class Config:
         orm_mode = True
 
@@ -53,6 +54,7 @@ class QuoteUpdate(BaseModel):
     phone: Optional[str] = None
     email: Optional[str] = None
     website: Optional[str] = None
+
     class Config:
         orm_mode = True
 
@@ -63,52 +65,28 @@ class QuoteRead(QuoteBase):
     risk_score: Optional[float] = None
     price_deviation: Optional[float] = None
     ai_recommendation: Optional[str] = None
-    contact_released: bool
+    contact_released: bool = False
     pdf_upload_path: Optional[str] = None
     additional_documents: Optional[str] = None
     rating: Optional[int] = None
     feedback: Optional[str] = None
     rejection_reason: Optional[str] = None
-    submitted_at: Optional[datetime] = None
-    accepted_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
+    submitted_at: Optional[datetime] = None
+    accepted_at: Optional[datetime] = None
+
     class Config:
         orm_mode = True
 
 
-class QuoteSummary(BaseModel):
-    id: int
-    title: str
-    status: QuoteStatus
+class QuoteStatistics(BaseModel):
+    total_quotes: int
+    accepted_quotes: int
+    rejected_quotes: int
+    pending_quotes: int
+    average_amount: float
     total_amount: float
-    currency: str
-    company_name: Optional[str] = None
-    contact_person: Optional[str] = None
-    risk_score: Optional[float] = None
-    price_deviation: Optional[float] = None
-    created_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
-
-
-class QuoteAnalysis(BaseModel):
-    risk_score: float
-    price_deviation: float
-    recommendation: str
-    factors: list[str]
-
-
-class QuoteForMilestone(BaseModel):
-    id: int
-    title: str
-    status: QuoteStatus
-    total_amount: float
-    currency: str
-    company_name: Optional[str] = None
-    contact_person: Optional[str] = None
-    risk_score: Optional[float] = None
-    price_deviation: Optional[float] = None
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True) 
+    class Config:
+        orm_mode = True 

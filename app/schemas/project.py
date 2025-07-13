@@ -18,6 +18,7 @@ class ProjectBase(BaseModel):
     estimated_duration: Optional[int] = None
     is_public: bool = True
     allow_quotes: bool = True
+
     class Config:
         orm_mode = True
 
@@ -40,33 +41,20 @@ class ProjectUpdate(BaseModel):
     estimated_duration: Optional[int] = None
     is_public: Optional[bool] = None
     allow_quotes: Optional[bool] = None
+
     class Config:
         orm_mode = True
 
 
 class ProjectRead(ProjectBase):
     id: int
-    owner_id: int
-    progress_percentage: int
-    current_costs: float
+    progress_percentage: int = 0
+    current_costs: float = 0.0
     created_at: datetime
     updated_at: datetime
+
     class Config:
         orm_mode = True
-
-
-class ProjectSummary(BaseModel):
-    id: int
-    name: str
-    description: Optional[str] = None
-    project_type: ProjectType
-    status: ProjectStatus
-    progress_percentage: int
-    budget: Optional[float] = None
-    current_costs: float
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
 
 
 class ProjectDashboard(BaseModel):
@@ -77,6 +65,7 @@ class ProjectDashboard(BaseModel):
     completed_milestones: int
     document_count: int
     quote_count: int
-    recent_activities: list[dict]
+    recent_activities: list
 
-    model_config = ConfigDict(from_attributes=True)
+    class Config:
+        orm_mode = True

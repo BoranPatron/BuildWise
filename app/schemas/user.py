@@ -32,6 +32,7 @@ class UserUpdate(BaseModel):
     profile_image: Optional[str] = None
     region: Optional[str] = None
     languages: Optional[str] = None
+    
     class Config:
         orm_mode = True
 
@@ -42,6 +43,7 @@ class UserRead(UserBase):
     is_superuser: bool
     created_at: datetime
     updated_at: datetime
+    
     class Config:
         orm_mode = True
 
@@ -58,7 +60,8 @@ class UserProfile(BaseModel):
     is_verified: bool
     created_at: datetime
 
-    model_config = ConfigDict(from_attributes=True)
+    class Config:
+        orm_mode = True
 
 
 class UserLogin(BaseModel):

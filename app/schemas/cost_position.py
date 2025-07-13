@@ -16,6 +16,8 @@ class CostPositionBase(BaseModel):
     contractor_phone: Optional[str] = None
     contractor_email: Optional[str] = None
     contractor_website: Optional[str] = None
+    progress_percentage: int = 0
+    paid_amount: float = 0.0
     payment_terms: Optional[str] = None
     warranty_period: Optional[int] = None
     estimated_duration: Optional[int] = None
@@ -30,6 +32,7 @@ class CostPositionBase(BaseModel):
     quote_id: Optional[int] = None
     milestone_id: Optional[int] = None
     project_id: int
+
     class Config:
         orm_mode = True
 
@@ -51,6 +54,8 @@ class CostPositionUpdate(BaseModel):
     contractor_phone: Optional[str] = None
     contractor_email: Optional[str] = None
     contractor_website: Optional[str] = None
+    progress_percentage: Optional[int] = None
+    paid_amount: Optional[float] = None
     payment_terms: Optional[str] = None
     warranty_period: Optional[int] = None
     estimated_duration: Optional[int] = None
@@ -62,35 +67,18 @@ class CostPositionUpdate(BaseModel):
     risk_score: Optional[float] = None
     price_deviation: Optional[float] = None
     ai_recommendation: Optional[str] = None
-    quote_id: Optional[int] = None
-    milestone_id: Optional[int] = None
-    project_id: Optional[int] = None
+
     class Config:
         orm_mode = True
 
 
 class CostPositionRead(CostPositionBase):
     id: int
-    progress_percentage: float
-    paid_amount: float
     created_at: datetime
     updated_at: datetime
+
     class Config:
         orm_mode = True
-
-
-class CostPositionSummary(BaseModel):
-    id: int
-    title: str
-    amount: float
-    currency: str
-    category: str
-    status: str
-    progress_percentage: int
-    paid_amount: float
-    created_at: datetime
-
-    model_config = ConfigDict(from_attributes=True)
 
 
 class CostPositionStatistics(BaseModel):
@@ -100,7 +88,8 @@ class CostPositionStatistics(BaseModel):
     total_remaining: float
     average_risk_score: float
     average_price_deviation: float
-    category_breakdown: list[dict]
-    status_breakdown: list[dict]
+    category_breakdown: list
+    status_breakdown: list
 
-    model_config = ConfigDict(from_attributes=True) 
+    class Config:
+        orm_mode = True 
