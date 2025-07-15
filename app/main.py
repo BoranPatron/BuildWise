@@ -1,329 +1,99 @@
-import os
-from fastapi import FastAPI, HTTPException, Depends, status
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from contextlib import asynccontextmanager
-import uvicorn
+from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.responses import JSONResponse
+import time
+import os
+from dotenv import load_dotenv
 
-# Render.com-spezifische Konfiguration
-def get_port():
-    """Hole Port von Render.com oder verwende Standard"""
-    return int(os.environ.get("PORT", 8000))
+load_dotenv()
 
-def get_host():
-    """Hole Host von Render.com oder verwende Standard"""
-    return os.environ.get("HOST", "0.0.0.0")
+from .api import api_router
+from .core.database import engine
+from .models import Base
 
-# Lebenszyklus-Manager für die Anwendung
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup
-    print("🚀 Starte BuildWise Backend...")
-    print(f"🌐 Host: {get_host()}")
-    print(f"🔌 Port: {get_port()}")
-    print(f"🔧 Environment: {os.environ.get('ENVIRONMENT', 'development')}")
-    
-    # Datenbank-Tabellen erstellen
-    try:
-        from app.core.database import engine
-        from app.models import Base
-        Base.metadata.create_all(bind=engine)
-        print("✅ Datenbank-Tabellen erstellt")
-    except Exception as e:
-        print(f"⚠️ Warnung beim Erstellen der Datenbank-Tabellen: {e}")
-    
-    print("✅ BuildWise Backend erfolgreich gestartet")
-    
-    yield
-    
-    # Shutdown
-    print("🛑 Beende BuildWise Backend...")
-
-# FastAPI-App erstellen
 app = FastAPI(
     title="BuildWise API",
-    description="Bauprojektmanagement-API für BuildWise",
+    description="Digitaler Assistent für Immobilienprojekte - Vollständige Backend-API",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc",
-    lifespan=lifespan
+    redoc_url="/redoc"
 )
 
-# CORS-Konfiguration für Render.com
-def get_cors_origins():
-    """Hole CORS-Origins basierend auf Environment"""
-    # Hole CORS-Origins aus Environment-Variable
-    allowed_origins = os.environ.get("ALLOWED_ORIGINS", "")
-    
-    if allowed_origins:
-        # Verwende die Environment-Variable
-        origins = [origin.strip() for origin in allowed_origins.split(",") if origin.strip()]
-        print(f"🔧 CORS Origins aus Environment: {origins}")
-        return origins
-    
-    # Fallback für Produktion
-    if os.environ.get("ENVIRONMENT") == "production":
-        origins = [
-            "https://frontend-x98q.onrender.com",  # Dein aktuelles Frontend auf Render.com
-            "https://buildwise-frontend.onrender.com",
-            "https://buildwise-app.onrender.com",
-            os.environ.get("FRONTEND_URL", "https://frontend-x98q.onrender.com")
-        ]
-        print(f"🔧 CORS Origins (Produktion): {origins}")
-        return origins
-    else:
-        # Entwicklungs-Origins
-        origins = [
-            "http://localhost:3000",
-            "http://localhost:5173",
-            "http://127.0.0.1:5173",
-            "http://localhost:8000",
-            "http://127.0.0.1:8000"
-        ]
-        print(f"🔧 CORS Origins (Entwicklung): {origins}")
-        return origins
-
-# Erweiterte CORS-Konfiguration für bessere Kompatibilität
-def get_cors_config():
-    """Erweiterte CORS-Konfiguration"""
-    origins = get_cors_origins()
-    
-    # Füge zusätzliche Origins für bessere Kompatibilität hinzu
-    additional_origins = [
-        "https://buildwise-backend.onrender.com",
-        "https://*.onrender.com",
-        "https://*.render.com"
+# CORS-Konfiguration für Netzwerk-Zugriff
+allowed_origins_env = os.getenv('ALLOWED_ORIGINS')
+if allowed_origins_env:
+    allowed_origins = [origin.strip() for origin in allowed_origins_env.split(',')]
+else:
+    allowed_origins = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:3000",
+        "http://127.0.0.1:3000"
     ]
-    
-    # Kombiniere alle Origins
-    all_origins = origins + additional_origins
-    
-    print(f"🔧 Finale CORS Origins: {all_origins}")
-    return all_origins
 
-# CORS Middleware
+# Debug-Ausgabe für CORS-Konfiguration
+print(f"🔧 CORS allowed origins: {allowed_origins}")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=get_cors_config(),
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"],
 )
 
-# API-Router einbinden - mit try-catch für Robustheit
-try:
-    from app.api import auth
-    app.include_router(auth.router, prefix="/api/v1/auth", tags=["Authentication"])
-    print("✅ Auth-Router geladen")
-except Exception as e:
-    print(f"⚠️ Auth-Router konnte nicht geladen werden: {e}")
+# Trusted Host Middleware
+app.add_middleware(
+    TrustedHostMiddleware,
+    allowed_hosts=["*"]  # In Produktion spezifische Hosts angeben
+)
 
-try:
-    from app.api import users
-    app.include_router(users.router, prefix="/api/v1/users", tags=["Users"])
-    print("✅ Users-Router geladen")
-except Exception as e:
-    print(f"⚠️ Users-Router konnte nicht geladen werden: {e}")
+# Request Timing Middleware
+@app.middleware("http")
+async def add_process_time_header(request: Request, call_next):
+    start_time = time.time()
+    response = await call_next(request)
+    process_time = time.time() - start_time
+    response.headers["X-Process-Time"] = str(process_time)
+    return response
 
-try:
-    from app.api import projects
-    app.include_router(projects.router, prefix="/api/v1/projects", tags=["Projects"])
-    print("✅ Projects-Router geladen - PostgreSQL-Migration aktiviert")
-except Exception as e:
-    print(f"⚠️ Projects-Router konnte nicht geladen werden: {e}")
-    print(f"🔍 Import-Fehler Details: {type(e).__name__}: {str(e)}")
+# Exception Handler
+#@app.exception_handler(Exception)
+#async def global_exception_handler(request: Request, exc: Exception):
+#    import traceback
+#    return JSONResponse(
+#        status_code=500,
+#        content={
+#            "detail": str(exc),
+#            "traceback": traceback.format_exc()
+#        }
+#    )
 
-try:
-    from app.api import tasks
-    app.include_router(tasks.router, prefix="/api/v1/tasks", tags=["Tasks"])
-    print("✅ Tasks-Router geladen")
-except Exception as e:
-    print(f"⚠️ Tasks-Router konnte nicht geladen werden: {e}")
+# API Router einbinden
+app.include_router(api_router, prefix="/api/v1")
 
-try:
-    from app.api import documents
-    app.include_router(documents.router, prefix="/api/v1/documents", tags=["Documents"])
-    print("✅ Documents-Router geladen")
-except Exception as e:
-    print(f"⚠️ Documents-Router konnte nicht geladen werden: {e}")
+# Datenbank-Tabellen erstellen
+#@app.on_event("startup")
+#async def on_startup():
+#    async with engine.begin() as conn:
+#        await conn.run_sync(Base.metadata.create_all)
 
-try:
-    from app.api import messages
-    app.include_router(messages.router, prefix="/api/v1/messages", tags=["Messages"])
-    print("✅ Messages-Router geladen")
-except Exception as e:
-    print(f"⚠️ Messages-Router konnte nicht geladen werden: {e}")
-
-try:
-    from app.api import milestones
-    app.include_router(milestones.router, prefix="/api/v1/milestones", tags=["Milestones"])
-    print("✅ Milestones-Router geladen")
-except Exception as e:
-    print(f"⚠️ Milestones-Router konnte nicht geladen werden: {e}")
-
-try:
-    from app.api import quotes
-    app.include_router(quotes.router, prefix="/api/v1/quotes", tags=["Quotes"])
-    print("✅ Quotes-Router geladen")
-except Exception as e:
-    print(f"⚠️ Quotes-Router konnte nicht geladen werden: {e}")
-
-try:
-    from app.api import cost_positions
-    app.include_router(cost_positions.router, prefix="/api/v1/cost-positions", tags=["Cost Positions"])
-    print("✅ Cost Positions-Router geladen - PostgreSQL-Migration aktiviert")
-except Exception as e:
-    print(f"⚠️ Cost Positions-Router konnte nicht geladen werden: {e}")
-    print(f"🔍 Import-Fehler Details: {type(e).__name__}: {str(e)}")
-
-# Health Check Endpoint für Render.com
-@app.get("/")
-async def root():
-    return {
-        "message": "BuildWise API läuft!",
-        "version": "1.0.0",
-        "environment": os.environ.get("ENVIRONMENT", "development"),
-        "docs": "/docs"
-    }
-
+# Health Check
 @app.get("/health")
 async def health_check():
     return {
         "status": "healthy",
-        "timestamp": "2024-01-01T00:00:00Z",
-        "service": "buildwise-backend"
+        "service": "BuildWise API",
+        "version": "1.0.0"
     }
 
-# Test-Route für Router-Debugging
-@app.get("/test-routes")
-async def test_routes():
-    """Test-Route um zu überprüfen, ob Router geladen werden"""
+# Root Endpoint
+@app.get("/")
+async def read_root():
     return {
-        "message": "Test-Route funktioniert",
-        "available_routes": [
-            "/api/v1/auth",
-            "/api/v1/users", 
-            "/api/v1/projects",
-            "/api/v1/tasks",
-            "/api/v1/documents",
-            "/api/v1/messages",
-            "/api/v1/milestones",
-            "/api/v1/quotes",
-            "/api/v1/cost-positions"
-        ]
+        "message": "Willkommen bei der BuildWise API",
+        "version": "1.0.0",
+        "docs": "/docs",
+        "health": "/health"
     }
-
-# Test-Route für Model-Imports
-@app.get("/test-models")
-async def test_models():
-    """Test-Route um Model-Imports zu überprüfen"""
-    try:
-        from app.models.project import Project, ProjectType, ProjectStatus
-        from app.models.user import User, UserType, UserStatus
-        from app.models.task import Task, TaskStatus, TaskPriority
-        from app.models.milestone import Milestone, MilestoneStatus, MilestonePriority
-        from app.models.quote import Quote, QuoteStatus
-        from app.models.cost_position import CostPosition
-        
-        return {
-            "message": "Alle Models erfolgreich importiert",
-            "models": ["Project", "User", "Task", "Document", "Milestone", "Quote", "CostPosition"],
-            "enums": ["ProjectType", "ProjectStatus"]
-        }
-    except Exception as e:
-        return {
-            "message": f"Model-Import-Fehler: {str(e)}",
-            "error": str(e)
-        }
-
-# Test-Route für Service-Imports
-@app.get("/test-services")
-async def test_services():
-    """Test-Route um Service-Imports zu überprüfen"""
-    try:
-        from app.services import project_service, user_service, task_service, document_service, message_service, milestone_service, quote_service, cost_position_service
-        
-        return {
-            "message": "Alle Services erfolgreich importiert",
-            "services": ["project_service", "user_service", "task_service", "document_service", "message_service", "milestone_service", "quote_service", "cost_position_service"]
-        }
-    except Exception as e:
-        return {
-            "message": f"Service-Import-Fehler: {str(e)}",
-            "error": str(e)
-        }
-
-# Test-Route für API-Endpunkte
-@app.get("/test-api-endpoints")
-async def test_api_endpoints():
-    """Test-Route um API-Endpunkte zu überprüfen"""
-    try:
-        from app.api import projects, users, tasks, documents, messages, milestones, quotes, cost_positions
-        
-        return {
-            "message": "Alle API-Module erfolgreich importiert",
-            "api_modules": ["projects", "users", "tasks", "documents", "messages", "milestones", "quotes", "cost_positions"]
-        }
-    except Exception as e:
-        return {
-            "message": f"API-Modul-Import-Fehler: {str(e)}",
-            "error": str(e)
-        }
-
-# Test-Route für Datenbankverbindung
-@app.get("/test-database")
-async def test_database():
-    """Test-Route um Datenbankverbindung zu überprüfen"""
-    try:
-        from app.core.database import engine
-        from sqlalchemy import text
-        
-        # Einfache Datenbankverbindung testen
-        with engine.connect() as connection:
-            result = connection.execute(text("SELECT COUNT(*) FROM projects"))
-            project_count = result.scalar()
-        
-        return {
-            "message": "Datenbankverbindung erfolgreich",
-            "project_count": project_count
-        }
-    except Exception as e:
-        return {
-            "message": f"Datenbankfehler: {str(e)}",
-            "error": str(e)
-        }
-
-# Error Handler für Render.com
-@app.exception_handler(404)
-async def not_found_handler(request, exc):
-    return JSONResponse(
-        status_code=404,
-        content={
-            "error": "Endpoint nicht gefunden",
-            "message": "Die angeforderte URL existiert nicht",
-            "docs": "/docs"
-        }
-    )
-
-@app.exception_handler(500)
-async def internal_error_handler(request, exc):
-    return JSONResponse(
-        status_code=500,
-        content={
-            "error": "Interner Server-Fehler",
-            "message": "Ein unerwarteter Fehler ist aufgetreten"
-        }
-    )
-
-# Nur ausführen, wenn direkt gestartet
-if __name__ == "__main__":
-    print("🚀 Starte BuildWise Backend lokal...")
-    uvicorn.run(
-        "app.main:app",
-        host=get_host(),
-        port=get_port(),
-        reload=True if os.environ.get("ENVIRONMENT") == "development" else False,
-        log_level="info"
-    )

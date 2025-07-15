@@ -1,5 +1,5 @@
-from datetime import datetime
-from typing import Optional
+from datetime import date, datetime
+from typing import Optional, List
 from pydantic import BaseModel
 from ..models.project import ProjectType, ProjectStatus
 
@@ -7,20 +7,17 @@ from ..models.project import ProjectType, ProjectStatus
 class ProjectBase(BaseModel):
     name: str
     description: Optional[str] = None
-    project_type: ProjectType = ProjectType.NEW_BUILD
+    project_type: ProjectType
     status: ProjectStatus = ProjectStatus.PLANNING
-    budget: Optional[float] = None
-    start_date: Optional[datetime] = None
-    end_date: Optional[datetime] = None
     address: Optional[str] = None
     property_size: Optional[float] = None
     construction_area: Optional[float] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
     estimated_duration: Optional[int] = None
-    is_public: bool = True
+    budget: Optional[float] = None
+    is_public: bool = False
     allow_quotes: bool = True
-
-    class Config:
-        orm_mode = True
 
 
 class ProjectCreate(ProjectBase):
@@ -32,29 +29,45 @@ class ProjectUpdate(BaseModel):
     description: Optional[str] = None
     project_type: Optional[ProjectType] = None
     status: Optional[ProjectStatus] = None
-    budget: Optional[float] = None
-    start_date: Optional[datetime] = None
-    end_date: Optional[datetime] = None
     address: Optional[str] = None
     property_size: Optional[float] = None
     construction_area: Optional[float] = None
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
     estimated_duration: Optional[int] = None
+    budget: Optional[float] = None
+    current_costs: Optional[float] = None
+    progress_percentage: Optional[float] = None
     is_public: Optional[bool] = None
     allow_quotes: Optional[bool] = None
-
-    class Config:
-        orm_mode = True
 
 
 class ProjectRead(ProjectBase):
     id: int
-    progress_percentage: int = 0
-    current_costs: float = 0.0
+    owner_id: int
+    current_costs: float
+    progress_percentage: float
     created_at: datetime
     updated_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
+
+
+class ProjectSummary(BaseModel):
+    id: int
+    name: str
+    project_type: ProjectType
+    status: ProjectStatus
+    progress_percentage: float
+    budget: Optional[float] = None
+    current_costs: float
+    start_date: Optional[date] = None
+    end_date: Optional[date] = None
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
 
 
 class ProjectDashboard(BaseModel):
@@ -65,7 +78,7 @@ class ProjectDashboard(BaseModel):
     completed_milestones: int
     document_count: int
     quote_count: int
-    recent_activities: list
+    recent_activities: List[dict] = []
 
     class Config:
-        orm_mode = True
+        from_attributes = True

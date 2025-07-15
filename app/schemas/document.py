@@ -8,24 +8,17 @@ class DocumentBase(BaseModel):
     title: str
     description: Optional[str] = None
     document_type: DocumentType = DocumentType.OTHER
+    tags: Optional[str] = None
+    category: Optional[str] = None
+    is_public: bool = False
+
+
+class DocumentCreate(DocumentBase):
     project_id: int
     file_name: str
     file_path: str
     file_size: int
     mime_type: str
-    version: int = 1
-    is_latest: bool = True
-    tags: Optional[str] = None
-    category: Optional[str] = None
-    is_public: bool = True
-    is_encrypted: bool = False
-
-    class Config:
-        orm_mode = True
-
-
-class DocumentCreate(DocumentBase):
-    pass
 
 
 class DocumentUpdate(BaseModel):
@@ -36,28 +29,43 @@ class DocumentUpdate(BaseModel):
     category: Optional[str] = None
     is_public: Optional[bool] = None
 
-    class Config:
-        orm_mode = True
-
 
 class DocumentRead(DocumentBase):
     id: int
+    project_id: int
     uploaded_by: int
+    file_name: str
+    file_path: str
+    file_size: int
+    mime_type: str
+    version: int
+    is_latest: bool
+    parent_document_id: Optional[int] = None
+    is_encrypted: bool
     created_at: datetime
     updated_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
+
+
+class DocumentSummary(BaseModel):
+    id: int
+    title: str
+    document_type: DocumentType
+    file_name: str
+    file_size: int
+    mime_type: str
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
 
 
 class DocumentUpload(BaseModel):
     title: str
     description: Optional[str] = None
     document_type: DocumentType = DocumentType.OTHER
-    project_id: int
     tags: Optional[str] = None
     category: Optional[str] = None
-    is_public: bool = True
-
-    class Config:
-        orm_mode = True 
+    is_public: bool = False 

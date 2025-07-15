@@ -12,7 +12,7 @@ from ..services.message_service import (
     get_unread_message_count, get_total_unread_count
 )
 
-router = APIRouter(tags=["messages"])
+router = APIRouter(prefix="/messages", tags=["messages"])
 
 
 @router.post("/", response_model=MessageRead, status_code=status.HTTP_201_CREATED)

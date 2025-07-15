@@ -14,7 +14,7 @@ from ..services.document_service import (
     save_uploaded_file
 )
 
-router = APIRouter(tags=["documents"])
+router = APIRouter(prefix="/documents", tags=["documents"])
 
 
 @router.post("/upload", response_model=DocumentRead, status_code=status.HTTP_201_CREATED)

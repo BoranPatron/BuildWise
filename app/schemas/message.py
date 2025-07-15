@@ -5,40 +5,45 @@ from ..models.message import MessageType
 
 
 class MessageBase(BaseModel):
-    content: str
-    sender_id: int
-    recipient_id: Optional[int] = None
     message_type: MessageType = MessageType.TEXT
-    is_read: bool = False
-    project_id: int
-
-    class Config:
-        orm_mode = True
+    content: str
+    document_id: Optional[int] = None
 
 
 class MessageCreate(MessageBase):
-    pass
-
-
-class MessageUpdate(BaseModel):
-    content: Optional[str] = None
-    is_read: Optional[bool] = None
-
-    class Config:
-        orm_mode = True
+    project_id: int
+    recipient_id: Optional[int] = None
 
 
 class MessageRead(MessageBase):
     id: int
+    project_id: int
+    sender_id: int
+    recipient_id: Optional[int] = None
+    is_read: bool
+    read_at: Optional[datetime] = None
+    is_system_message: bool
+    is_encrypted: bool
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class MessageSummary(BaseModel):
+    id: int
+    message_type: MessageType
+    content: str
+    sender_id: int
+    is_read: bool
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
-class MessageWithSender(MessageRead):
-    sender: dict
-    recipient: Optional[dict] = None
-
-    class Config:
-        orm_mode = True 
+class ChatRoom(BaseModel):
+    project_id: int
+    messages: list[MessageRead]
+    unread_count: int 

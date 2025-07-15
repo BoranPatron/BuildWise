@@ -12,7 +12,7 @@ from ..services.task_service import (
     get_overdue_tasks, get_upcoming_tasks
 )
 
-router = APIRouter(tags=["tasks"])
+router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
 @router.post("/", response_model=TaskRead, status_code=status.HTTP_201_CREATED)

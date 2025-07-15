@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Optional
 from pydantic import BaseModel
 from ..models.task import TaskStatus, TaskPriority
@@ -9,20 +9,14 @@ class TaskBase(BaseModel):
     description: Optional[str] = None
     status: TaskStatus = TaskStatus.TODO
     priority: TaskPriority = TaskPriority.MEDIUM
-    project_id: int
-    assigned_to: Optional[int] = None
-    due_date: Optional[datetime] = None
-    estimated_hours: Optional[float] = None
-    actual_hours: Optional[float] = None
-    progress_percentage: int = 0
+    due_date: Optional[date] = None
+    estimated_hours: Optional[int] = None
     is_milestone: bool = False
-
-    class Config:
-        orm_mode = True
 
 
 class TaskCreate(TaskBase):
-    pass
+    project_id: int
+    assigned_to: Optional[int] = None
 
 
 class TaskUpdate(BaseModel):
@@ -31,35 +25,37 @@ class TaskUpdate(BaseModel):
     status: Optional[TaskStatus] = None
     priority: Optional[TaskPriority] = None
     assigned_to: Optional[int] = None
-    due_date: Optional[datetime] = None
-    estimated_hours: Optional[float] = None
-    actual_hours: Optional[float] = None
+    due_date: Optional[date] = None
+    estimated_hours: Optional[int] = None
+    actual_hours: Optional[int] = None
     progress_percentage: Optional[int] = None
     is_milestone: Optional[bool] = None
-
-    class Config:
-        orm_mode = True
 
 
 class TaskRead(TaskBase):
     id: int
+    project_id: int
+    assigned_to: Optional[int] = None
     created_by: int
+    actual_hours: Optional[int] = None
+    progress_percentage: int
     created_at: datetime
     updated_at: datetime
     completed_at: Optional[datetime] = None
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
-class TaskStatistics(BaseModel):
-    total_tasks: int
-    completed_tasks: int
-    in_progress_tasks: int
-    overdue_tasks: int
-    average_progress: float
-    total_estimated_hours: float
-    total_actual_hours: float
+class TaskSummary(BaseModel):
+    id: int
+    title: str
+    status: TaskStatus
+    priority: TaskPriority
+    progress_percentage: int
+    due_date: Optional[date] = None
+    assigned_to: Optional[int] = None
+    is_milestone: bool
 
     class Config:
-        orm_mode = True 
+        from_attributes = True 

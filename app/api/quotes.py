@@ -20,7 +20,7 @@ from ..core.security import can_accept_or_reject_quote
 from app.services.cost_position_service import create_cost_position, get_cost_position_by_quote_id
 from app.schemas.cost_position import CostPositionCreate
 
-router = APIRouter(tags=["quotes"])
+router = APIRouter(prefix="/quotes", tags=["quotes"])
 
 
 class QuoteRejectRequest(BaseModel):

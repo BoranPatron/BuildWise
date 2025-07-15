@@ -11,9 +11,6 @@ class UserBase(BaseModel):
     phone: Optional[str] = None
     user_type: UserType = UserType.PRIVATE
 
-    class Config:
-        orm_mode = True
-
 
 class UserCreate(UserBase):
     password: str
@@ -32,20 +29,30 @@ class UserUpdate(BaseModel):
     profile_image: Optional[str] = None
     region: Optional[str] = None
     languages: Optional[str] = None
-    
-    class Config:
-        orm_mode = True
+    language_preference: Optional[str] = None
 
 
 class UserRead(UserBase):
     id: int
+    company_name: Optional[str] = None
+    company_address: Optional[str] = None
+    company_phone: Optional[str] = None
+    company_website: Optional[str] = None
+    business_license: Optional[str] = None
+    bio: Optional[str] = None
+    profile_image: Optional[str] = None
+    region: Optional[str] = None
+    languages: Optional[str] = None
     is_active: bool
-    is_superuser: bool
+    is_verified: bool
+    email_verified: bool
+    two_factor_enabled: bool
+    language_preference: str
     created_at: datetime
     updated_at: datetime
-    
+
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class UserProfile(BaseModel):
@@ -61,7 +68,7 @@ class UserProfile(BaseModel):
     created_at: datetime
 
     class Config:
-        orm_mode = True
+        from_attributes = True
 
 
 class UserLogin(BaseModel):

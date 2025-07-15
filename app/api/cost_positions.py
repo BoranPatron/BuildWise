@@ -17,7 +17,7 @@ from ..services.cost_position_service import (
     get_cost_positions_from_accepted_quotes, get_cost_position_statistics_for_accepted_quotes
 )
 
-router = APIRouter(tags=["cost-positions"])
+router = APIRouter(prefix="/cost-positions", tags=["cost-positions"])
 
 
 @router.post("/", response_model=CostPositionRead, status_code=status.HTTP_201_CREATED)

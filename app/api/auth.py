@@ -10,7 +10,7 @@ from ..services.user_service import authenticate_user, create_user, get_user_by_
 from ..services.security_service import SecurityService
 from ..models.audit_log import AuditAction
 
-router = APIRouter(tags=["auth"])
+router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
