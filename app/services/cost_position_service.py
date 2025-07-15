@@ -217,30 +217,38 @@ async def record_payment(db: AsyncSession, cost_position_id: int, payment_amount
 
 async def get_cost_positions_from_accepted_quotes(db: AsyncSession, project_id: int) -> List[CostPosition]:
     """Holt nur Kostenpositionen, die aus akzeptierten Angeboten erstellt wurden"""
-    # Verwende raw SQL um das Enum-Problem zu umgehen
-    from sqlalchemy import text
+    from ..models import Quote, QuoteStatus
     
-    # Hole alle akzeptierten Angebote für das Projekt (case-insensitive)
+    # Hole alle akzeptierten Angebote für das Projekt
     accepted_quotes_result = await db.execute(
-        text("""
-            SELECT id FROM quotes 
-            WHERE project_id = :project_id 
-            AND LOWER(status) = 'accepted'
-        """),
-        {"project_id": project_id}
+        select(Quote.id)
+        .where(
+            and_(
+                Quote.project_id == project_id,
+                Quote.status == QuoteStatus.ACCEPTED
+            )
+        )
     )
     accepted_quote_ids = [row[0] for row in accepted_quotes_result.fetchall()]
     
     if not accepted_quote_ids:
+        print(f"ℹ️ Keine akzeptierten Angebote für Projekt {project_id} gefunden")
         return []
+    
+    print(f"✅ {len(accepted_quote_ids)} akzeptierte Angebote für Projekt {project_id} gefunden")
     
     # Hole die entsprechenden Kostenpositionen
     cost_positions_result = await db.execute(
         select(CostPosition)
+        .options(selectinload(CostPosition.quote))
+        .options(selectinload(CostPosition.milestone))
+        .options(selectinload(CostPosition.service_provider))
         .where(CostPosition.quote_id.in_(accepted_quote_ids))
+        .order_by(CostPosition.created_at.desc())
     )
     cost_positions = cost_positions_result.scalars().all()
     
+    print(f"✅ {len(cost_positions)} Kostenpositionen aus akzeptierten Angeboten gefunden")
     return list(cost_positions)
 
 
