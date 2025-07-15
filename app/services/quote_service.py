@@ -214,6 +214,10 @@ async def create_cost_position_from_quote(db: AsyncSession, quote: Quote) -> boo
             print(f"⚠️  Kostenposition für Quote {quote.id} existiert bereits (ID: {existing_cost_position.id})")
             return True
         
+        # Stelle sicher, dass wir die korrekte Projekt-ID haben
+        project_id = quote.project_id
+        print(f"🔧 Erstelle Kostenposition für Quote {quote.id} (Projekt: {project_id})")
+        
         # Bestimme die Kostenkategorie basierend auf dem Gewerk
         category_mapping = {
             'elektro': 'electrical',
@@ -268,9 +272,9 @@ async def create_cost_position_from_quote(db: AsyncSession, quote: Quote) -> boo
                     category = CostCategory.BATHROOM
                 break
         
-        # Erstelle Kostenposition
+        # Erstelle Kostenposition mit expliziter Projekt-ID
         cost_position = CostPosition(
-            project_id=quote.project_id,
+            project_id=project_id,  # Explizit die Quote-Projekt-ID verwenden
             title=f"Kostenposition: {quote.title}",
             description=quote.description or f"Kostenposition für {quote.title}",
             amount=quote.total_amount,
@@ -305,7 +309,7 @@ async def create_cost_position_from_quote(db: AsyncSession, quote: Quote) -> boo
         await db.commit()
         await db.refresh(cost_position)
         
-        print(f"✅ Kostenposition für Angebot '{quote.title}' erstellt (ID: {cost_position.id})")
+        print(f"✅ Kostenposition für Angebot '{quote.title}' erstellt (ID: {cost_position.id}, Projekt: {cost_position.project_id})")
         return True
         
     except Exception as e:
