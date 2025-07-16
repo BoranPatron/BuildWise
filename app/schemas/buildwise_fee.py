@@ -80,7 +80,7 @@ class BuildWiseFeeBase(BaseModel):
         return v
 
 class BuildWiseFeeCreate(BuildWiseFeeBase):
-    fee_items: Optional[List[BuildWiseFeeItemCreate]] = []
+    pass
 
 class BuildWiseFeeUpdate(BaseModel):
     fee_amount: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
@@ -105,7 +105,6 @@ class BuildWiseFee(BuildWiseFeeBase):
     id: int
     created_at: datetime
     updated_at: datetime
-    fee_items: List[BuildWiseFeeItem] = []
     
     class Config:
         from_attributes = True

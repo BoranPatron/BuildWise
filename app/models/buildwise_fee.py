@@ -47,15 +47,14 @@ class BuildWiseFee(Base):
     # Metadaten
     fee_details = Column(Text)
     notes = Column(Text)
-    created_at = Column(DateTime, server_default=func.now())
-    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
     
-    # Beziehungen
-    project = relationship("Project", back_populates="buildwise_fees")
-    quote = relationship("Quote", back_populates="buildwise_fees")
-    cost_position = relationship("CostPosition", back_populates="buildwise_fees")
-    service_provider = relationship("User", back_populates="buildwise_fees")
-    fee_items = relationship("BuildWiseFeeItem", back_populates="buildwise_fee", cascade="all, delete-orphan")
+    # Beziehungen - ohne lazy loading um Greenlet-Probleme zu vermeiden
+    project = relationship("Project", back_populates="buildwise_fees", lazy="select")
+    quote = relationship("Quote", back_populates="buildwise_fees", lazy="select")
+    cost_position = relationship("CostPosition", back_populates="buildwise_fees", lazy="select")
+    service_provider = relationship("User", back_populates="buildwise_fees", lazy="select")
     
     # Constraints
     __table_args__ = (
@@ -84,7 +83,7 @@ class BuildWiseFeeItem(Base):
     created_at = Column(DateTime, server_default=func.now())
     
     # Beziehungen
-    buildwise_fee = relationship("BuildWiseFee", back_populates="fee_items")
+    buildwise_fee = relationship("BuildWiseFee", back_populates=None)
     quote = relationship("Quote")
     cost_position = relationship("CostPosition")
     

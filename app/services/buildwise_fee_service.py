@@ -1,5 +1,5 @@
 import os
-from datetime import date, timedelta
+from datetime import date, timedelta, datetime
 from decimal import Decimal
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -108,61 +108,73 @@ class BuildWiseFeeService:
     ) -> List[BuildWiseFee]:
         """Holt BuildWise-Gebühren mit optionalen Filtern."""
         
-        query = select(BuildWiseFee)
-        
-        # Filter anwenden
-        if project_id:
-            query = query.where(BuildWiseFee.project_id == project_id)
-        
-        if status:
-            query = query.where(BuildWiseFee.status == status)
-        
-        if month and year:
-            query = query.where(
-                and_(
-                    extract('month', BuildWiseFee.invoice_date) == month,
-                    extract('year', BuildWiseFee.invoice_date) == year
+        try:
+            print(f"🔍 Debug: BuildWiseFeeService.get_fees aufgerufen mit: skip={skip}, limit={limit}, project_id={project_id}, status={status}, month={month}, year={year}")
+            
+            # Zuerst: Prüfe alle Datensätze ohne Filter
+            all_fees_query = select(BuildWiseFee)
+            all_result = await db.execute(all_fees_query)
+            all_fees = all_result.scalars().all()
+            print(f"🔍 Debug: Gesamtanzahl Datensätze in DB: {len(all_fees)}")
+            
+            # Zeige alle Datensätze für Debug
+            for i, fee in enumerate(all_fees):
+                print(f"  Datensatz {i+1}: ID={fee.id}, Project={fee.project_id}, Status={fee.status}, Amount={fee.fee_amount}")
+            
+            # Hauptquery mit Filtern
+            query = select(BuildWiseFee)
+            
+            # Filter anwenden
+            if project_id:
+                query = query.where(BuildWiseFee.project_id == project_id)
+                print(f"🔍 Debug: Filter für project_id={project_id} angewendet")
+            
+            if status:
+                query = query.where(BuildWiseFee.status == status)
+                print(f"🔍 Debug: Filter für status={status} angewendet")
+            
+            # Datum-Filter - nur anwenden wenn beide Parameter vorhanden sind
+            if month and year:
+                # Verwende created_at für Datum-Filter
+                start_date = datetime(year, month, 1)
+                if month == 12:
+                    end_date = datetime(year + 1, 1, 1)
+                else:
+                    end_date = datetime(year, month + 1, 1)
+                
+                # Verwende OR-Bedingung: entweder im Datumsbereich ODER kein Datum gesetzt
+                from sqlalchemy import or_
+                query = query.where(
+                    or_(
+                        (BuildWiseFee.created_at >= start_date) & (BuildWiseFee.created_at < end_date),
+                        BuildWiseFee.created_at.is_(None)
+                    )
                 )
-            )
-        
-        # Pagination
-        query = query.offset(skip).limit(limit)
-        
-        result = await db.execute(query)
-        fees = result.scalars().all()
-        
-        # Lade Beziehungen explizit mit selectinload
-        from sqlalchemy.orm import selectinload
-        
-        # Erstelle eine neue Query mit explizitem Laden der Beziehungen
-        query_with_relations = select(BuildWiseFee).options(
-            selectinload(BuildWiseFee.project),
-            selectinload(BuildWiseFee.quote),
-            selectinload(BuildWiseFee.cost_position),
-            selectinload(BuildWiseFee.service_provider),
-            selectinload(BuildWiseFee.fee_items)
-        )
-        
-        # Filter anwenden
-        if project_id:
-            query_with_relations = query_with_relations.where(BuildWiseFee.project_id == project_id)
-        
-        if status:
-            query_with_relations = query_with_relations.where(BuildWiseFee.status == status)
-        
-        if month and year:
-            query_with_relations = query_with_relations.where(
-                and_(
-                    extract('month', BuildWiseFee.invoice_date) == month,
-                    extract('year', BuildWiseFee.invoice_date) == year
-                )
-            )
-        
-        # Pagination
-        query_with_relations = query_with_relations.offset(skip).limit(limit)
-        
-        result_with_relations = await db.execute(query_with_relations)
-        return result_with_relations.scalars().all()
+                print(f"🔍 Debug: Datum-Filter angewendet: {start_date} bis {end_date} (inkl. NULL-Werte)")
+            
+            # Pagination
+            query = query.offset(skip).limit(limit)
+            
+            print("🔍 Debug: Führe gefilterte Query aus...")
+            result = await db.execute(query)
+            fees = result.scalars().all()
+            
+            print(f"✅ Debug: {len(fees)} Gebühren nach Filterung gefunden")
+            
+            # Zeige gefilterte Datensätze für Debug
+            for i, fee in enumerate(fees):
+                print(f"  Gefilterter Datensatz {i+1}: ID={fee.id}, Project={fee.project_id}, Status={fee.status}, Amount={fee.fee_amount}")
+            
+            # Konvertiere zu Liste
+            fees_list = list(fees)
+            print(f"✅ Debug: {len(fees_list)} Gebühren erfolgreich geladen")
+            return fees_list
+            
+        except Exception as e:
+            print(f"❌ Debug: Fehler in get_fees: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise e
     
     @staticmethod
     async def get_fee(db: AsyncSession, fee_id: int) -> Optional[BuildWiseFee]:

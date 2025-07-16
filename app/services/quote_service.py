@@ -272,7 +272,8 @@ async def create_cost_position_from_quote(db: AsyncSession, quote: Quote) -> boo
                     category = CostCategory.BATHROOM
                 break
         
-        # Erstelle Kostenposition mit expliziter Projekt-ID
+        # Erstelle Kostenposition mit expliziter Projekt-ID und korrekten Timestamps
+        now = datetime.utcnow()
         cost_position = CostPosition(
             project_id=project_id,  # Explizit die Quote-Projekt-ID verwenden
             title=f"Kostenposition: {quote.title}",
@@ -302,7 +303,10 @@ async def create_cost_position_from_quote(db: AsyncSession, quote: Quote) -> boo
             # Zusätzliche Informationen
             risk_score=quote.risk_score,
             price_deviation=quote.price_deviation,
-            ai_recommendation=quote.ai_recommendation
+            ai_recommendation=quote.ai_recommendation,
+            # Korrekte Timestamps
+            created_at=now,
+            updated_at=now
         )
         
         db.add(cost_position)

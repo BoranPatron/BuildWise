@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 from decimal import Decimal
+from datetime import datetime
 
 from app.core.database import get_db
 from app.api.deps import get_current_user
@@ -42,6 +43,17 @@ async def create_fee_from_quote(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Fehler beim Erstellen der Gebühr: {str(e)}")
 
+@router.get("/test", response_model=dict)
+async def test_buildwise_fees_endpoint():
+    """
+    Einfacher Test-Endpunkt für BuildWise-Gebühren
+    """
+    return {
+        "message": "BuildWise-Gebühren API funktioniert",
+        "status": "ok",
+        "timestamp": "2024-01-01T00:00:00Z"
+    }
+
 @router.get("/", response_model=List[BuildWiseFee])
 async def get_buildwise_fees(
     skip: int = Query(0, ge=0),
@@ -56,16 +68,59 @@ async def get_buildwise_fees(
     """
     Holt alle BuildWise-Gebühren mit optionalen Filtern
     """
-    fees = await BuildWiseFeeService.get_fees(
-        db=db,
-        skip=skip,
-        limit=limit,
-        project_id=project_id,
-        status=status,
-        month=month,
-        year=year
-    )
-    return fees
+    try:
+        print(f"🔍 Debug: Lade BuildWise-Gebühren mit Parametern: skip={skip}, limit={limit}, project_id={project_id}, status={status}, month={month}, year={year}")
+        
+        fees = await BuildWiseFeeService.get_fees(
+            db=db,
+            skip=skip,
+            limit=limit,
+            project_id=project_id,
+            status=status,
+            month=month,
+            year=year
+        )
+        
+        print(f"✅ Debug: {len(fees)} Gebühren erfolgreich geladen")
+        
+        # Einfache JSON-Response ohne Pydantic-Validierung
+        result = []
+        for fee in fees:
+            fee_dict = {
+                "id": fee.id,
+                "project_id": fee.project_id,
+                "quote_id": fee.quote_id,
+                "cost_position_id": fee.cost_position_id,
+                "service_provider_id": fee.service_provider_id,
+                "fee_amount": float(fee.fee_amount) if fee.fee_amount else 0.0,
+                "fee_percentage": float(fee.fee_percentage) if fee.fee_percentage else 1.0,
+                "quote_amount": float(fee.quote_amount) if fee.quote_amount else 0.0,
+                "currency": fee.currency or "EUR",
+                "invoice_number": fee.invoice_number,
+                "invoice_date": fee.invoice_date.isoformat() if fee.invoice_date else None,
+                "due_date": fee.due_date.isoformat() if fee.due_date else None,
+                "payment_date": fee.payment_date.isoformat() if fee.payment_date else None,
+                "status": fee.status or "open",
+                "invoice_pdf_path": fee.invoice_pdf_path,
+                "invoice_pdf_generated": fee.invoice_pdf_generated or False,
+                "tax_rate": float(fee.tax_rate) if fee.tax_rate else 19.0,
+                "tax_amount": float(fee.tax_amount) if fee.tax_amount else None,
+                "net_amount": float(fee.net_amount) if fee.net_amount else None,
+                "gross_amount": float(fee.gross_amount) if fee.gross_amount else None,
+                "fee_details": fee.fee_details,
+                "notes": fee.notes,
+                "created_at": fee.created_at.isoformat() if fee.created_at else datetime.utcnow().isoformat(),
+                "updated_at": fee.updated_at.isoformat() if fee.updated_at else datetime.utcnow().isoformat(),
+            }
+            result.append(fee_dict)
+        
+        return result
+        
+    except Exception as e:
+        print(f"❌ Debug: Fehler beim Laden der Gebühren: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Fehler beim Laden der Gebühren: {str(e)}")
 
 @router.get("/statistics", response_model=BuildWiseFeeStatistics)
 async def get_buildwise_fee_statistics(
