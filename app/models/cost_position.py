@@ -108,4 +108,5 @@ class CostPosition(Base):
     project = relationship("Project", back_populates="cost_positions")
     quote = relationship("Quote")
     milestone = relationship("Milestone")
-    service_provider = relationship("User") 
+    service_provider = relationship("User")
+    buildwise_fees = relationship("BuildWiseFee", back_populates="cost_position") 

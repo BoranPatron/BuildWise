@@ -8,6 +8,7 @@ from .quote import Quote, QuoteStatus
 from .message import Message, MessageType
 from .audit_log import AuditLog, AuditAction
 from .cost_position import CostPosition, CostCategory, CostType, CostStatus
+from .buildwise_fee import BuildWiseFee, BuildWiseFeeItem
 
 __all__ = [
     "Base",
@@ -35,4 +36,6 @@ __all__ = [
     "CostCategory",
     "CostType",
     "CostStatus",
+    "BuildWiseFee",
+    "BuildWiseFeeItem",
 ]

@@ -87,3 +87,4 @@ class User(Base):
     sent_messages = relationship("Message", foreign_keys="Message.sender_id", back_populates="sender")
     received_messages = relationship("Message", foreign_keys="Message.recipient_id", back_populates="recipient")
     quotes = relationship("Quote", back_populates="service_provider")
+    buildwise_fees = relationship("BuildWiseFee", back_populates="service_provider")
