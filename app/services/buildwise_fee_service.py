@@ -111,15 +111,28 @@ class BuildWiseFeeService:
         try:
             print(f"🔍 Debug: BuildWiseFeeService.get_fees aufgerufen mit: skip={skip}, limit={limit}, project_id={project_id}, status={status}, month={month}, year={year}")
             
-            # Zuerst: Prüfe alle Datensätze ohne Filter
-            all_fees_query = select(BuildWiseFee)
-            all_result = await db.execute(all_fees_query)
-            all_fees = all_result.scalars().all()
-            print(f"🔍 Debug: Gesamtanzahl Datensätze in DB: {len(all_fees)}")
-            
-            # Zeige alle Datensätze für Debug
-            for i, fee in enumerate(all_fees):
-                print(f"  Datensatz {i+1}: ID={fee.id}, Project={fee.project_id}, Status={fee.status}, Amount={fee.fee_amount}")
+            # Robuste Prüfung: Prüfe ob Tabelle existiert und Daten hat
+            try:
+                # Zuerst: Prüfe alle Datensätze ohne Filter
+                all_fees_query = select(BuildWiseFee)
+                all_result = await db.execute(all_fees_query)
+                all_fees = all_result.scalars().all()
+                print(f"🔍 Debug: Gesamtanzahl Datensätze in DB: {len(all_fees)}")
+                
+                # Wenn keine Daten vorhanden sind, gib leere Liste zurück
+                if len(all_fees) == 0:
+                    print("⚠️ Debug: Keine Datensätze in buildwise_fees Tabelle gefunden")
+                    print("💡 Tipp: Führen Sie ensure_buildwise_fees_data.py aus")
+                    return []
+                
+                # Zeige alle Datensätze für Debug
+                for i, fee in enumerate(all_fees):
+                    print(f"  Datensatz {i+1}: ID={fee.id}, Project={fee.project_id}, Status={fee.status}, Amount={fee.fee_amount}")
+                    
+            except Exception as table_error:
+                print(f"⚠️ Debug: Fehler beim Zugriff auf buildwise_fees Tabelle: {table_error}")
+                print("💡 Tipp: Prüfen Sie die Datenbank-Migrationen")
+                return []
             
             # Hauptquery mit Filtern
             query = select(BuildWiseFee)
@@ -174,7 +187,9 @@ class BuildWiseFeeService:
             print(f"❌ Debug: Fehler in get_fees: {str(e)}")
             import traceback
             traceback.print_exc()
-            raise e
+            # Bei Fehlern gib leere Liste zurück statt Exception zu werfen
+            print("⚠️ Debug: Gebe leere Liste zurück bei Fehler")
+            return []
     
     @staticmethod
     async def get_fee(db: AsyncSession, fee_id: int) -> Optional[BuildWiseFee]:
