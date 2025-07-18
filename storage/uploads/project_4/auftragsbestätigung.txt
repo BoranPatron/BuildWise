@@ -1,7 +1,7 @@
 
 # AUFTRAGSBESTÄTIGUNG
 
-**Auftragsnummer:** AB-4-2-2-1752850805748  
+**Auftragsnummer:** AB-4-3-3-1752861073845  
 **Datum:** 18.7.2025  
 **Status:** Verbindlich angenommen
 
@@ -18,10 +18,10 @@
 
 ## 2. GEWERKSAUSSCHREIBUNG
 
-**Gewerk:** Wintergarten Anbau Haupthaus  
-**Kategorie:** Fundament & Keller  
+**Gewerk:** Sauna Einbau und Montage  
+**Kategorie:** sanitaer  
 **Beschreibung:** undefined  
-**Geplantes Datum:** 31.7.2025  
+**Geplantes Datum:** 8.8.2025  
 **Priorität:** medium  
 **Status:** planned
 
@@ -43,24 +43,24 @@ Standard-Umweltanforderungen
 
 ## 3. KOSTENVORANSCHLAG
 
-**Angebotsnummer:** 2  
+**Angebotsnummer:** 3  
 **Angebotsdatum:** 18.7.2025  
 **Gültig bis:** -  
 **Status:** submitted
 
 ### Kostenaufschlüsselung:
-- **Gesamtbetrag:** 15.000,00 €
+- **Gesamtbetrag:** 9.000,00 €
 - **Arbeitskosten:** Nicht angegeben
 - **Materialkosten:** Nicht angegeben
 - **Gemeinkosten:** Nicht angegeben
 
 ### Zeitplan:
-- **Geschätzte Dauer:** 10 Tage
+- **Geschätzte Dauer:** 12 Tage
 - **Startdatum:** 31.7.2025
 - **Fertigstellungsdatum:** 10.8.2025
 
 ### Bedingungen:
-- **Zahlungsbedingungen:** 30_days
+- **Zahlungsbedingungen:** immediate
 - **Garantie:** 24 Monate
 - **Gültig bis:** -
 
@@ -68,10 +68,10 @@ Standard-Umweltanforderungen
 
 ## 4. DIENSTLEISTER
 
-**Firma:** PietiboyAG  
-**Ansprechpartner:** Hr Piet  
+**Firma:** BaccoGMBH  
+**Ansprechpartner:** Banause Boran  
 **Telefon:** Nicht angegeben  
-**E-Mail:** Pietiboy@chaos.de  
+**E-Mail:** Bacco@Schabanak.de  
 **Website:** Nicht angegeben
 
 ---
@@ -118,7 +118,7 @@ Diese Auftragsbestätigung stellt eine verbindliche Vereinbarung zwischen dem Ba
 
 **Erstellt am:** 18.7.2025  
 **Erstellt von:** BuildWise System  
-**Dokument-ID:** AB-4-2-2-1752850805748
+**Dokument-ID:** AB-4-3-3-1752861073845
 
 ---
 
