@@ -33,8 +33,18 @@ class Project(Base):
     project_type = Column(Enum(ProjectType), nullable=False)
     status = Column(Enum(ProjectStatus), nullable=False, default=ProjectStatus.PLANNING)
     
+    # Geo-basierte Projektadresse
+    address = Column(String, nullable=True)  # Vollständige Adresse als String
+    address_street = Column(String, nullable=True)  # Straße und Hausnummer
+    address_zip = Column(String, nullable=True)  # PLZ
+    address_city = Column(String, nullable=True)  # Ort
+    address_country = Column(String, nullable=True, default="Deutschland")  # Land
+    address_latitude = Column(Float, nullable=True)  # Geokoordinate Latitude
+    address_longitude = Column(Float, nullable=True)  # Geokoordinate Longitude
+    address_geocoded = Column(Boolean, default=False)  # Wurde die Adresse geocodiert
+    address_geocoding_date = Column(DateTime(timezone=True), nullable=True)  # Wann geocodiert
+    
     # Projektdetails
-    address = Column(Text, nullable=True)
     property_size = Column(Float, nullable=True)  # in m²
     construction_area = Column(Float, nullable=True)  # in m²
     

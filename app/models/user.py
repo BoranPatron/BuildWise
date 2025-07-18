@@ -1,4 +1,4 @@
-from sqlalchemy import Column, DateTime, Integer, String, Boolean, Enum, Text, Date
+from sqlalchemy import Column, DateTime, Integer, String, Boolean, Enum, Text, Date, Float
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 import enum
@@ -29,6 +29,16 @@ class User(Base):
     last_name = Column(String, nullable=False)
     phone = Column(String, nullable=True)
     user_type = Column(Enum(UserType), nullable=False, default=UserType.PRIVATE)
+    
+    # Geo-basierte Adressfelder (temporär deaktiviert für Kompatibilität)
+    # address_street = Column(String, nullable=True)  # Straße und Hausnummer
+    # address_zip = Column(String, nullable=True)  # PLZ
+    # address_city = Column(String, nullable=True)  # Ort
+    # address_country = Column(String, nullable=True, default="Deutschland")  # Land
+    # address_latitude = Column(Float, nullable=True)  # Geokoordinate Latitude
+    # address_longitude = Column(Float, nullable=True)  # Geokoordinate Longitude
+    # address_geocoded = Column(Boolean, default=False)  # Wurde die Adresse geocodiert
+    # address_geocoding_date = Column(DateTime(timezone=True), nullable=True)  # Wann geocodiert
     
     # DSGVO-konforme Felder
     status = Column(Enum(UserStatus), nullable=False, default=UserStatus.ACTIVE)

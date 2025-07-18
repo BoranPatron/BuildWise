@@ -45,9 +45,9 @@ class BuildWisePDFGenerator:
             textColor=HexColor('#ffbd59')
         ))
         
-        # Normal-Style
+        # Custom-Normal-Style
         self.styles.add(ParagraphStyle(
-            name='Normal',
+            name='CustomNormal',
             parent=self.styles['Normal'],
             fontSize=10,
             spaceAfter=12
@@ -218,7 +218,7 @@ class BuildWisePDFGenerator:
             # Zusätzliche Informationen
             if fee_data.get('notes'):
                 story.append(Paragraph("Zusätzliche Informationen", self.styles['SubHeader']))
-                story.append(Paragraph(fee_data['notes'], self.styles['Normal']))
+                story.append(Paragraph(fee_data['notes'], self.styles['CustomNormal']))
                 story.append(Spacer(1, 20))
             
             # Footer

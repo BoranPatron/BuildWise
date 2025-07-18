@@ -1,16 +1,16 @@
 
 # AUFTRAGSBESTÄTIGUNG
 
-**Auftragsnummer:** AB-5-1-1-1752775228131  
-**Datum:** 17.7.2025  
+**Auftragsnummer:** AB-4-2-2-1752850805748  
+**Datum:** 18.7.2025  
 **Status:** Verbindlich angenommen
 
 ---
 
 ## 1. PROJEKTINFORMATIONEN
 
-**Projekt:** Ferienhaus Toskana für Boran  
-**Projekt-ID:** 5  
+**Projekt:** Hausbau Boran  
+**Projekt-ID:** 4  
 **Projektbeschreibung:** Keine Beschreibung verfügbar  
 **Projektadresse:** Nicht angegeben
 
@@ -18,10 +18,10 @@
 
 ## 2. GEWERKSAUSSCHREIBUNG
 
-**Gewerk:** Küche sanieren  
-**Kategorie:** eigene  
+**Gewerk:** Wintergarten Anbau Haupthaus  
+**Kategorie:** Fundament & Keller  
 **Beschreibung:** undefined  
-**Geplantes Datum:** 21.7.2025  
+**Geplantes Datum:** 31.7.2025  
 **Priorität:** medium  
 **Status:** planned
 
@@ -43,13 +43,13 @@ Standard-Umweltanforderungen
 
 ## 3. KOSTENVORANSCHLAG
 
-**Angebotsnummer:** 1  
-**Angebotsdatum:** 17.7.2025  
+**Angebotsnummer:** 2  
+**Angebotsdatum:** 18.7.2025  
 **Gültig bis:** -  
 **Status:** submitted
 
 ### Kostenaufschlüsselung:
-- **Gesamtbetrag:** 9.000,00 €
+- **Gesamtbetrag:** 15.000,00 €
 - **Arbeitskosten:** Nicht angegeben
 - **Materialkosten:** Nicht angegeben
 - **Gemeinkosten:** Nicht angegeben
@@ -57,7 +57,7 @@ Standard-Umweltanforderungen
 ### Zeitplan:
 - **Geschätzte Dauer:** 10 Tage
 - **Startdatum:** 31.7.2025
-- **Fertigstellungsdatum:** 31.8.2025
+- **Fertigstellungsdatum:** 10.8.2025
 
 ### Bedingungen:
 - **Zahlungsbedingungen:** 30_days
@@ -68,17 +68,17 @@ Standard-Umweltanforderungen
 
 ## 4. DIENSTLEISTER
 
-**Firma:** Boran GmBh  
-**Ansprechpartner:** Banause Boran  
+**Firma:** PietiboyAG  
+**Ansprechpartner:** Hr Piet  
 **Telefon:** Nicht angegeben  
-**E-Mail:** BanauseBoran@lotterlifeGmbH.de  
+**E-Mail:** Pietiboy@chaos.de  
 **Website:** Nicht angegeben
 
 ---
 
 ## 5. VERBINDLICHE VEREINBARUNG
 
-**Annahmedatum:** 17.7.2025  
+**Annahmedatum:** 18.7.2025  
 **Angenommen von:** Admin BuildWise  
 **Benutzer-ID:** 2
 
@@ -116,9 +116,9 @@ Keine KI-Empfehlung verfügbar
 
 Diese Auftragsbestätigung stellt eine verbindliche Vereinbarung zwischen dem Bauträger und dem Dienstleister dar. Alle rechtlichen Bestimmungen des deutschen Bauvertragsrechts (VOB/B) gelten entsprechend.
 
-**Erstellt am:** 17.7.2025  
+**Erstellt am:** 18.7.2025  
 **Erstellt von:** BuildWise System  
-**Dokument-ID:** AB-5-1-1-1752775228131
+**Dokument-ID:** AB-4-2-2-1752850805748
 
 ---
 
