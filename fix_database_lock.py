@@ -1,128 +1,150 @@
 #!/usr/bin/env python3
 """
-Skript zur Reparatur der gesperrten SQLite-Datenbank
+SQLite Database Lock Fix Script
+Behebt Database-Lock-Probleme durch Optimierung der SQLite-Konfiguration
 """
 
 import sqlite3
 import os
-import shutil
-from datetime import datetime
+import asyncio
+from pathlib import Path
 
-def fix_database_lock():
-    """Repariert die gesperrte SQLite-Datenbank"""
+def fix_sqlite_database():
+    """Behebt SQLite Database-Lock-Probleme"""
     
-    db_path = 'buildwise.db'
-    backup_path = f'buildwise_backup_{datetime.now().strftime("%Y%m%d_%H%M%S")}.db'
+    db_path = Path("buildwise.db")
     
-    print(f"🔧 Repariere gesperrte Datenbank: {db_path}")
+    if not db_path.exists():
+        print("❌ Database-Datei nicht gefunden: buildwise.db")
+        return False
+    
+    print("🔧 Behebe SQLite Database-Lock-Probleme...")
     
     try:
-        # 1. Erstelle Backup der aktuellen Datenbank
-        if os.path.exists(db_path):
-            print(f"📋 Erstelle Backup: {backup_path}")
-            shutil.copy2(db_path, backup_path)
+        # Verbinde zur Datenbank mit optimierten Einstellungen
+        conn = sqlite3.connect(
+            str(db_path),
+            timeout=30.0,
+            check_same_thread=False,
+            isolation_level=None  # Autocommit-Modus
+        )
         
-        # 2. Versuche Verbindung zur Datenbank herzustellen
-        print("🔍 Teste Datenbankverbindung...")
-        conn = sqlite3.connect(db_path, timeout=30.0)
+        # Setze SQLite-Pragma für bessere Performance
+        pragma_settings = [
+            "PRAGMA journal_mode=WAL;",
+            "PRAGMA synchronous=NORMAL;",
+            "PRAGMA cache_size=-64000;",
+            "PRAGMA temp_store=memory;",
+            "PRAGMA mmap_size=268435456;",
+            "PRAGMA foreign_keys=ON;",
+            "PRAGMA locking_mode=NORMAL;",
+            "PRAGMA busy_timeout=30000;",
+            "PRAGMA wal_autocheckpoint=1000;",
+            "PRAGMA optimize;"
+        ]
         
-        # 3. Führe PRAGMA-Befehle aus, um die Datenbank zu reparieren
-        print("🔧 Führe Datenbank-Reparatur durch...")
+        cursor = conn.cursor()
         
-        # Setze WAL-Modus für bessere Konkurrenz
-        conn.execute("PRAGMA journal_mode=WAL")
-        print("✅ WAL-Modus aktiviert")
+        for pragma in pragma_settings:
+            try:
+                cursor.execute(pragma)
+                print(f"✅ {pragma}")
+            except Exception as e:
+                print(f"⚠️ {pragma} - {e}")
         
-        # Aktiviere Foreign Keys
-        conn.execute("PRAGMA foreign_keys=ON")
-        print("✅ Foreign Keys aktiviert")
+        # Prüfe und repariere die Datenbank
+        print("🔍 Prüfe Datenbank-Integrität...")
+        cursor.execute("PRAGMA integrity_check;")
+        integrity_result = cursor.fetchone()
         
-        # Optimiere Datenbank
-        conn.execute("PRAGMA optimize")
-        print("✅ Datenbank optimiert")
+        if integrity_result and integrity_result[0] == "ok":
+            print("✅ Datenbank-Integrität OK")
+        else:
+            print("⚠️ Datenbank-Integrität-Probleme gefunden")
+            cursor.execute("PRAGMA quick_check;")
+            quick_check = cursor.fetchone()
+            print(f"Quick Check: {quick_check}")
         
-        # Führe VACUUM aus, um die Datenbank zu komprimieren
-        conn.execute("VACUUM")
-        print("✅ VACUUM ausgeführt")
+        # Vakuum die Datenbank (defragmentiert)
+        print("🧹 Vakuum der Datenbank...")
+        cursor.execute("VACUUM;")
+        print("✅ Vakuum abgeschlossen")
         
-        # Schließe Verbindung
+        # Analysiere die Datenbank
+        print("📊 Analysiere Datenbank...")
+        cursor.execute("ANALYZE;")
+        print("✅ Analyse abgeschlossen")
+        
+        conn.commit()
         conn.close()
-        print("✅ Datenbankverbindung geschlossen")
         
-        print(f"✅ Datenbank erfolgreich repariert!")
-        print(f"📋 Backup erstellt: {backup_path}")
-        
+        print("🎉 Database-Lock-Fix erfolgreich abgeschlossen!")
         return True
         
     except Exception as e:
-        print(f"❌ Fehler bei der Datenbank-Reparatur: {e}")
-        
-        # Falls die Datenbank beschädigt ist, versuche sie zu löschen und neu zu erstellen
-        try:
-            print("🔄 Versuche Datenbank neu zu erstellen...")
-            
-            if os.path.exists(db_path):
-                os.remove(db_path)
-                print(f"🗑️ Alte Datenbank gelöscht: {db_path}")
-            
-            # Erstelle neue leere Datenbank
-            conn = sqlite3.connect(db_path)
-            conn.close()
-            print("✅ Neue Datenbank erstellt")
-            
-            return True
-            
-        except Exception as e2:
-            print(f"❌ Fehler beim Neuerstellen der Datenbank: {e2}")
-            return False
-
-def check_database_integrity():
-    """Überprüft die Integrität der Datenbank"""
-    
-    db_path = 'buildwise.db'
-    
-    if not os.path.exists(db_path):
-        print(f"❌ Datenbank existiert nicht: {db_path}")
+        print(f"❌ Fehler beim Database-Lock-Fix: {e}")
         return False
+
+def check_database_status():
+    """Prüft den aktuellen Status der Datenbank"""
+    
+    db_path = Path("buildwise.db")
+    
+    if not db_path.exists():
+        print("❌ Database-Datei nicht gefunden")
+        return
     
     try:
-        conn = sqlite3.connect(db_path, timeout=30.0)
+        conn = sqlite3.connect(str(db_path))
+        cursor = conn.cursor()
         
-        # Prüfe Datenbank-Integrität
-        result = conn.execute("PRAGMA integrity_check").fetchone()
+        # Prüfe Datenbank-Größe
+        cursor.execute("SELECT page_count * page_size as size FROM pragma_page_count(), pragma_page_size();")
+        size_bytes = cursor.fetchone()[0]
+        size_mb = size_bytes / (1024 * 1024)
+        print(f"📊 Datenbank-Größe: {size_mb:.2f} MB")
         
-        if result[0] == "ok":
-            print("✅ Datenbank-Integrität OK")
-            conn.close()
-            return True
-        else:
-            print(f"❌ Datenbank-Integrität fehlerhaft: {result[0]}")
-            conn.close()
-            return False
-            
+        # Prüfe Anzahl Tabellen
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+        tables = cursor.fetchall()
+        print(f"📋 Anzahl Tabellen: {len(tables)}")
+        
+        # Prüfe Journal-Modus
+        cursor.execute("PRAGMA journal_mode;")
+        journal_mode = cursor.fetchone()[0]
+        print(f"📝 Journal-Modus: {journal_mode}")
+        
+        # Prüfe Locking-Modus
+        cursor.execute("PRAGMA locking_mode;")
+        locking_mode = cursor.fetchone()[0]
+        print(f"🔒 Locking-Modus: {locking_mode}")
+        
+        conn.close()
+        
     except Exception as e:
-        print(f"❌ Fehler bei Integritätsprüfung: {e}")
-        return False
+        print(f"❌ Fehler beim Prüfen des Database-Status: {e}")
+
+def main():
+    """Hauptfunktion"""
+    print("🔧 SQLite Database Lock Fix Tool")
+    print("=" * 40)
+    
+    # Prüfe aktuellen Status
+    print("\n📊 Aktueller Database-Status:")
+    check_database_status()
+    
+    # Führe Fix aus
+    print("\n🔧 Führe Database-Lock-Fix aus...")
+    success = fix_sqlite_database()
+    
+    if success:
+        print("\n📊 Neuer Database-Status:")
+        check_database_status()
+        
+        print("\n✅ Database-Lock-Fix erfolgreich!")
+        print("💡 Starte den Server neu für die Änderungen.")
+    else:
+        print("\n❌ Database-Lock-Fix fehlgeschlagen!")
 
 if __name__ == "__main__":
-    print("🚀 Starte Datenbank-Reparatur...")
-    
-    # 1. Prüfe Integrität
-    if check_database_integrity():
-        print("✅ Datenbank ist intakt")
-    else:
-        print("🔧 Datenbank benötigt Reparatur")
-        
-        # 2. Repariere Datenbank
-        if fix_database_lock():
-            print("✅ Datenbank erfolgreich repariert")
-            
-            # 3. Prüfe erneut
-            if check_database_integrity():
-                print("✅ Datenbank ist nach Reparatur intakt")
-            else:
-                print("❌ Datenbank ist nach Reparatur immer noch fehlerhaft")
-        else:
-            print("❌ Datenbank-Reparatur fehlgeschlagen")
-    
-    print("🏁 Datenbank-Reparatur abgeschlossen") 
+    main() 

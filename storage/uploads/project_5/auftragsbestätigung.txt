@@ -1,27 +1,27 @@
 
 # AUFTRAGSBESTÄTIGUNG
 
-**Auftragsnummer:** AB-5-1-1-1752775228131  
-**Datum:** 17.7.2025  
+**Auftragsnummer:** AB-5-6-5-1752929021320  
+**Datum:** 19.7.2025  
 **Status:** Verbindlich angenommen
 
 ---
 
 ## 1. PROJEKTINFORMATIONEN
 
-**Projekt:** Ferienhaus Toskana für Boran  
+**Projekt:** Toskana Luxus-Villa Boranie  
 **Projekt-ID:** 5  
 **Projektbeschreibung:** Keine Beschreibung verfügbar  
-**Projektadresse:** Nicht angegeben
+**Projektadresse:** Forchstrasse 1, 8610 Uster, Schweiz
 
 ---
 
 ## 2. GEWERKSAUSSCHREIBUNG
 
-**Gewerk:** Küche sanieren  
+**Gewerk:** Pool UG  
 **Kategorie:** eigene  
 **Beschreibung:** undefined  
-**Geplantes Datum:** 21.7.2025  
+**Geplantes Datum:** 10.8.2025  
 **Priorität:** medium  
 **Status:** planned
 
@@ -43,24 +43,24 @@ Standard-Umweltanforderungen
 
 ## 3. KOSTENVORANSCHLAG
 
-**Angebotsnummer:** 1  
-**Angebotsdatum:** 17.7.2025  
+**Angebotsnummer:** 5  
+**Angebotsdatum:** 19.7.2025  
 **Gültig bis:** -  
 **Status:** submitted
 
 ### Kostenaufschlüsselung:
-- **Gesamtbetrag:** 9.000,00 €
+- **Gesamtbetrag:** 45.000,00 €
 - **Arbeitskosten:** Nicht angegeben
 - **Materialkosten:** Nicht angegeben
 - **Gemeinkosten:** Nicht angegeben
 
 ### Zeitplan:
-- **Geschätzte Dauer:** 10 Tage
-- **Startdatum:** 31.7.2025
-- **Fertigstellungsdatum:** 31.8.2025
+- **Geschätzte Dauer:** 12 Tage
+- **Startdatum:** 16.7.2025
+- **Fertigstellungsdatum:** 8.8.2025
 
 ### Bedingungen:
-- **Zahlungsbedingungen:** 30_days
+- **Zahlungsbedingungen:** milestone
 - **Garantie:** 24 Monate
 - **Gültig bis:** -
 
@@ -78,7 +78,7 @@ Standard-Umweltanforderungen
 
 ## 5. VERBINDLICHE VEREINBARUNG
 
-**Annahmedatum:** 17.7.2025  
+**Annahmedatum:** 19.7.2025  
 **Angenommen von:** Admin BuildWise  
 **Benutzer-ID:** 2
 
@@ -116,9 +116,9 @@ Keine KI-Empfehlung verfügbar
 
 Diese Auftragsbestätigung stellt eine verbindliche Vereinbarung zwischen dem Bauträger und dem Dienstleister dar. Alle rechtlichen Bestimmungen des deutschen Bauvertragsrechts (VOB/B) gelten entsprechend.
 
-**Erstellt am:** 17.7.2025  
+**Erstellt am:** 19.7.2025  
 **Erstellt von:** BuildWise System  
-**Dokument-ID:** AB-5-1-1-1752775228131
+**Dokument-ID:** AB-5-6-5-1752929021320
 
 ---
 

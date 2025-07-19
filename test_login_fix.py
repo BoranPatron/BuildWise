@@ -1,108 +1,115 @@
 #!/usr/bin/env python3
 """
-Test-Skript für die Login-Funktionalität nach der Datenbank-Reparatur
+Test-Script für Login nach Datenbank-Reparatur
 """
 
 import asyncio
-import aiohttp
+import sys
+import os
+import requests
 import json
 
-async def test_login():
-    """Testet die Login-Funktionalität"""
-    
-    url = "http://localhost:8000/api/v1/auth/login"
-    
-    # Test-Daten für Service Provider
-    test_data = {
-        "username": "service_provider@test.com",
-        "password": "test123"
-    }
-    
-    print("🔍 Teste Login-Funktionalität...")
-    
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.post(url, json=test_data) as response:
-                print(f"📡 Response Status: {response.status}")
-                print(f"📡 Response Headers: {dict(response.headers)}")
-                
-                if response.status == 200:
-                    data = await response.json()
-                    print("✅ Login erfolgreich!")
-                    print(f"🔑 Token: {data.get('access_token', 'N/A')[:20]}...")
-                    print(f"👤 User: {data.get('user', {}).get('email', 'N/A')}")
-                    return True
-                else:
-                    error_text = await response.text()
-                    print(f"❌ Login fehlgeschlagen: {error_text}")
-                    return False
-                    
-    except Exception as e:
-        print(f"❌ Fehler beim Login-Test: {e}")
-        return False
+# Füge das Projektverzeichnis zum Python-Pfad hinzu
+sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+
+from app.core.database import get_db
+from app.models.user import User
+from app.core.security import verify_password
+from sqlalchemy import select
+
 
 async def test_database_connection():
-    """Testet die Datenbankverbindung"""
-    
-    url = "http://localhost:8000/api/v1/users/me"
-    
-    print("🔍 Teste Datenbankverbindung...")
-    
-    try:
-        async with aiohttp.ClientSession() as session:
-            # Erst Login für Token
-            login_data = {
-                "username": "service_provider@test.com",
-                "password": "test123"
-            }
+    """Testet die Datenbankverbindung und User-Abfrage"""
+    async for db in get_db():
+        try:
+            print("🔍 Teste Datenbankverbindung...")
             
-            async with session.post("http://localhost:8000/api/v1/auth/login", json=login_data) as login_response:
-                if login_response.status == 200:
-                    login_result = await login_response.json()
-                    token = login_result.get('access_token')
-                    
-                    # Teste Datenbankzugriff
-                    headers = {"Authorization": f"Bearer {token}"}
-                    async with session.get(url, headers=headers) as response:
-                        print(f"📡 DB Test Status: {response.status}")
-                        
-                        if response.status == 200:
-                            data = await response.json()
-                            print("✅ Datenbankverbindung funktioniert!")
-                            print(f"👤 User: {data.get('email', 'N/A')}")
-                            return True
-                        else:
-                            error_text = await response.text()
-                            print(f"❌ Datenbankfehler: {error_text}")
-                            return False
+            # Teste User-Abfrage
+            result = await db.execute(select(User).where(User.email == "admin@buildwise.de"))
+            admin_user = result.scalar_one_or_none()
+            
+            if admin_user:
+                print(f"✅ Admin-User gefunden: {admin_user.email}")
+                print(f"   ID: {admin_user.id}")
+                print(f"   Status: {admin_user.status}")
+                print(f"   E-Mail verifiziert: {admin_user.email_verified}")
+                print(f"   DSGVO-Einwilligung: {admin_user.data_processing_consent}")
+                print(f"   Subscription aktiv: {admin_user.subscription_active}")
+                
+                # Teste Passwort
+                test_password = "Admin123!"
+                if verify_password(test_password, admin_user.hashed_password):
+                    print("✅ Passwort ist korrekt")
                 else:
-                    print("❌ Login für DB-Test fehlgeschlagen")
-                    return False
-                    
+                    print("❌ Passwort ist falsch")
+                
+                return True
+            else:
+                print("❌ Admin-User nicht gefunden")
+                return False
+                
+        except Exception as e:
+            print(f"❌ Datenbankfehler: {e}")
+            return False
+        finally:
+            await db.close()
+
+
+def test_api_login():
+    """Testet den API-Login"""
+    try:
+        print("\n🌐 Teste API-Login...")
+        
+        # Login-Daten
+        login_data = {
+            "username": "admin@buildwise.de",
+            "password": "Admin123!"
+        }
+        
+        # Sende Login-Request
+        response = requests.post(
+            "http://localhost:8000/api/v1/auth/login",
+            data=login_data,
+            headers={"Content-Type": "application/x-www-form-urlencoded"}
+        )
+        
+        print(f"   Status Code: {response.status_code}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            print("✅ Login erfolgreich!")
+            print(f"   Token: {data.get('access_token', '')[:20]}...")
+            print(f"   User: {data.get('user', {}).get('email', '')}")
+            return True
+        else:
+            print(f"❌ Login fehlgeschlagen: {response.text}")
+            return False
+            
     except Exception as e:
-        print(f"❌ Fehler beim DB-Test: {e}")
+        print(f"❌ API-Fehler: {e}")
         return False
 
+
 async def main():
-    """Hauptfunktion für alle Tests"""
+    """Hauptfunktion"""
+    print("🧪 Teste Login-Reparatur...")
     
-    print("🚀 Starte Login-Tests nach Datenbank-Reparatur...")
+    # Teste Datenbank
+    db_ok = await test_database_connection()
     
-    # 1. Teste Login
-    login_success = await test_login()
-    
-    # 2. Teste Datenbankverbindung
-    db_success = await test_database_connection()
-    
-    # 3. Zusammenfassung
-    print("\n📊 Test-Ergebnisse:")
-    print(f"   Login: {'✅ Erfolgreich' if login_success else '❌ Fehlgeschlagen'}")
-    print(f"   Datenbank: {'✅ Funktioniert' if db_success else '❌ Fehler'}")
-    
-    if login_success and db_success:
-        print("\n🎉 Alle Tests erfolgreich! Login funktioniert wieder.")
+    if db_ok:
+        # Teste API
+        api_ok = test_api_login()
+        
+        if api_ok:
+            print("\n🎉 Login-Reparatur erfolgreich!")
+            print("   Der Admin-Login sollte jetzt funktionieren.")
+        else:
+            print("\n⚠️ API-Login fehlgeschlagen")
+            print("   Überprüfe Server-Logs für Details.")
     else:
-        print("\n⚠️ Einige Tests fehlgeschlagen. Überprüfe die Logs.")
+        print("\n❌ Datenbank-Test fehlgeschlagen")
+
 
 if __name__ == "__main__":
     asyncio.run(main()) 

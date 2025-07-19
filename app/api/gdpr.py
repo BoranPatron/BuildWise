@@ -1,15 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Dict, Any, Optional
+from datetime import datetime
 
 from ..core.database import get_db
 from ..api.deps import get_current_user
 from ..models import User
-from ..schemas.user import UserRead
-from ..services.user_service import (
-    request_data_deletion, anonymize_user_data, update_consent,
-    get_user_by_id
-)
+from ..schemas.user import UserRead, ConsentUpdate
+from ..services.user_service import UserService
 from ..services.security_service import SecurityService
 from ..models.audit_log import AuditAction
 
@@ -32,12 +30,13 @@ async def update_user_consent(
             detail=f"Ungültiger Einwilligungstyp. Erlaubt: {', '.join(valid_consent_types)}"
         )
     
-    # Konvertiere SQLAlchemy-Column zu int
-    user_id = int(getattr(current_user, 'id', 0))
+    # Erstelle ConsentUpdate-Objekt
+    consent_update = ConsentUpdate(**{consent_type: granted})
     
-    success = await update_consent(db, user_id, consent_type, granted)
+    # Aktualisiere Benutzer-Einwilligungen
+    updated_user = await UserService.update_consents(db, current_user.id, consent_update)
     
-    if not success:
+    if not updated_user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Benutzer nicht gefunden"
@@ -45,10 +44,10 @@ async def update_user_consent(
     
     # Audit-Log für Einwilligung
     await SecurityService.create_audit_log(
-        db, user_id, 
+        db, current_user.id, 
         AuditAction.CONSENT_GIVEN if granted else AuditAction.CONSENT_WITHDRAWN,
         f"Einwilligung {consent_type}: {'erteilt' if granted else 'zurückgezogen'}",
-        resource_type="user", resource_id=user_id,
+        resource_type="user", resource_id=current_user.id,
         processing_purpose="Einwilligungsverwaltung",
         legal_basis="Einwilligung"
     )
@@ -66,20 +65,16 @@ async def request_user_data_deletion(
     db: AsyncSession = Depends(get_db)
 ):
     """DSGVO: Antrag auf Datenlöschung"""
-    user_id = int(getattr(current_user, 'id', 0))
-    success = await request_data_deletion(db, user_id)
-    
-    if not success:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Benutzer nicht gefunden"
-        )
+    # Markiere Benutzer für Löschung
+    current_user.data_deletion_requested = True
+    current_user.data_deletion_requested_at = datetime.utcnow()
+    await db.commit()
     
     # Audit-Log für Datenlöschungsantrag
     await SecurityService.create_audit_log(
-        db, user_id, AuditAction.DATA_DELETION_REQUEST,
-        f"Datenlöschung beantragt: {getattr(current_user, 'email', 'unknown')}",
-        resource_type="user", resource_id=user_id,
+        db, current_user.id, AuditAction.DATA_DELETION_REQUEST,
+        f"Datenlöschung beantragt: {current_user.email}",
+        resource_type="user", resource_id=current_user.id,
         processing_purpose="DSGVO-Datenlöschung",
         legal_basis="Recht auf Löschung",
         risk_level="high"
@@ -98,20 +93,32 @@ async def anonymize_user_data_endpoint(
     db: AsyncSession = Depends(get_db)
 ):
     """DSGVO: Benutzerdaten anonymisieren"""
-    user_id = int(getattr(current_user, 'id', 0))
-    success = await anonymize_user_data(db, user_id)
+    # Anonymisiere Benutzerdaten
+    current_user.first_name = "Anonym"
+    current_user.last_name = "Benutzer"
+    current_user.email = f"anonym_{current_user.id}@deleted.buildwise.de"
+    current_user.phone = None
+    current_user.company_name = None
+    current_user.company_address = None
+    current_user.company_phone = None
+    current_user.company_website = None
+    current_user.business_license = None
+    current_user.tax_id = None
+    current_user.vat_id = None
+    current_user.bio = None
+    current_user.profile_image = None
+    current_user.region = None
+    current_user.languages = None
+    current_user.data_anonymized = True
+    current_user.updated_at = datetime.utcnow()
     
-    if not success:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Benutzer nicht gefunden"
-        )
+    await db.commit()
     
     # Audit-Log für Datenanonymisierung
     await SecurityService.create_audit_log(
-        db, user_id, AuditAction.DATA_ANONYMIZATION,
-        f"Benutzerdaten anonymisiert: ID {user_id}",
-        resource_type="user", resource_id=user_id,
+        db, current_user.id, AuditAction.DATA_ANONYMIZATION,
+        f"Benutzerdaten anonymisiert: ID {current_user.id}",
+        resource_type="user", resource_id=current_user.id,
         processing_purpose="DSGVO-Datenanonymisierung",
         legal_basis="Recht auf Löschung",
         risk_level="medium"
@@ -129,45 +136,34 @@ async def export_user_data(
     db: AsyncSession = Depends(get_db)
 ):
     """DSGVO: Datenexport für Benutzer"""
-    user_id = int(getattr(current_user, 'id', 0))
-    
-    # Hole alle Benutzerdaten
-    user = await get_user_by_id(db, user_id)
-    
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Benutzer nicht gefunden"
-        )
-    
     # Erstelle Export-Daten (ohne sensible Informationen)
     export_data = {
-        "user_id": getattr(user, 'id', None),
-        "email": getattr(user, 'email', None),
-        "first_name": getattr(user, 'first_name', None),
-        "last_name": getattr(user, 'last_name', None),
-        "user_type": getattr(user, 'user_type', None),
-        "created_at": getattr(user, 'created_at', None),
-        "last_login_at": getattr(user, 'last_login_at', None),
+        "user_id": current_user.id,
+        "email": current_user.email,
+        "first_name": current_user.first_name,
+        "last_name": current_user.last_name,
+        "user_type": current_user.user_type,
+        "created_at": current_user.created_at,
+        "last_login_at": current_user.last_login_at,
         "consents": {
-            "data_processing": getattr(user, 'data_processing_consent', False),
-            "marketing": getattr(user, 'marketing_consent', False),
-            "privacy_policy": getattr(user, 'privacy_policy_accepted', False),
-            "terms": getattr(user, 'terms_accepted', False)
+            "data_processing": current_user.data_processing_consent,
+            "marketing": current_user.marketing_consent,
+            "privacy_policy": current_user.privacy_policy_accepted,
+            "terms": current_user.terms_accepted
         },
         "data_retention": {
-            "retention_until": getattr(user, 'data_retention_until', None),
-            "deletion_requested": getattr(user, 'data_deletion_requested', False),
-            "deletion_requested_at": getattr(user, 'data_deletion_requested_at', None),
-            "anonymized": getattr(user, 'data_anonymized', False)
+            "retention_until": current_user.data_retention_until,
+            "deletion_requested": current_user.data_deletion_requested,
+            "deletion_requested_at": current_user.data_deletion_requested_at,
+            "anonymized": current_user.data_anonymized
         }
     }
     
     # Audit-Log für Datenexport
     await SecurityService.create_audit_log(
-        db, user_id, AuditAction.DATA_EXPORT_REQUEST,
-        f"Datenexport angefordert: {getattr(user, 'email', 'unknown')}",
-        resource_type="user", resource_id=user_id,
+        db, current_user.id, AuditAction.DATA_EXPORT_REQUEST,
+        f"Datenexport angefordert: {current_user.email}",
+        resource_type="user", resource_id=current_user.id,
         processing_purpose="DSGVO-Datenexport",
         legal_basis="Recht auf Datenübertragbarkeit",
         risk_level="low"
@@ -176,7 +172,7 @@ async def export_user_data(
     return {
         "message": "Datenexport erfolgreich erstellt",
         "data": export_data,
-        "export_date": getattr(user, 'updated_at', None)
+        "export_date": current_user.updated_at
     }
 
 
