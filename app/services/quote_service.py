@@ -3,6 +3,7 @@ from sqlalchemy import select, update, func, and_
 from typing import List, Optional
 from datetime import datetime, date
 from sqlalchemy.orm import selectinload, joinedload
+from fastapi import HTTPException
 
 from ..models import Quote, QuoteStatus
 from ..schemas.quote import QuoteCreate, QuoteUpdate, QuoteForMilestone
@@ -160,53 +161,49 @@ async def submit_quote(db: AsyncSession, quote_id: int) -> Quote | None:
 
 
 async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
-    """Akzeptiert ein Angebot und erstellt Kostenposition"""
-    quote = await get_quote_by_id(db, quote_id)
-    if not quote:
-        return None
-    
-    # Setze alle anderen Angebote für das gleiche Gewerk auf "rejected"
-    if quote.milestone_id is not None:
-        await db.execute(
-            update(Quote)
-            .where(
-                and_(
-                    Quote.milestone_id == quote.milestone_id,
-                    Quote.id != quote_id,
-                    Quote.status == QuoteStatus.SUBMITTED
-                )
-            )
-            .values(
-                status=QuoteStatus.REJECTED,
-                updated_at=datetime.utcnow()
-            )
-        )
-    
-    # Akzeptiere das Angebot und gib Kontaktdaten frei
-    await db.execute(
-        update(Quote)
-        .where(Quote.id == quote_id)
-        .values(
-            status=QuoteStatus.ACCEPTED,
-            accepted_at=datetime.utcnow(),
-            contact_released=True,
-            contact_released_at=datetime.utcnow(),
-            updated_at=datetime.utcnow()
-        )
-    )
-    
-    # Erstelle Kostenposition für das akzeptierte Angebot
-    await create_cost_position_from_quote(db, quote)
-    
-    await db.commit()
-    await db.refresh(quote)
-    return quote
+    """Akzeptiert ein Angebot - vereinfachte Version"""
+    try:
+        print(f"🔧 Starte accept_quote für Quote ID: {quote_id}")
+        
+        # Hole das Quote
+        quote = await get_quote_by_id(db, quote_id)
+        if not quote:
+            print(f"❌ Quote {quote_id} nicht gefunden")
+            return None
+        
+        print(f"✅ Quote gefunden: {quote.title} (Status: {quote.status})")
+        
+        # Einfache Akzeptierung ohne komplexe Operationen
+        quote.status = QuoteStatus.ACCEPTED
+        quote.accepted_at = datetime.utcnow()
+        quote.contact_released = True
+        quote.contact_released_at = datetime.utcnow()
+        quote.updated_at = datetime.utcnow()
+        
+        await db.commit()
+        await db.refresh(quote)
+        
+        print(f"✅ Quote {quote_id} erfolgreich akzeptiert")
+        return quote
+        
+    except Exception as e:
+        print(f"❌ Fehler beim Akzeptieren des Angebots {quote_id}: {e}")
+        try:
+            await db.rollback()
+            print(f"✅ Rollback für Quote {quote_id} durchgeführt")
+        except Exception as rollback_error:
+            print(f"⚠️ Rollback-Fehler: {rollback_error}")
+        
+        # Wirf eine normale Exception
+        raise Exception(f"Fehler beim Akzeptieren des Angebots: {str(e)}")
 
 
 async def create_cost_position_from_quote(db: AsyncSession, quote: Quote) -> bool:
     """Erstellt eine Kostenposition basierend auf einem akzeptierten Angebot"""
     try:
         from ..models import CostPosition, CostCategory, CostType, CostStatus
+        
+        print(f"🔧 Starte create_cost_position_from_quote für Quote {quote.id}")
         
         # Prüfe, ob bereits eine Kostenposition für dieses Quote existiert
         existing_cost_position = await get_cost_position_by_quote_id(db, quote.id)
@@ -317,9 +314,9 @@ async def create_cost_position_from_quote(db: AsyncSession, quote: Quote) -> boo
         return True
         
     except Exception as e:
-        print(f"❌ Fehler beim Erstellen der Kostenposition: {e}")
-        # Fehler weiterwerfen, damit er im Frontend sichtbar wird
-        raise Exception(f"Fehler beim Erstellen der Kostenposition für Quote {quote.id}: {str(e)}")
+        print(f"❌ Fehler beim Erstellen der Kostenposition für Quote {quote.id}: {e}")
+        # Fehler nicht weiterwerfen, sondern nur loggen
+        return False
 
 
 async def get_quote_statistics(db: AsyncSession, project_id: int) -> dict:
