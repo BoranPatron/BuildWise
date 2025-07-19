@@ -58,17 +58,30 @@ async def add_process_time_header(request: Request, call_next):
     response.headers["X-Process-Time"] = str(process_time)
     return response
 
-# Exception Handler
-#@app.exception_handler(Exception)
-#async def global_exception_handler(request: Request, exc: Exception):
-#    import traceback
-#    return JSONResponse(
-#        status_code=500,
-#        content={
-#            "detail": str(exc),
-#            "traceback": traceback.format_exc()
-#        }
-#    )
+# Exception Handler für bessere CORS-Unterstützung
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    import traceback
+    print(f"❌ Global Exception Handler: {type(exc).__name__}: {str(exc)}")
+    print(f"📍 URL: {request.url}")
+    print(f"🔍 Method: {request.method}")
+    
+    # CORS-Header auch bei Fehlern senden
+    response = JSONResponse(
+        status_code=500,
+        content={
+            "detail": str(exc),
+            "error_type": type(exc).__name__,
+            "message": "Ein interner Serverfehler ist aufgetreten"
+        }
+    )
+    
+    # CORS-Header manuell hinzufügen
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    
+    return response
 
 # API Router einbinden
 app.include_router(api_router, prefix="/api/v1")

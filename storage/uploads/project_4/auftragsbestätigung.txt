@@ -1,7 +1,7 @@
 
 # AUFTRAGSBESTÄTIGUNG
 
-**Auftragsnummer:** AB-4-3-3-1752861073845  
+**Auftragsnummer:** AB-4-4-4-1752863668545  
 **Datum:** 18.7.2025  
 **Status:** Verbindlich angenommen
 
@@ -18,11 +18,11 @@
 
 ## 2. GEWERKSAUSSCHREIBUNG
 
-**Gewerk:** Sauna Einbau und Montage  
-**Kategorie:** sanitaer  
+**Gewerk:** Kellerausbau  
+**Kategorie:** Fundament & Keller  
 **Beschreibung:** undefined  
-**Geplantes Datum:** 8.8.2025  
-**Priorität:** medium  
+**Geplantes Datum:** 31.7.2025  
+**Priorität:** high  
 **Status:** planned
 
 ### Technische Spezifikationen:
@@ -43,24 +43,24 @@ Standard-Umweltanforderungen
 
 ## 3. KOSTENVORANSCHLAG
 
-**Angebotsnummer:** 3  
+**Angebotsnummer:** 4  
 **Angebotsdatum:** 18.7.2025  
 **Gültig bis:** -  
 **Status:** submitted
 
 ### Kostenaufschlüsselung:
-- **Gesamtbetrag:** 9.000,00 €
+- **Gesamtbetrag:** 35.000,00 €
 - **Arbeitskosten:** Nicht angegeben
 - **Materialkosten:** Nicht angegeben
 - **Gemeinkosten:** Nicht angegeben
 
 ### Zeitplan:
-- **Geschätzte Dauer:** 12 Tage
+- **Geschätzte Dauer:** 10 Tage
 - **Startdatum:** 31.7.2025
 - **Fertigstellungsdatum:** 10.8.2025
 
 ### Bedingungen:
-- **Zahlungsbedingungen:** immediate
+- **Zahlungsbedingungen:** 30_days
 - **Garantie:** 24 Monate
 - **Gültig bis:** -
 
@@ -68,10 +68,10 @@ Standard-Umweltanforderungen
 
 ## 4. DIENSTLEISTER
 
-**Firma:** BaccoGMBH  
-**Ansprechpartner:** Banause Boran  
+**Firma:** PietiboyAG  
+**Ansprechpartner:** Herr Piet  
 **Telefon:** Nicht angegeben  
-**E-Mail:** Bacco@Schabanak.de  
+**E-Mail:** Pietiboy@chaos.de  
 **Website:** Nicht angegeben
 
 ---
@@ -118,7 +118,7 @@ Diese Auftragsbestätigung stellt eine verbindliche Vereinbarung zwischen dem Ba
 
 **Erstellt am:** 18.7.2025  
 **Erstellt von:** BuildWise System  
-**Dokument-ID:** AB-4-3-3-1752861073845
+**Dokument-ID:** AB-4-4-4-1752863668545
 
 ---
 

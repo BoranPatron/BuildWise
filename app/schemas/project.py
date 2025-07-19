@@ -10,6 +10,13 @@ class ProjectBase(BaseModel):
     project_type: ProjectType
     status: ProjectStatus = ProjectStatus.PLANNING
     address: Optional[str] = None
+    address_street: Optional[str] = None
+    address_zip: Optional[str] = None
+    address_city: Optional[str] = None
+    address_country: Optional[str] = None
+    address_latitude: Optional[float] = None
+    address_longitude: Optional[float] = None
+    address_geocoded: Optional[bool] = False
     property_size: Optional[float] = None
     construction_area: Optional[float] = None
     start_date: Optional[date] = None
@@ -30,6 +37,13 @@ class ProjectUpdate(BaseModel):
     project_type: Optional[ProjectType] = None
     status: Optional[ProjectStatus] = None
     address: Optional[str] = None
+    address_street: Optional[str] = None
+    address_zip: Optional[str] = None
+    address_city: Optional[str] = None
+    address_country: Optional[str] = None
+    address_latitude: Optional[float] = None
+    address_longitude: Optional[float] = None
+    address_geocoded: Optional[bool] = None
     property_size: Optional[float] = None
     construction_area: Optional[float] = None
     start_date: Optional[date] = None
@@ -47,6 +61,7 @@ class ProjectRead(ProjectBase):
     owner_id: int
     current_costs: float
     progress_percentage: float
+    address_geocoding_date: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
 
@@ -62,6 +77,9 @@ class ProjectSummary(BaseModel):
     progress_percentage: float
     budget: Optional[float] = None
     current_costs: float
+    address: Optional[str] = None
+    address_latitude: Optional[float] = None
+    address_longitude: Optional[float] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     created_at: datetime

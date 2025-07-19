@@ -2,13 +2,84 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func
 from typing import List, Optional
 from datetime import datetime
+import httpx
 
 from ..models import Project, ProjectStatus, ProjectType
 from ..schemas.project import ProjectCreate, ProjectUpdate
 
 
+async def geocode_address(address: str) -> Optional[dict]:
+    """Geocodiert eine Adresse mit OpenStreetMap Nominatim API"""
+    try:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://nominatim.openstreetmap.org/search",
+                params={
+                    "q": address,
+                    "format": "json",
+                    "limit": 1,
+                    "countrycodes": "de,ch,at"  # Deutschland, Schweiz, Österreich
+                },
+                headers={"User-Agent": "BuildWise/1.0"}
+            )
+            
+            if response.status_code == 200:
+                data = response.json()
+                if data:
+                    location = data[0]
+                    return {
+                        "latitude": float(location["lat"]),
+                        "longitude": float(location["lon"]),
+                        "display_name": location["display_name"]
+                    }
+    except Exception as e:
+        print(f"❌ Geocodierung fehlgeschlagen für '{address}': {e}")
+    
+    return None
+
+
 async def create_project(db: AsyncSession, owner_id: int, project_in: ProjectCreate) -> Project:
-    project = Project(owner_id=owner_id, **project_in.dict())
+    """Erstellt ein neues Projekt mit automatischer Geocodierung"""
+    project_data = project_in.dict()
+    
+    # Erstelle vollständige Adresse aus detaillierten Feldern falls address leer ist
+    if not project_data.get("address") and any([
+        project_data.get("address_street"),
+        project_data.get("address_zip"),
+        project_data.get("address_city"),
+        project_data.get("address_country")
+    ]):
+        address_parts = []
+        if project_data.get("address_street"):
+            address_parts.append(project_data["address_street"])
+        if project_data.get("address_zip") and project_data.get("address_city"):
+            address_parts.append(f"{project_data['address_zip']} {project_data['address_city']}")
+        elif project_data.get("address_city"):
+            address_parts.append(project_data["address_city"])
+        if project_data.get("address_country"):
+            address_parts.append(project_data["address_country"])
+        
+        if address_parts:
+            project_data["address"] = ", ".join(address_parts)
+            print(f"🏗️ Erstelle vollständige Adresse: {project_data['address']}")
+    
+    # Automatische Geocodierung wenn Adresse vorhanden
+    if project_data.get("address") and not project_data.get("address_latitude"):
+        print(f"🌍 Geocodiere Adresse: {project_data['address']}")
+        geocode_result = await geocode_address(project_data["address"])
+        
+        if geocode_result:
+            project_data.update({
+                "address_latitude": geocode_result["latitude"],
+                "address_longitude": geocode_result["longitude"],
+                "address_geocoded": True,
+                "address_geocoding_date": datetime.utcnow()
+            })
+            print(f"✅ Geocodierung erfolgreich: {geocode_result['latitude']}, {geocode_result['longitude']}")
+        else:
+            print("⚠️ Geocodierung fehlgeschlagen - Projekt wird ohne Koordinaten erstellt")
+    
+    project = Project(owner_id=owner_id, **project_data)
     db.add(project)
     await db.commit()
     await db.refresh(project)
@@ -31,6 +102,42 @@ async def update_project(db: AsyncSession, project_id: int, project_update: Proj
         return None
     
     update_data = project_update.dict(exclude_unset=True)
+    
+    # Erstelle vollständige Adresse aus detaillierten Feldern falls address leer ist
+    if not update_data.get("address") and any([
+        update_data.get("address_street"),
+        update_data.get("address_zip"),
+        update_data.get("address_city"),
+        update_data.get("address_country")
+    ]):
+        address_parts = []
+        if update_data.get("address_street"):
+            address_parts.append(update_data["address_street"])
+        if update_data.get("address_zip") and update_data.get("address_city"):
+            address_parts.append(f"{update_data['address_zip']} {update_data['address_city']}")
+        elif update_data.get("address_city"):
+            address_parts.append(update_data["address_city"])
+        if update_data.get("address_country"):
+            address_parts.append(update_data["address_country"])
+        
+        if address_parts:
+            update_data["address"] = ", ".join(address_parts)
+            print(f"🏗️ Erstelle vollständige Adresse für Update: {update_data['address']}")
+    
+    # Automatische Geocodierung wenn Adresse geändert wurde
+    if update_data.get("address") and not update_data.get("address_latitude"):
+        print(f"🌍 Geocodiere neue Adresse: {update_data['address']}")
+        geocode_result = await geocode_address(update_data["address"])
+        
+        if geocode_result:
+            update_data.update({
+                "address_latitude": geocode_result["latitude"],
+                "address_longitude": geocode_result["longitude"],
+                "address_geocoded": True,
+                "address_geocoding_date": datetime.utcnow()
+            })
+            print(f"✅ Geocodierung erfolgreich: {geocode_result['latitude']}, {geocode_result['longitude']}")
+    
     if update_data:
         await db.execute(
             update(Project)
