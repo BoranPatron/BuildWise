@@ -24,7 +24,7 @@ class Settings(BaseSettings):
     google_client_secret: str = "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"
     google_redirect_uri: str = "http://localhost:5173/auth/google/callback"
     
-    # Microsoft OAuth (optional)
+    # Microsoft OAuth
     microsoft_client_id: Optional[str] = None
     microsoft_client_secret: Optional[str] = None
     microsoft_redirect_uri: str = "http://localhost:5173/auth/microsoft/callback"
