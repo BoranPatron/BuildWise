@@ -61,7 +61,7 @@ class BuildWiseFeesAPITester:
                 
                 break
                 
-        except Exception as e:
+    except Exception as e:
             print(f"❌ Fehler beim Testen: {e}")
             return False
         
@@ -141,7 +141,7 @@ async def run_api_test():
             result = await test_func()
             results.append((test_name, result))
             
-        except Exception as e:
+    except Exception as e:
             print(f"❌ Fehler in {test_name}: {e}")
             results.append((test_name, False))
     

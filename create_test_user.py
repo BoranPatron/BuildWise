@@ -58,9 +58,9 @@ async def create_test_user():
             
             return test_user
             
-    except Exception as e:
+        except Exception as e:
         print(f"❌ Fehler beim Erstellen des Test-Benutzers: {e}")
-        return None
+            return None
 
 if __name__ == "__main__":
     asyncio.run(create_test_user()) 

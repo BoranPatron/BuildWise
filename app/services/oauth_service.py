@@ -46,7 +46,10 @@ class OAuthService:
                 "redirect_uri": settings.microsoft_redirect_uri,
                 "response_type": "code",
                 "scope": "openid email profile User.Read",  # User.Read für Graph API
-                "response_mode": "query"
+                "response_mode": "query",
+                "prompt": "select_account",  # Erzwingt Account-Auswahl
+                "login_hint": "",  # Leerer Login-Hint verhindert automatische Anmeldung
+                "domain_hint": ""  # Leerer Domain-Hint verhindert automatische Anmeldung
             }
             
             if state:
