@@ -25,6 +25,24 @@ class AuthProvider(enum.Enum):
     MICROSOFT = "microsoft"
 
 
+class UserRole(enum.Enum):
+    BAUTRAEGER = "BAUTRAEGER"  # Bauträger/Bauherr
+    DIENSTLEISTER = "DIENSTLEISTER"  # Dienstleister
+    ADMIN = "ADMIN"  # Admin (kann alles)
+
+
+class SubscriptionPlan(enum.Enum):
+    BASIS = "BASIS"  # Basis-Plan (kostenlos, max 3 Gewerke)
+    PRO = "PRO"  # Pro-Plan (bezahlt, unbegrenzt)
+
+
+class SubscriptionStatus(enum.Enum):
+    ACTIVE = "ACTIVE"  # Aktives Abonnement
+    INACTIVE = "INACTIVE"  # Kein aktives Abonnement
+    CANCELED = "CANCELED"  # Gekündigtes Abonnement
+    PAST_DUE = "PAST_DUE"  # Zahlungsrückstand
+
+
 class User(Base):
     __tablename__ = "users"
 
@@ -47,6 +65,28 @@ class User(Base):
     last_name = Column(String, nullable=False)
     phone = Column(String, nullable=True)
     user_type = Column(Enum(UserType), nullable=False, default=UserType.PRIVATE)
+    
+    # Rollenauswahl bei Erstanmeldung
+    user_role = Column(Enum(UserRole), nullable=True)  # Rolle: Bauträger oder Dienstleister
+    role_selected = Column(Boolean, default=False)  # Flag ob Rolle bereits ausgewählt wurde
+    role_selected_at = Column(DateTime(timezone=True), nullable=True)  # Zeitpunkt der Rollenauswahl
+    role_selection_modal_shown = Column(Boolean, default=False)  # Flag ob Modal bereits angezeigt wurde
+    
+    # Onboarding-Management für Erstbenutzer
+    first_login_completed = Column(Boolean, default=False)  # Erster Login abgeschlossen
+    onboarding_completed = Column(Boolean, default=False)  # Gesamtes Onboarding abgeschlossen
+    onboarding_step = Column(Integer, default=0)  # Aktueller Onboarding-Schritt (0=nicht gestartet)
+    onboarding_started_at = Column(DateTime(timezone=True), nullable=True)  # Onboarding-Start
+    onboarding_completed_at = Column(DateTime(timezone=True), nullable=True)  # Onboarding-Ende
+    
+    # Subscription-Management (nur für Bauträger)
+    subscription_plan = Column(Enum(SubscriptionPlan), default=SubscriptionPlan.BASIS)  # Basis oder Pro
+    subscription_status = Column(Enum(SubscriptionStatus), default=SubscriptionStatus.INACTIVE)  # Status
+    subscription_id = Column(String, nullable=True)  # Stripe Subscription ID
+    customer_id = Column(String, nullable=True)  # Stripe Customer ID
+    subscription_start = Column(DateTime(timezone=True), nullable=True)  # Abo-Start
+    subscription_end = Column(DateTime(timezone=True), nullable=True)  # Abo-Ende
+    max_gewerke = Column(Integer, default=3)  # Max Gewerke (3 für Basis, -1 für unbegrenzt)
     
     # Geo-basierte Adressfelder (temporär deaktiviert für Kompatibilität)
     # address_street = Column(String, nullable=True)  # Straße und Hausnummer

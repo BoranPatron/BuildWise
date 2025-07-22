@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Optional
 from pydantic import BaseModel
 from pydantic.networks import EmailStr
-from ..models.user import UserType
+from ..models.user import UserType, UserRole, SubscriptionPlan, SubscriptionStatus
 
 
 class UserBase(BaseModel):
@@ -48,6 +48,28 @@ class UserRead(UserBase):
     profile_image: Optional[str] = None
     region: Optional[str] = None
     languages: Optional[str] = None
+    
+    # Rollen-Felder
+    user_role: Optional[UserRole] = None
+    role_selected: bool = False
+    role_selected_at: Optional[datetime] = None
+    role_selection_modal_shown: bool = False
+    
+    # Onboarding-Felder
+    first_login_completed: bool = False
+    onboarding_completed: bool = False
+    onboarding_step: int = 0
+    onboarding_started_at: Optional[datetime] = None
+    onboarding_completed_at: Optional[datetime] = None
+    
+    # Subscription-Felder
+    subscription_plan: SubscriptionPlan = SubscriptionPlan.BASIS
+    subscription_status: SubscriptionStatus = SubscriptionStatus.INACTIVE
+    subscription_id: Optional[str] = None
+    customer_id: Optional[str] = None
+    subscription_start: Optional[datetime] = None
+    subscription_end: Optional[datetime] = None
+    max_gewerke: int = 3
     is_active: bool
     is_verified: bool
     email_verified: bool

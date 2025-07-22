@@ -143,7 +143,7 @@ class SecurityService:
         
         # Prüfe ob Konto gesperrt werden soll
         if new_attempts >= settings.max_login_attempts:
-            await SecurityService.lock_account(db, user_id, settings.account_lockout_minutes)
+            await SecurityService.lock_account(db, user_id, settings.account_lockout_duration_minutes)
         else:
             stmt = update(User).where(User.id == user_id).values(
                 failed_login_attempts=new_attempts

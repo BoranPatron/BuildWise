@@ -12,7 +12,7 @@ from ..services.user_service import authenticate_user, create_user, get_user_by_
 from ..services.security_service import SecurityService
 from ..services.oauth_service import OAuthService
 from ..models.audit_log import AuditAction
-from ..models.user import AuthProvider
+from ..models.user import AuthProvider, UserRole, User
 
 router = APIRouter(prefix="/auth", tags=["auth"])
 
@@ -483,3 +483,333 @@ async def logout(
     )
     
     return {"message": "Erfolgreich abgemeldet"}
+
+
+@router.get("/check-role")
+async def check_role(
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Prüft ob der Benutzer seine Rolle bereits ausgewählt hat"""
+    
+    return {
+        "role_selected": current_user.role_selected,
+        "user_role": current_user.user_role.value if current_user.user_role else None,
+        "user_type": current_user.user_type.value,
+        "email": current_user.email
+    }
+
+
+class RoleSelectionRequest(BaseModel):
+    role: str  # "bautraeger" oder "dienstleister"
+
+
+class OnboardingStepRequest(BaseModel):
+    step: int  # Onboarding-Schritt
+
+
+@router.post("/select-role")
+async def select_role(
+    request: RoleSelectionRequest,
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    req: Request = None
+):
+    """Speichert die gewählte Rolle des Benutzers"""
+    
+    from datetime import datetime, timedelta
+    
+    # Prüfe ob User "neu" ist (innerhalb der ersten 24 Stunden nach Registrierung)
+    user_age = datetime.utcnow() - current_user.created_at
+    is_new_user = user_age.total_seconds() < 24 * 60 * 60  # 24 Stunden
+    
+    # Erlaube Rollenänderung nur für neue User oder wenn noch keine Rolle gesetzt
+    if current_user.role_selected and current_user.user_role and not is_new_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Rolle wurde bereits ausgewählt. Kontaktieren Sie einen Administrator für Änderungen."
+        )
+    
+    # Validiere die Rolle
+    if request.role not in ["bautraeger", "dienstleister"]:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ungültige Rolle. Wählen Sie 'bautraeger' oder 'dienstleister'."
+        )
+    
+    try:
+        # Setze die Rolle
+        from datetime import datetime
+        from sqlalchemy import update
+        
+        role_enum = UserRole.BAUTRAEGER if request.role == "bautraeger" else UserRole.DIENSTLEISTER
+        
+        await db.execute(
+            update(User)
+            .where(User.id == current_user.id)
+            .values(
+                user_role=role_enum,
+                role_selected=True,
+                role_selected_at=datetime.utcnow(),
+                role_selection_modal_shown=True  # Markiere dass Modal angezeigt wurde
+            )
+        )
+        await db.commit()
+        
+        # Audit-Log
+        ip_address = req.client.host if req else None
+        await SecurityService.create_audit_log(
+            db, current_user.id, AuditAction.USER_UPDATE,
+            f"Rolle ausgewählt: {request.role}",
+            resource_type="user", resource_id=current_user.id,
+            ip_address=SecurityService.anonymize_ip_address(ip_address) if ip_address else None
+        )
+        
+        return {
+            "message": "Rolle erfolgreich ausgewählt",
+            "role": request.role,
+            "role_selected": True
+        }
+        
+    except Exception as e:
+        print(f"❌ Fehler beim Speichern der Rolle: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Fehler beim Speichern der Rolle"
+        )
+
+
+@router.post("/debug/reset-role")
+async def debug_reset_role(
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    req: Request = None
+):
+    """DEBUG ONLY: Setzt die Rolle zurück und markiert User als 'neu' für Tests"""
+    
+    # Nur im Entwicklungsmodus verfügbar
+    from ..core.config import settings
+    if not getattr(settings, 'DEBUG', False):
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Endpoint nicht verfügbar"
+        )
+    
+    try:
+        from datetime import datetime, timezone
+        from sqlalchemy import update
+        
+        # Setze User als "neu" und entferne Rolle
+        await db.execute(
+            update(User)
+            .where(User.id == current_user.id)
+            .values(
+                user_role=None,
+                role_selected=False,
+                role_selected_at=None,
+                role_selection_modal_shown=False,  # Setze Modal-Flag zurück
+                created_at=datetime.now(timezone.utc),  # Markiere als "neu"
+                first_login_completed=False,
+                onboarding_completed=False,
+                onboarding_step=0
+            )
+        )
+        await db.commit()
+        
+        # Audit-Log
+        ip_address = req.client.host if req else None
+        await SecurityService.create_audit_log(
+            db, current_user.id, AuditAction.USER_UPDATE,
+            f"DEBUG: Rolle zurückgesetzt für Tests",
+            resource_type="user", resource_id=current_user.id,
+            ip_address=SecurityService.anonymize_ip_address(ip_address) if ip_address else None
+        )
+        
+        return {
+            "message": "Rolle erfolgreich zurückgesetzt (DEBUG)",
+            "user_id": current_user.id,
+            "reset_timestamp": datetime.now(timezone.utc).isoformat()
+        }
+        
+    except Exception as e:
+        print(f"❌ Fehler beim Zurücksetzen der Rolle: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Fehler beim Zurücksetzen der Rolle"
+        )
+
+
+@router.post("/mark-modal-shown")
+async def mark_modal_shown(
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    req: Request = None
+):
+    """Markiert dass das Rollenauswahl-Modal angezeigt wurde"""
+    
+    try:
+        from sqlalchemy import update
+        
+        # Setze Modal-Flag
+        await db.execute(
+            update(User)
+            .where(User.id == current_user.id)
+            .values(
+                role_selection_modal_shown=True
+            )
+        )
+        await db.commit()
+        
+        return {
+            "message": "Modal-Flag erfolgreich gesetzt",
+            "user_id": current_user.id
+        }
+        
+    except Exception as e:
+        print(f"❌ Fehler beim Setzen des Modal-Flags: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Fehler beim Setzen des Modal-Flags"
+        )
+
+
+@router.post("/complete-first-login")
+async def complete_first_login(
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    req: Request = None
+):
+    """Markiert den ersten Login als abgeschlossen"""
+    
+    if current_user.first_login_completed:
+        return {
+            "message": "Erster Login bereits abgeschlossen",
+            "first_login_completed": True
+        }
+    
+    try:
+        from datetime import datetime
+        from sqlalchemy import update
+        
+        await db.execute(
+            update(User)
+            .where(User.id == current_user.id)
+            .values(
+                first_login_completed=True,
+                onboarding_started_at=datetime.utcnow()
+            )
+        )
+        await db.commit()
+        
+        # Audit-Log
+        ip_address = req.client.host if req else None
+        await SecurityService.create_audit_log(
+            db, current_user.id, AuditAction.USER_UPDATE,
+            "Erster Login abgeschlossen",
+            resource_type="user", resource_id=current_user.id,
+            ip_address=SecurityService.anonymize_ip_address(ip_address) if ip_address else None
+        )
+        
+        return {
+            "message": "Erster Login erfolgreich abgeschlossen",
+            "first_login_completed": True
+        }
+        
+    except Exception as e:
+        print(f"❌ Fehler beim Abschließen des ersten Logins: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Fehler beim Abschließen des ersten Logins"
+        )
+
+
+@router.post("/update-onboarding-step")
+async def update_onboarding_step(
+    request: OnboardingStepRequest,
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    req: Request = None
+):
+    """Aktualisiert den aktuellen Onboarding-Schritt"""
+    
+    try:
+        from sqlalchemy import update
+        
+        await db.execute(
+            update(User)
+            .where(User.id == current_user.id)
+            .values(onboarding_step=request.step)
+        )
+        await db.commit()
+        
+        # Audit-Log
+        ip_address = req.client.host if req else None
+        await SecurityService.create_audit_log(
+            db, current_user.id, AuditAction.USER_UPDATE,
+            f"Onboarding-Schritt aktualisiert: {request.step}",
+            resource_type="user", resource_id=current_user.id,
+            ip_address=SecurityService.anonymize_ip_address(ip_address) if ip_address else None
+        )
+        
+        return {
+            "message": "Onboarding-Schritt erfolgreich aktualisiert",
+            "onboarding_step": request.step
+        }
+        
+    except Exception as e:
+        print(f"❌ Fehler beim Aktualisieren des Onboarding-Schritts: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Fehler beim Aktualisieren des Onboarding-Schritts"
+        )
+
+
+@router.post("/complete-onboarding")
+async def complete_onboarding(
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    req: Request = None
+):
+    """Schließt das gesamte Onboarding ab"""
+    
+    if current_user.onboarding_completed:
+        return {
+            "message": "Onboarding bereits abgeschlossen",
+            "onboarding_completed": True
+        }
+    
+    try:
+        from datetime import datetime
+        from sqlalchemy import update
+        
+        await db.execute(
+            update(User)
+            .where(User.id == current_user.id)
+            .values(
+                onboarding_completed=True,
+                onboarding_completed_at=datetime.utcnow(),
+                onboarding_step=999  # Spezial-Wert für "abgeschlossen"
+            )
+        )
+        await db.commit()
+        
+        # Audit-Log
+        ip_address = req.client.host if req else None
+        await SecurityService.create_audit_log(
+            db, current_user.id, AuditAction.USER_UPDATE,
+            "Onboarding abgeschlossen",
+            resource_type="user", resource_id=current_user.id,
+            ip_address=SecurityService.anonymize_ip_address(ip_address) if ip_address else None
+        )
+        
+        return {
+            "message": "Onboarding erfolgreich abgeschlossen",
+            "onboarding_completed": True
+        }
+        
+    except Exception as e:
+        print(f"❌ Fehler beim Abschließen des Onboardings: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Fehler beim Abschließen des Onboardings"
+        )

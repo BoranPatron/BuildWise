@@ -11,6 +11,9 @@ class Settings(BaseSettings):
     # Datenbank
     database_url: str = "sqlite:///./buildwise.db"
     
+    # Debug-Modus (für Entwicklung)
+    DEBUG: bool = True  # Standardmäßig aktiviert für Entwicklung
+    
     # JWT
     secret_key: str = "your-secret-key-here-change-in-production"
     jwt_secret_key: str = "your-secret-key-here-change-in-production"  # Alias für Kompatibilität
