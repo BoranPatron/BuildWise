@@ -16,7 +16,7 @@ from app.schemas.buildwise_fee import (
     BuildWiseFeeItemCreate,
     BuildWiseFeeStatistics
 )
-from app.core.config import settings
+from app.core.config import settings, get_fee_percentage
 from app.services.pdf_generator import BuildWisePDFGenerator
 
 class BuildWiseFeeService:
@@ -26,7 +26,7 @@ class BuildWiseFeeService:
         db: AsyncSession, 
         quote_id: int, 
         cost_position_id: int, 
-        fee_percentage: float = 1.0
+        fee_percentage: Optional[float] = None
     ) -> BuildWiseFee:
         """Erstellt automatisch eine BuildWise-Gebühr aus einem akzeptierten Angebot."""
         
@@ -45,6 +45,10 @@ class BuildWiseFeeService:
         
         if existing_fee:
             raise ValueError(f"Für Angebot {quote_id} existiert bereits eine Gebühr")
+        
+        # Verwende den aktuellen Gebühren-Prozentsatz aus der Konfiguration
+        if fee_percentage is None:
+            fee_percentage = get_fee_percentage()
         
         # Berechne die Gebühr
         quote_amount = float(quote.total_amount)

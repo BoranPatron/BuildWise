@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """
-Test Quote Acceptance BuildWise Fee Creation
-===========================================
+Test-Skript für automatische BuildWise Gebühren-Erstellung bei Quote-Akzeptierung
 
-Testet die automatische Erstellung von BuildWise-Gebühren bei Quote-Akzeptierung.
+Testet, ob beim Akzeptieren einer Quote automatisch eine BuildWise Gebühr
+mit dem korrekten Provisionssatz erstellt wird.
 """
 
 import asyncio
-import os
 import sys
+import os
 from datetime import datetime
 
 # Füge das Projektverzeichnis zum Python-Pfad hinzu
@@ -18,277 +18,221 @@ from app.core.database import get_db
 from app.core.config import settings
 from app.models.quote import Quote, QuoteStatus
 from app.models.buildwise_fee import BuildWiseFee
-from app.models.cost_position import CostPosition
 from app.services.quote_service import accept_quote, get_quote_by_id
 from app.services.buildwise_fee_service import BuildWiseFeeService
-
+from sqlalchemy import select
 
 class QuoteAcceptanceTester:
-    """Testet die Quote-Akzeptierung und BuildWise-Gebühren-Erstellung."""
+    """Testet die automatische BuildWise Gebühren-Erstellung bei Quote-Akzeptierung."""
     
     def __init__(self):
         self.test_results = []
     
-    async def test_environment_configuration(self):
-        """Testet die Environment-Konfiguration."""
-        print("🧪 Teste Environment-Konfiguration...")
-        
-        current_mode = settings.environment_mode.value
-        current_fee_percentage = settings.get_current_fee_percentage()
-        
-        print(f"🎯 Aktuelle Konfiguration:")
-        print(f"   - Modus: {current_mode}")
-        print(f"   - Gebühren: {current_fee_percentage}%")
-        print(f"   - Ist Beta: {settings.is_beta_mode()}")
-        print(f"   - Ist Production: {settings.is_production_mode()}")
-        
-        self.test_results.append({
-            'test': 'Environment Configuration',
-            'status': 'PASS',
-            'details': f"Modus: {current_mode}, Gebühren: {current_fee_percentage}%"
-        })
-    
     async def find_accepted_quotes(self, db):
-        """Findet akzeptierte Angebote ohne BuildWise-Gebühren."""
-        print("\n🔍 Suche nach akzeptierten Angeboten...")
+        """Findet akzeptierte Quotes ohne BuildWise Gebühren."""
+        print("🔍 Suche nach akzeptierten Quotes...")
         
-        from sqlalchemy import select, and_
-        
-        # Hole alle akzeptierten Angebote
-        query = select(Quote).where(Quote.status == QuoteStatus.ACCEPTED)
-        result = await db.execute(query)
+        # Hole alle akzeptierten Quotes
+        result = await db.execute(
+            select(Quote).where(Quote.status == QuoteStatus.ACCEPTED)
+        )
         accepted_quotes = result.scalars().all()
         
         print(f"📊 Gefundene akzeptierte Angebote: {len(accepted_quotes)}")
         
         quotes_without_fees = []
         for quote in accepted_quotes:
-            # Prüfe ob bereits eine BuildWise-Gebühr existiert
-            fee_query = select(BuildWiseFee).where(BuildWiseFee.quote_id == quote.id)
-            fee_result = await db.execute(fee_query)
+            # Prüfe, ob bereits eine BuildWise Gebühr existiert
+            fee_result = await db.execute(
+                select(BuildWiseFee).where(BuildWiseFee.quote_id == quote.id)
+            )
             existing_fee = fee_result.scalar_one_or_none()
             
             if not existing_fee:
                 quotes_without_fees.append(quote)
-                print(f"   ❌ Quote ID {quote.id}: Keine BuildWise-Gebühr vorhanden")
+                print(f"   - Quote {quote.id}: {quote.title} (keine Gebühr)")
             else:
-                print(f"   ✅ Quote ID {quote.id}: BuildWise-Gebühr vorhanden (ID: {existing_fee.id})")
+                print(f"   - Quote {quote.id}: {quote.title} (Gebühr existiert: {existing_fee.id})")
         
         return quotes_without_fees
     
-    async def test_manual_fee_creation(self, db, quote_id):
-        """Testet die manuelle Erstellung einer BuildWise-Gebühr."""
-        print(f"\n🧪 Teste manuelle Gebühren-Erstellung für Quote {quote_id}...")
+    async def test_quote_acceptance_flow(self):
+        """Testet den kompletten Quote-Akzeptierungs-Flow."""
+        print("\n🧪 Teste Quote-Akzeptierungs-Flow...")
         
         try:
-            # Hole das Quote
-            quote = await get_quote_by_id(db, quote_id)
-            if not quote:
-                print(f"❌ Quote {quote_id} nicht gefunden")
-                return False
-            
-            print(f"📋 Quote Details:")
-            print(f"   - ID: {quote.id}")
-            print(f"   - Status: {quote.status}")
-            print(f"   - Betrag: {quote.total_amount}€")
-            print(f"   - Projekt: {quote.project_id}")
-            
-            # Hole die zugehörige Kostenposition
-            from sqlalchemy import select
-            cost_position_query = select(CostPosition).where(CostPosition.quote_id == quote.id)
-            cost_position_result = await db.execute(cost_position_query)
-            cost_position = cost_position_result.scalar_one_or_none()
-            
-            if not cost_position:
-                print(f"❌ Keine Kostenposition für Quote {quote_id} gefunden")
-                return False
-            
-            print(f"📋 Kostenposition Details:")
-            print(f"   - ID: {cost_position.id}")
-            print(f"   - Titel: {cost_position.title}")
-            print(f"   - Betrag: {cost_position.amount}€")
-            
-            # Erstelle BuildWise-Gebühr
-            print(f"💰 Erstelle BuildWise-Gebühr...")
-            fee = await BuildWiseFeeService.create_fee_from_quote(
-                db=db,
-                quote_id=quote.id,
-                cost_position_id=cost_position.id
-            )
-            
-            print(f"✅ BuildWise-Gebühr erfolgreich erstellt:")
-            print(f"   - ID: {fee.id}")
-            print(f"   - Prozentsatz: {fee.fee_percentage}%")
-            print(f"   - Betrag: {fee.fee_amount}€")
-            print(f"   - Environment-Modus: {settings.environment_mode.value}")
-            
-            self.test_results.append({
-                'test': f'Manual Fee Creation (Quote {quote_id})',
-                'status': 'PASS',
-                'details': f"Gebühr erstellt: {fee.fee_percentage}% = {fee.fee_amount}€"
-            })
-            
-            return True
-            
+            async for db in get_db():
+                # Finde eine Quote zum Testen
+                result = await db.execute(
+                    select(Quote).where(Quote.status == QuoteStatus.SUBMITTED).limit(1)
+                )
+                test_quote = result.scalar_one_or_none()
+                
+                if not test_quote:
+                    print("❌ Keine submitted Quote für Test gefunden")
+                    return False
+                
+                print(f"📋 Teste Quote: {test_quote.id} - {test_quote.title}")
+                print(f"   - Status: {test_quote.status}")
+                print(f"   - Amount: {test_quote.total_amount} {test_quote.currency}")
+                print(f"   - Environment Mode: {settings.environment_mode}")
+                print(f"   - Fee Percentage: {settings.get_fee_percentage()}%")
+                
+                # Akzeptiere die Quote
+                print("\n🔄 Akzeptiere Quote...")
+                accepted_quote = await accept_quote(db, test_quote.id)
+                
+                if not accepted_quote:
+                    print("❌ Quote konnte nicht akzeptiert werden")
+                    return False
+                
+                print(f"✅ Quote erfolgreich akzeptiert")
+                print(f"   - Neuer Status: {accepted_quote.status}")
+                print(f"   - accepted_at: {accepted_quote.accepted_at}")
+                
+                # Prüfe, ob BuildWise Gebühr erstellt wurde
+                print("\n🔍 Prüfe BuildWise Gebühr...")
+                fee_result = await db.execute(
+                    select(BuildWiseFee).where(BuildWiseFee.quote_id == test_quote.id)
+                )
+                buildwise_fee = fee_result.scalar_one_or_none()
+                
+                if buildwise_fee:
+                    print(f"✅ BuildWise Gebühr gefunden (ID: {buildwise_fee.id})")
+                    print(f"   - Fee Amount: {buildwise_fee.fee_amount} {buildwise_fee.currency}")
+                    print(f"   - Fee Percentage: {buildwise_fee.fee_percentage}%")
+                    print(f"   - Quote Amount: {buildwise_fee.quote_amount} {buildwise_fee.currency}")
+                    print(f"   - Status: {buildwise_fee.status}")
+                    
+                    # Validiere Gebühren-Berechnung
+                    expected_fee = float(buildwise_fee.quote_amount) * (settings.get_fee_percentage() / 100.0)
+                    actual_fee = float(buildwise_fee.fee_amount)
+                    
+                    if abs(expected_fee - actual_fee) < 0.01:  # Toleranz für Rundungsfehler
+                        print(f"✅ Gebühren-Berechnung korrekt")
+                        print(f"   - Erwartet: {expected_fee:.2f}")
+                        print(f"   - Tatsächlich: {actual_fee:.2f}")
+                        return True
+                    else:
+                        print(f"❌ Gebühren-Berechnung fehlerhaft")
+                        print(f"   - Erwartet: {expected_fee:.2f}")
+                        print(f"   - Tatsächlich: {actual_fee:.2f}")
+                        return False
+                else:
+                    print("❌ Keine BuildWise Gebühr gefunden")
+                    return False
+                
+                break
+                
         except Exception as e:
-            print(f"❌ Fehler bei manueller Gebühren-Erstellung: {e}")
-            self.test_results.append({
-                'test': f'Manual Fee Creation (Quote {quote_id})',
-                'status': 'FAIL',
-                'details': str(e)
-            })
+            print(f"❌ Fehler beim Testen: {e}")
             return False
     
-    async def test_quote_acceptance_flow(self, db):
-        """Testet den kompletten Quote-Akzeptierungs-Flow."""
-        print(f"\n🧪 Teste Quote-Akzeptierungs-Flow...")
+    async def create_fees_for_existing_accepted_quotes(self):
+        """Erstellt BuildWise Gebühren für bereits akzeptierte Quotes."""
+        print("\n🔧 Erstelle BuildWise Gebühren für bestehende akzeptierte Quotes...")
         
         try:
-            # Finde ein Quote zum Testen (erstes verfügbares)
-            from sqlalchemy import select
-            query = select(Quote).where(Quote.status == QuoteStatus.SUBMITTED).limit(1)
-            result = await db.execute(query)
-            test_quote = result.scalar_one_or_none()
-            
-            if not test_quote:
-                print("❌ Kein Quote zum Testen gefunden")
-                self.test_results.append({
-                    'test': 'Quote Acceptance Flow',
-                    'status': 'SKIP',
-                    'details': 'Kein Quote zum Testen verfügbar'
-                })
-                return
-            
-            print(f"📋 Teste mit Quote ID {test_quote.id}:")
-            print(f"   - Titel: {test_quote.title}")
-            print(f"   - Status: {test_quote.status}")
-            print(f"   - Betrag: {test_quote.total_amount}€")
-            
-            # Prüfe ob bereits eine BuildWise-Gebühr existiert
-            fee_query = select(BuildWiseFee).where(BuildWiseFee.quote_id == test_quote.id)
-            fee_result = await db.execute(fee_query)
-            existing_fee = fee_result.scalar_one_or_none()
-            
-            if existing_fee:
-                print(f"   ⚠️  Bereits eine BuildWise-Gebühr vorhanden (ID: {existing_fee.id})")
-                self.test_results.append({
-                    'test': 'Quote Acceptance Flow',
-                    'status': 'INFO',
-                    'details': f"Bereits Gebühr vorhanden für Quote {test_quote.id}"
-                })
-                return
-            
-            # Simuliere Quote-Akzeptierung
-            print(f"🔄 Simuliere Quote-Akzeptierung...")
-            accepted_quote = await accept_quote(db, test_quote.id)
-            
-            if not accepted_quote:
-                print(f"❌ Quote-Akzeptierung fehlgeschlagen")
-                self.test_results.append({
-                    'test': 'Quote Acceptance Flow',
-                    'status': 'FAIL',
-                    'details': 'Quote-Akzeptierung fehlgeschlagen'
-                })
-                return
-            
-            print(f"✅ Quote erfolgreich akzeptiert")
-            
-            # Prüfe ob BuildWise-Gebühr erstellt wurde
-            fee_query = select(BuildWiseFee).where(BuildWiseFee.quote_id == test_quote.id)
-            fee_result = await db.execute(fee_query)
-            new_fee = fee_result.scalar_one_or_none()
-            
-            if new_fee:
-                print(f"✅ BuildWise-Gebühr automatisch erstellt:")
-                print(f"   - ID: {new_fee.id}")
-                print(f"   - Prozentsatz: {new_fee.fee_percentage}%")
-                print(f"   - Betrag: {new_fee.fee_amount}€")
+            async for db in get_db():
+                quotes_without_fees = await self.find_accepted_quotes(db)
                 
-                self.test_results.append({
-                    'test': 'Quote Acceptance Flow',
-                    'status': 'PASS',
-                    'details': f"Gebühr automatisch erstellt: {new_fee.fee_percentage}% = {new_fee.fee_amount}€"
-                })
-            else:
-                print(f"❌ BuildWise-Gebühr wurde nicht automatisch erstellt")
-                self.test_results.append({
-                    'test': 'Quote Acceptance Flow',
-                    'status': 'FAIL',
-                    'details': 'BuildWise-Gebühr nicht automatisch erstellt'
-                })
+                if not quotes_without_fees:
+                    print("✅ Alle akzeptierten Quotes haben bereits BuildWise Gebühren")
+                    return True
+                
+                print(f"\n📋 Erstelle Gebühren für {len(quotes_without_fees)} Quotes...")
+                
+                created_fees = 0
+                for i, quote in enumerate(quotes_without_fees, 1):
+                    try:
+                        print(f"\n[{i}/{len(quotes_without_fees)}] Erstelle Gebühr für Quote {quote.id}")
+                        
+                        # Hole die zugehörige Kostenposition
+                        from app.services.cost_position_service import get_cost_position_by_quote_id
+                        cost_position = await get_cost_position_by_quote_id(db, quote.id)
+                        
+                        if not cost_position:
+                            print(f"   ⚠️  Keine Kostenposition für Quote {quote.id} gefunden")
+                            continue
+                        
+                        # Erstelle BuildWise Gebühr
+                        buildwise_fee = await BuildWiseFeeService.create_fee_from_quote(
+                            db=db,
+                            quote_id=quote.id,
+                            cost_position_id=cost_position.id,
+                            fee_percentage=None  # Verwende aktuellen Modus
+                        )
+                        
+                        print(f"   ✅ Gebühr erstellt (ID: {buildwise_fee.id})")
+                        print(f"      - Fee Amount: {buildwise_fee.fee_amount} {buildwise_fee.currency}")
+                        print(f"      - Fee Percentage: {buildwise_fee.fee_percentage}%")
+                        
+                        created_fees += 1
+                        
+                    except Exception as e:
+                        print(f"   ❌ Fehler bei Quote {quote.id}: {e}")
+                
+                print(f"\n📊 Zusammenfassung:")
+                print(f"   - Quotes verarbeitet: {len(quotes_without_fees)}")
+                print(f"   - Gebühren erstellt: {created_fees}")
+                
+                return created_fees > 0
                 
         except Exception as e:
-            print(f"❌ Fehler im Quote-Akzeptierungs-Flow: {e}")
-            self.test_results.append({
-                'test': 'Quote Acceptance Flow',
-                'status': 'ERROR',
-                'details': str(e)
-            })
+            print(f"❌ Fehler beim Erstellen der Gebühren: {e}")
+            return False
+
+async def run_comprehensive_test():
+    """Führt einen umfassenden Test der Quote-Akzeptierung durch."""
     
-    def print_summary(self):
-        """Zeigt eine Zusammenfassung der Test-Ergebnisse."""
-        print("\n" + "=" * 60)
-        print("📊 Quote Acceptance BuildWise Fee Test - Zusammenfassung")
-        print("=" * 60)
-        
-        passed = sum(1 for result in self.test_results if result['status'] == 'PASS')
-        failed = sum(1 for result in self.test_results if result['status'] == 'FAIL')
-        errors = sum(1 for result in self.test_results if result['status'] == 'ERROR')
-        skipped = sum(1 for result in self.test_results if result['status'] in ['SKIP', 'INFO'])
-        
-        print(f"✅ Bestanden: {passed}")
-        print(f"❌ Fehlgeschlagen: {failed}")
-        print(f"⚠️  Fehler: {errors}")
-        print(f"ℹ️  Übersprungen: {skipped}")
-        
-        print("\n📋 Detaillierte Ergebnisse:")
-        for result in self.test_results:
-            status_icon = "✅" if result['status'] == 'PASS' else "❌" if result['status'] == 'FAIL' else "⚠️" if result['status'] == 'ERROR' else "ℹ️"
-            print(f"   {status_icon} {result['test']}: {result['details']}")
-        
-        if failed == 0 and errors == 0:
-            print("\n🎉 Alle Tests erfolgreich! BuildWise-Gebühren werden korrekt erstellt.")
-        else:
-            print(f"\n⚠️  {failed + errors} Tests fehlgeschlagen. Bitte Probleme beheben.")
-
-
-async def main():
-    """Hauptfunktion für Quote-Akzeptierungs-Tests."""
-    print("🏗️  Quote Acceptance BuildWise Fee Tester")
+    print("🚀 Starte Quote-Akzeptierung Test...")
     print("=" * 60)
     
     tester = QuoteAcceptanceTester()
     
-    try:
-        async for db in get_db():
-            try:
-                await tester.test_environment_configuration()
-                
-                # Teste bestehende akzeptierte Angebote
-                quotes_without_fees = await tester.find_accepted_quotes(db)
-                
-                if quotes_without_fees:
-                    print(f"\n🔧 {len(quotes_without_fees)} akzeptierte Angebote ohne BuildWise-Gebühren gefunden")
-                    
-                    # Teste manuelle Gebühren-Erstellung für das erste Quote
-                    first_quote = quotes_without_fees[0]
-                    await tester.test_manual_fee_creation(db, first_quote.id)
-                else:
-                    print("\n✅ Alle akzeptierten Angebote haben bereits BuildWise-Gebühren")
-                
-                # Teste Quote-Akzeptierungs-Flow
-                await tester.test_quote_acceptance_flow(db)
-                
-                tester.print_summary()
-                
-            finally:
-                await db.close()
-                
-    except Exception as e:
-        print(f"❌ Test fehlgeschlagen: {e}")
-        import traceback
-        traceback.print_exc()
-
+    # Test-Suite
+    tests = [
+        ("Quote-Akzeptierungs-Flow", tester.test_quote_acceptance_flow),
+        ("Gebühren für bestehende Quotes", tester.create_fees_for_existing_accepted_quotes)
+    ]
+    
+    results = []
+    
+    for test_name, test_func in tests:
+        print(f"\n{'='*20} {test_name} {'='*20}")
+        
+        try:
+            result = await test_func()
+            results.append((test_name, result))
+            
+        except Exception as e:
+            print(f"❌ Fehler in {test_name}: {e}")
+            results.append((test_name, False))
+    
+    # Zusammenfassung
+    print("\n" + "="*60)
+    print("📊 TEST-ZUSAMMENFASSUNG")
+    print("="*60)
+    
+    passed = 0
+    total = len(results)
+    
+    for test_name, result in results:
+        status = "✅ BESTANDEN" if result else "❌ FEHLGESCHLAGEN"
+        print(f"{test_name:<30} {status}")
+        if result:
+            passed += 1
+    
+    print(f"\nErgebnis: {passed}/{total} Tests bestanden")
+    
+    if passed == total:
+        print("🎉 Alle Tests bestanden! Quote-Akzeptierung funktioniert korrekt.")
+        print("\n💡 Nächste Schritte:")
+        print("1. Akzeptieren Sie eine Quote im Frontend")
+        print("2. Überprüfen Sie die BuildWise Gebühren in der Dienstleister-Ansicht")
+        print("3. Validiere, dass der korrekte Provisionssatz verwendet wird")
+    else:
+        print("⚠️  Einige Tests fehlgeschlagen. Überprüfen Sie die Konfiguration.")
 
 if __name__ == "__main__":
-    asyncio.run(main()) 
+    asyncio.run(run_comprehensive_test()) 

@@ -1,7 +1,7 @@
 
 # AUFTRAGSBESTÄTIGUNG
 
-**Auftragsnummer:** AB-7-7-5-1753190625127  
+**Auftragsnummer:** AB-7-2-2-1753194875303  
 **Datum:** 22.7.2025  
 **Status:** Verbindlich angenommen
 
@@ -18,10 +18,10 @@
 
 ## 2. GEWERKSAUSSCHREIBUNG
 
-**Gewerk:** Elektroinstallation Kinderzimmer  
-**Kategorie:** Elektroinstallation  
+**Gewerk:** Sauna Einbau und Montage TEST2  
+**Kategorie:** sanitaer  
 **Beschreibung:** undefined  
-**Geplantes Datum:** 30.7.2025  
+**Geplantes Datum:** 27.7.2025  
 **Priorität:** medium  
 **Status:** planned
 
@@ -43,21 +43,21 @@ Standard-Umweltanforderungen
 
 ## 3. KOSTENVORANSCHLAG
 
-**Angebotsnummer:** 5  
+**Angebotsnummer:** 2  
 **Angebotsdatum:** 22.7.2025  
 **Gültig bis:** -  
 **Status:** submitted
 
 ### Kostenaufschlüsselung:
-- **Gesamtbetrag:** 25.000,00 €
+- **Gesamtbetrag:** 20.000,00 €
 - **Arbeitskosten:** Nicht angegeben
 - **Materialkosten:** Nicht angegeben
 - **Gemeinkosten:** Nicht angegeben
 
 ### Zeitplan:
-- **Geschätzte Dauer:** 2 Tage
-- **Startdatum:** 23.7.2025
-- **Fertigstellungsdatum:** 29.7.2025
+- **Geschätzte Dauer:** 23 Tage
+- **Startdatum:** 24.7.2025
+- **Fertigstellungsdatum:** 29.8.2025
 
 ### Bedingungen:
 - **Zahlungsbedingungen:** Standard
@@ -68,10 +68,10 @@ Standard-Umweltanforderungen
 
 ## 4. DIENSTLEISTER
 
-**Firma:** PietiboyAG  
-**Ansprechpartner:** Herr Piet  
+**Firma:** Boran GmBh  
+**Ansprechpartner:** Banause Boran  
 **Telefon:** Nicht angegeben  
-**E-Mail:** Pietiboy@chaos.de  
+**E-Mail:** BanauseBoran@lotterlifeGmbH.de  
 **Website:** Nicht angegeben
 
 ---
@@ -118,7 +118,7 @@ Diese Auftragsbestätigung stellt eine verbindliche Vereinbarung zwischen dem Ba
 
 **Erstellt am:** 22.7.2025  
 **Erstellt von:** BuildWise System  
-**Dokument-ID:** AB-7-7-5-1753190625127
+**Dokument-ID:** AB-7-2-2-1753194875303
 
 ---
 

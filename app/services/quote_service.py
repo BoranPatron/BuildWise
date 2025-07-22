@@ -160,7 +160,7 @@ async def submit_quote(db: AsyncSession, quote_id: int) -> Quote | None:
 
 
 async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
-    """Akzeptiert ein Angebot und erstellt Kostenposition"""
+    """Akzeptiert ein Angebot und erstellt Kostenposition sowie BuildWise Gebühr"""
     quote = await get_quote_by_id(db, quote_id)
     if not quote:
         return None
@@ -196,7 +196,43 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
     )
     
     # Erstelle Kostenposition für das akzeptierte Angebot
-    await create_cost_position_from_quote(db, quote)
+    cost_position_created = await create_cost_position_from_quote(db, quote)
+    
+    # Erstelle BuildWise Gebühr für das akzeptierte Angebot
+    if cost_position_created:
+        try:
+            from ..services.buildwise_fee_service import BuildWiseFeeService
+            from ..core.config import settings, get_fee_percentage
+            
+            # Hole die erstellte Kostenposition
+            cost_position = await get_cost_position_by_quote_id(db, quote.id)
+            
+            if cost_position:
+                print(f"🔧 Erstelle BuildWise Gebühr für akzeptiertes Angebot {quote.id}")
+                print(f"   - Quote ID: {quote.id}")
+                print(f"   - Cost Position ID: {cost_position.id}")
+                print(f"   - Quote Amount: {quote.total_amount} {quote.currency}")
+                print(f"   - Environment Mode: {settings.environment_mode}")
+                print(f"   - Fee Percentage: {get_fee_percentage()}%")
+                
+                # Erstelle BuildWise Gebühr
+                buildwise_fee = await BuildWiseFeeService.create_fee_from_quote(
+                    db=db,
+                    quote_id=quote.id,
+                    cost_position_id=cost_position.id,
+                    fee_percentage=None  # Verwende automatisch den aktuellen Modus
+                )
+                
+                print(f"✅ BuildWise Gebühr erfolgreich erstellt (ID: {buildwise_fee.id})")
+                print(f"   - Fee Amount: {buildwise_fee.fee_amount} {buildwise_fee.currency}")
+                print(f"   - Fee Percentage: {buildwise_fee.fee_percentage}%")
+                
+            else:
+                print(f"⚠️  Kostenposition für Quote {quote.id} nicht gefunden - BuildWise Gebühr wird nicht erstellt")
+                
+        except Exception as e:
+            print(f"❌ Fehler beim Erstellen der BuildWise Gebühr: {e}")
+            # Fehler beim Erstellen der Gebühr sollte nicht die Quote-Akzeptierung blockieren
     
     await db.commit()
     await db.refresh(quote)
