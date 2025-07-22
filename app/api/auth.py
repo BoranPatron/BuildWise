@@ -128,6 +128,18 @@ async def get_oauth_url(
         )
 
 
+@router.options("/oauth/{provider}/callback")
+async def oauth_callback_options(provider: str):
+    """OPTIONS-Handler für OAuth-Callback (CORS Preflight)"""
+    from fastapi.responses import Response
+    
+    response = Response()
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization"
+    response.headers["Access-Control-Max-Age"] = "86400"
+    return response
+
 @router.post("/oauth/{provider}/callback")
 async def oauth_callback(
     provider: str,
@@ -135,30 +147,47 @@ async def oauth_callback(
     db: AsyncSession = Depends(get_db),
     request: Request = None
 ):
+    """Verarbeitet OAuth-Callback von Social-Login-Providern"""
+    
+    # IP-Adresse für Audit-Log
+    ip_address = request.client.host if request else None
+    
+    # CORS-Header für OAuth-Callback
+    from fastapi.responses import JSONResponse
+    from fastapi import Response
+    
+    # Extrahiere Code aus Request
     code = body.code
     state = body.state
-    error = body.error
-    """Verarbeitet OAuth-Callback und erstellt/verknüpft Benutzer"""
     
-    if error:
-        raise HTTPException(
+    print(f"🔍 OAuth-Callback für {provider}: Code={len(code) if code else 0} Zeichen")
+    
+    if not code:
+        response = JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"OAuth-Fehler: {error}"
+            content={"detail": "Authorization Code fehlt"}
         )
-    
-    ip_address = request.client.host if request else None
+        # CORS-Header hinzufügen
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        return response
     
     try:
         # Authorization Code gegen Token tauschen
         token_data = await OAuthService.exchange_code_for_token(provider, code)
         if not token_data:
-            # Bei invalid_grant: Code wurde bereits verwendet, aber das ist normal
-            # wenn der User bereits erfolgreich eingeloggt ist
+            # Bei invalid_grant: Code wurde bereits verwendet oder ist abgelaufen
             # Wir geben eine spezifischere Fehlermeldung
-            raise HTTPException(
+            response = JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="OAuth-Code bereits verwendet - bitte versuchen Sie es erneut"
+                content={"detail": "OAuth-Code ist abgelaufen oder wurde bereits verwendet. Bitte starten Sie den Login-Prozess erneut."}
             )
+            # CORS-Header hinzufügen
+            response.headers["Access-Control-Allow-Origin"] = "*"
+            response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+            return response
         
         # Benutzerinformationen abrufen
         if provider == "google":
@@ -168,16 +197,26 @@ async def oauth_callback(
             user_info = await OAuthService.get_microsoft_user_info(token_data.get("access_token"))
             auth_provider = AuthProvider.MICROSOFT
         else:
-            raise HTTPException(
+            response = JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unbekannter Provider: {provider}"
+                content={"detail": f"Unbekannter Provider: {provider}"}
             )
+            # CORS-Header hinzufügen
+            response.headers["Access-Control-Allow-Origin"] = "*"
+            response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+            return response
         
         if not user_info:
-            raise HTTPException(
+            response = JSONResponse(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Benutzerinformationen konnten nicht abgerufen werden"
+                content={"detail": "Benutzerinformationen konnten nicht abgerufen werden"}
             )
+            # CORS-Header hinzufügen
+            response.headers["Access-Control-Allow-Origin"] = "*"
+            response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+            return response
         
         # Benutzer finden oder erstellen
         user = await OAuthService.find_or_create_user_by_social_login(
@@ -186,10 +225,15 @@ async def oauth_callback(
         
         # Prüfe ob Benutzer aktiv ist
         if not user.is_active:
-            raise HTTPException(
+            response = JSONResponse(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Benutzerkonto ist deaktiviert"
+                content={"detail": "Benutzerkonto ist deaktiviert"}
             )
+            # CORS-Header hinzufügen
+            response.headers["Access-Control-Allow-Origin"] = "*"
+            response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+            response.headers["Access-Control-Allow-Headers"] = "*"
+            return response
         
         # Audit-Log für Social-Login
         await SecurityService.create_audit_log(
@@ -204,7 +248,7 @@ async def oauth_callback(
         # JWT Token erstellen
         token = create_access_token({"sub": user.email})
         
-        return {
+        response_data = {
             "access_token": token,
             "token_type": "bearer",
             "user": {
@@ -212,7 +256,7 @@ async def oauth_callback(
                 "email": user.email,
                 "first_name": user.first_name,
                 "last_name": user.last_name,
-                "user_type": user.user_type,
+                "user_type": user.user_type.value,  # .value für JSON-Serialisierung
                 "auth_provider": user.auth_provider.value,
                 "consents": {
                     "data_processing": user.data_processing_consent,
@@ -223,15 +267,27 @@ async def oauth_callback(
             }
         }
         
+        response = JSONResponse(content=response_data)
+        # CORS-Header hinzufügen
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        return response
+        
     except HTTPException:
         # Re-raise HTTPExceptions
         raise
     except Exception as e:
         print(f"❌ OAuth-Callback Fehler: {str(e)}")
-        raise HTTPException(
+        response = JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Social-Login fehlgeschlagen: {str(e)}"
+            content={"detail": f"Social-Login fehlgeschlagen: {str(e)}"}
         )
+        # CORS-Header hinzufügen
+        response.headers["Access-Control-Allow-Origin"] = "*"
+        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+        response.headers["Access-Control-Allow-Headers"] = "*"
+        return response
 
 
 @router.post("/link-social-account/{provider}")

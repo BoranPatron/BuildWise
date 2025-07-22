@@ -20,6 +20,9 @@ class OAuthService:
         """Generiert OAuth-URL für den angegebenen Provider"""
         
         if provider == "google":
+            if not settings.google_client_id:
+                raise ValueError("Google OAuth ist nicht konfiguriert")
+            
             params = {
                 "client_id": settings.google_client_id,
                 "redirect_uri": settings.google_redirect_uri,
@@ -28,31 +31,35 @@ class OAuthService:
                 "access_type": "offline",
                 "prompt": "consent"
             }
+            
             if state:
                 params["state"] = state
                 
-            query_string = "&".join([f"{k}={v}" for k, v in params.items()])
-            return f"https://accounts.google.com/o/oauth2/auth?{query_string}"
+            url = "https://accounts.google.com/o/oauth2/v2/auth"
             
         elif provider == "microsoft":
             if not settings.microsoft_client_id:
                 raise ValueError("Microsoft OAuth ist nicht konfiguriert")
-                
+            
             params = {
                 "client_id": settings.microsoft_client_id,
                 "redirect_uri": settings.microsoft_redirect_uri,
                 "response_type": "code",
-                "scope": "openid email profile",
+                "scope": "openid email profile User.Read",  # User.Read für Graph API
                 "response_mode": "query"
             }
+            
             if state:
                 params["state"] = state
                 
-            query_string = "&".join([f"{k}={v}" for k, v in params.items()])
-            return f"https://login.microsoftonline.com/common/oauth2/v2.0/authorize?{query_string}"
+            url = "https://login.microsoftonline.com/common/oauth2/v2.0/authorize"
             
         else:
             raise ValueError(f"Unbekannter OAuth-Provider: {provider}")
+        
+        # URL mit Parametern erstellen
+        from urllib.parse import urlencode
+        return f"{url}?{urlencode(params)}"
     
     @staticmethod
     async def exchange_code_for_token(provider: str, code: str) -> Optional[Dict[str, Any]]:
@@ -137,14 +144,48 @@ class OAuthService:
             "redirect_uri": settings.microsoft_redirect_uri
         }
         
+        print(f"🔍 Microsoft OAuth Debug:")
+        print(f"  - Client ID: {settings.microsoft_client_id}")
+        print(f"  - Redirect URI: {settings.microsoft_redirect_uri}")
+        print(f"  - Code length: {len(code)}")
+        
         async with aiohttp.ClientSession() as session:
             async with session.post(token_url, data=data) as response:
+                response_text = await response.text()
+                print(f"  - Response status: {response.status}")
+                print(f"  - Response body: {response_text}")
+                
                 if response.status == 200:
-                    return await response.json()
+                    token_data = await response.json()
+                    print(f"  - Token exchange successful")
+                    return token_data
                 else:
-                    error_data = await response.json()
-                    print(f"Microsoft token exchange failed: {error_data}")
-                    return None
+                    try:
+                        error_data = await response.json()
+                        print(f"❌ Microsoft token exchange failed: {error_data}")
+                        
+                        # Spezifische Fehlerbehandlung
+                        error_type = error_data.get('error')
+                        if error_type == 'invalid_grant':
+                            print(f"  - Code wurde bereits verwendet oder ist abgelaufen (normal)")
+                            # Bei invalid_grant: Code wurde bereits verwendet, aber das ist normal
+                            # wenn der User bereits erfolgreich eingeloggt ist
+                            # Wir behandeln das als normalen Fall, nicht als Fehler
+                            return None
+                        elif error_type == 'invalid_client':
+                            print(f"  - Client ID oder Secret falsch")
+                            raise ValueError("Microsoft OAuth Client-Konfiguration fehlerhaft")
+                        elif error_type == 'redirect_uri_mismatch':
+                            print(f"  - Redirect URI stimmt nicht überein")
+                            raise ValueError("Microsoft OAuth Redirect-URI stimmt nicht überein")
+                        else:
+                            print(f"  - Unbekannter Fehler: {error_type}")
+                            raise ValueError(f"Microsoft OAuth Fehler: {error_data.get('error_description', 'Unbekannter Fehler')}")
+                        
+                    except Exception as e:
+                        print(f"❌ Failed to parse error response: {e}")
+                        print(f"  - Raw response: {response_text}")
+                        raise e
     
     @staticmethod
     async def get_google_user_info(access_token: str) -> Optional[Dict[str, Any]]:
@@ -168,12 +209,23 @@ class OAuthService:
         userinfo_url = "https://graph.microsoft.com/v1.0/me"
         headers = {"Authorization": f"Bearer {access_token}"}
         
+        print(f"🔍 Microsoft User Info Debug:")
+        print(f"  - URL: {userinfo_url}")
+        print(f"  - Access Token: {access_token[:20]}...")
+        
         async with aiohttp.ClientSession() as session:
             async with session.get(userinfo_url, headers=headers) as response:
+                response_text = await response.text()
+                print(f"  - Response status: {response.status}")
+                print(f"  - Response body: {response_text[:200]}...")
+                
                 if response.status == 200:
-                    return await response.json()
+                    user_data = await response.json()
+                    print(f"  - User info erfolgreich abgerufen")
+                    return user_data
                 else:
-                    print(f"Microsoft userinfo failed: {response.status}")
+                    print(f"❌ Microsoft userinfo failed: {response.status}")
+                    print(f"  - Error response: {response_text}")
                     return None
     
     @staticmethod
@@ -185,9 +237,35 @@ class OAuthService:
     ) -> User:
         """Findet oder erstellt Benutzer basierend auf Social-Login"""
         
-        # Extrahiere E-Mail aus User-Info
-        email = user_info.get("email")
+        # Extrahiere E-Mail aus User-Info (unterschiedlich für verschiedene Provider)
+        email = None
+        
+        if auth_provider == AuthProvider.GOOGLE:
+            # Google gibt E-Mail direkt zurück
+            email = user_info.get("email")
+        elif auth_provider == AuthProvider.MICROSOFT:
+            # Microsoft Graph API gibt E-Mail in verschiedenen Feldern zurück
+            email = (
+                user_info.get("email") or  # Direktes email-Feld
+                user_info.get("mail") or   # Microsoft Graph mail-Feld
+                user_info.get("userPrincipalName") or  # UPN (enthält oft E-Mail)
+                user_info.get("upn")       # Alternative UPN-Schreibweise
+            )
+            
+            # Falls UPN eine E-Mail-Adresse ist, verwende sie
+            if email and "@" in email and not email.endswith(".onmicrosoft.com"):
+                pass  # E-Mail ist bereits korrekt
+            elif email and email.endswith(".onmicrosoft.com"):
+                # UPN ist eine Microsoft-Domain, versuche andere Felder
+                email = user_info.get("email") or user_info.get("mail")
+        
+        print(f"🔍 E-Mail-Extraktion für {auth_provider.value}:")
+        print(f"  - Verfügbare Felder: {list(user_info.keys())}")
+        print(f"  - Gefundene E-Mail: {email}")
+        
         if not email:
+            print(f"❌ Keine E-Mail-Adresse gefunden in User-Info:")
+            print(f"  - User-Info: {user_info}")
             raise ValueError("E-Mail-Adresse nicht in OAuth-Response gefunden")
         
         # Suche nach bestehendem Benutzer
