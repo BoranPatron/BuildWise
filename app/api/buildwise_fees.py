@@ -202,6 +202,36 @@ async def generate_invoice(
     background_tasks.add_task(generate_pdf_task)
     return {"message": "PDF-Rechnung wird im Hintergrund generiert"}
 
+@router.post("/{fee_id}/generate-gewerk-invoice")
+async def generate_gewerk_invoice(
+    fee_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Generiert eine PDF-Rechnung für eine Gebühr (nur Gewerk-Daten) 
+    und speichert sie automatisch als Dokument
+    """
+    try:
+        result = await BuildWiseFeeService.generate_gewerk_invoice_and_save_document(
+            db=db, 
+            fee_id=fee_id, 
+            current_user_id=current_user.id
+        )
+        
+        if result["success"]:
+            return {
+                "success": True,
+                "message": result["message"],
+                "document_id": result["document_id"],
+                "document_path": result["document_path"]
+            }
+        else:
+            raise HTTPException(status_code=400, detail=result["error"])
+            
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Fehler beim Generieren der Gewerk-Rechnung: {str(e)}")
+
 @router.get("/{fee_id}/download-invoice")
 async def download_invoice(
     fee_id: int,

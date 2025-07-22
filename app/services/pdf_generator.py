@@ -198,10 +198,10 @@ class BuildWisePDFGenerator:
             gross_amount = net_amount + tax_amount
             
             fee_calculation = [
-                ["Netto-Betrag:", self._format_currency(net_amount)],
+                ["Nettobetrag:", self._format_currency(net_amount)],
                 ["Steuersatz:", f"{tax_rate}%"],
                 ["Steuerbetrag:", self._format_currency(tax_amount)],
-                ["Brutto-Betrag:", self._format_currency(gross_amount)]
+                ["Bruttobetrag:", self._format_currency(gross_amount)]
             ]
             
             fee_table = Table(fee_calculation, colWidths=[4*cm, 8*cm])
@@ -210,38 +210,23 @@ class BuildWisePDFGenerator:
                 ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
                 ('FONTSIZE', (0, 0), (-1, -1), 10),
                 ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
-                ('BACKGROUND', (0, -1), (-1, -1), colors.lightgrey),
+                ('BACKGROUND', (0, 0), (0, -1), HexColor('#f0f0f0')),
             ]))
             story.append(fee_table)
             story.append(Spacer(1, 20))
             
-            # Zusätzliche Informationen
+            # Notizen
             if fee_data.get('notes'):
-                story.append(Paragraph("Zusätzliche Informationen", self.styles['SubHeader']))
-                story.append(Paragraph(fee_data['notes'], self.styles['CustomNormal']))
+                story.append(Paragraph("Notizen", self.styles['SubHeader']))
+                story.append(Paragraph(fee_data.get('notes'), self.styles['CustomNormal']))
                 story.append(Spacer(1, 20))
             
             # Footer
             story.append(Spacer(1, 30))
-            footer_text = """
-            <b>BuildWise GmbH</b><br/>
-            Musterstraße 123<br/>
-            12345 Musterstadt<br/>
-            Deutschland<br/><br/>
+            story.append(Paragraph("Vielen Dank für Ihr Vertrauen!", self.styles['CustomNormal']))
+            story.append(Paragraph("BuildWise GmbH", self.styles['Small']))
             
-            <b>Kontakt:</b><br/>
-            E-Mail: info@buildwise.de<br/>
-            Telefon: +49 123 456789<br/>
-            Website: www.buildwise.de<br/><br/>
-            
-            <b>Bankverbindung:</b><br/>
-            IBAN: DE12 3456 7890 1234 5678 90<br/>
-            BIC: DEUTDEDB123<br/>
-            Bank: Deutsche Bank AG
-            """
-            story.append(Paragraph(footer_text, self.styles['Small']))
-            
-            # Erstelle PDF
+            # Generiere PDF
             doc.build(story)
             return True
             
@@ -249,32 +234,185 @@ class BuildWisePDFGenerator:
             print(f"Fehler beim Generieren der PDF: {e}")
             return False
     
+    def generate_gewerk_invoice_pdf(
+        self,
+        fee_data: dict,
+        quote_data: dict,
+        cost_position_data: dict,
+        output_path: str
+    ) -> bool:
+        """
+        Generiert eine PDF-Rechnung für eine BuildWise-Gebühr (nur Gewerk-Daten)
+        
+        Args:
+            fee_data: Gebühren-Daten
+            quote_data: Angebot-Daten
+            cost_position_data: Kostenposition-Daten (Gewerk)
+            output_path: Ausgabepfad für die PDF
+            
+        Returns:
+            bool: True wenn erfolgreich, False sonst
+        """
+        
+        try:
+            # Erstelle Verzeichnis falls nicht vorhanden
+            os.makedirs(os.path.dirname(output_path), exist_ok=True)
+            
+            # Erstelle PDF-Dokument
+            doc = SimpleDocTemplate(
+                output_path,
+                pagesize=A4,
+                rightMargin=2*cm,
+                leftMargin=2*cm,
+                topMargin=2*cm,
+                bottomMargin=2*cm
+            )
+            
+            # Story für PDF-Inhalt
+            story = []
+            
+            # Header
+            story.append(Paragraph("BUILDWISE GMBH", self.styles['Header']))
+            story.append(Spacer(1, 20))
+            
+            # Rechnungsinformationen
+            invoice_info = [
+                ["Rechnungsnummer:", fee_data.get('invoice_number', f"BW-{fee_data['id']:06d}")],
+                ["Rechnungsdatum:", self._format_date(fee_data.get('invoice_date'))],
+                ["Fälligkeitsdatum:", self._format_date(fee_data.get('due_date'))],
+                ["Status:", self._get_status_label(fee_data.get('status', 'open'))]
+            ]
+            
+            invoice_table = Table(invoice_info, colWidths=[4*cm, 8*cm])
+            invoice_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ]))
+            story.append(invoice_table)
+            story.append(Spacer(1, 20))
+            
+            # Gewerk-Informationen (Kostenposition)
+            story.append(Paragraph("Gewerk-Details", self.styles['SubHeader']))
+            gewerk_info = [
+                ["Gewerk-Titel:", cost_position_data.get('title', 'N/A')],
+                ["Beschreibung:", cost_position_data.get('description', 'N/A')],
+                ["Gewerk-Betrag:", self._format_currency(cost_position_data.get('amount', 0))],
+                ["Gewerk-Kategorie:", cost_position_data.get('category', 'N/A')],
+                ["Gewerk-Status:", cost_position_data.get('status', 'N/A')],
+                ["Dienstleister:", cost_position_data.get('contractor_name', 'N/A')]
+            ]
+            
+            gewerk_table = Table(gewerk_info, colWidths=[4*cm, 8*cm])
+            gewerk_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                ('BACKGROUND', (0, 0), (0, -1), HexColor('#f8f9fa')),
+            ]))
+            story.append(gewerk_table)
+            story.append(Spacer(1, 20))
+            
+            # Angebot-Informationen
+            story.append(Paragraph("Angebot-Details", self.styles['SubHeader']))
+            quote_info = [
+                ["Angebot-ID:", str(quote_data.get('id', 'N/A'))],
+                ["Angebot-Titel:", quote_data.get('title', 'N/A')],
+                ["Angebotsbetrag:", self._format_currency(quote_data.get('total_amount', 0))],
+                ["Währung:", quote_data.get('currency', 'EUR')],
+                ["Gültig bis:", self._format_date(quote_data.get('valid_until'))],
+                ["Dienstleister:", quote_data.get('company_name', 'N/A')],
+                ["Kontakt:", quote_data.get('contact_person', 'N/A')],
+                ["E-Mail:", quote_data.get('email', 'N/A')],
+                ["Telefon:", quote_data.get('phone', 'N/A')]
+            ]
+            
+            quote_table = Table(quote_info, colWidths=[4*cm, 8*cm])
+            quote_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+            ]))
+            story.append(quote_table)
+            story.append(Spacer(1, 20))
+            
+            # BuildWise-Gebühren-Berechnung
+            story.append(Paragraph("BuildWise-Gebühren-Berechnung", self.styles['SubHeader']))
+            
+            # Berechne Steuer
+            net_amount = fee_data.get('fee_amount', 0)
+            tax_rate = fee_data.get('tax_rate', 19.0)
+            tax_amount = net_amount * (tax_rate / 100)
+            gross_amount = net_amount + tax_amount
+            
+            fee_calculation = [
+                ["Gewerk-Betrag:", self._format_currency(cost_position_data.get('amount', 0))],
+                ["BuildWise-Gebühr (%):", f"{fee_data.get('fee_percentage', 0)}%"],
+                ["BuildWise-Gebühr (€):", self._format_currency(net_amount)],
+                ["Steuersatz:", f"{tax_rate}%"],
+                ["Steuerbetrag:", self._format_currency(tax_amount)],
+                ["Bruttobetrag:", self._format_currency(gross_amount)]
+            ]
+            
+            fee_table = Table(fee_calculation, colWidths=[4*cm, 8*cm])
+            fee_table.setStyle(TableStyle([
+                ('ALIGN', (0, 0), (-1, -1), 'LEFT'),
+                ('FONTNAME', (0, 0), (0, -1), 'Helvetica-Bold'),
+                ('FONTSIZE', (0, 0), (-1, -1), 10),
+                ('BOTTOMPADDING', (0, 0), (-1, -1), 6),
+                ('BACKGROUND', (0, 0), (0, -1), HexColor('#fff3cd')),
+                ('GRID', (0, 0), (-1, -1), 1, HexColor('#dee2e6')),
+            ]))
+            story.append(fee_table)
+            story.append(Spacer(1, 20))
+            
+            # Notizen
+            if fee_data.get('notes'):
+                story.append(Paragraph("Notizen", self.styles['SubHeader']))
+                story.append(Paragraph(fee_data.get('notes'), self.styles['CustomNormal']))
+                story.append(Spacer(1, 20))
+            
+            # Footer
+            story.append(Spacer(1, 30))
+            story.append(Paragraph("Vielen Dank für Ihr Vertrauen!", self.styles['CustomNormal']))
+            story.append(Paragraph("BuildWise GmbH", self.styles['Small']))
+            
+            # Generiere PDF
+            doc.build(story)
+            return True
+            
+        except Exception as e:
+            print(f"Fehler beim Generieren der Gewerk-PDF: {e}")
+            return False
+
     def _format_date(self, date_string: Optional[str]) -> str:
-        """Formatiert ein Datum"""
+        """Formatiert ein Datum für die Anzeige"""
         if not date_string:
-            return "N/A"
+            return datetime.now().strftime("%d.%m.%Y")
+        
         try:
             if isinstance(date_string, str):
-                date_obj = datetime.strptime(date_string, "%Y-%m-%d").date()
+                # Parse ISO-Format
+                dt = datetime.fromisoformat(date_string.replace('Z', '+00:00'))
+                return dt.strftime("%d.%m.%Y")
             else:
-                date_obj = date_string
-            return date_obj.strftime("%d.%m.%Y")
+                return date_string.strftime("%d.%m.%Y")
         except:
-            return "N/A"
+            return datetime.now().strftime("%d.%m.%Y")
     
     def _format_currency(self, amount: float) -> str:
         """Formatiert einen Betrag als Währung"""
-        try:
-            return f"{amount:,.2f} €"
-        except:
-            return "0,00 €"
+        return f"{amount:,.2f} €"
     
     def _get_status_label(self, status: str) -> str:
-        """Gibt den deutschen Status-Label zurück"""
+        """Gibt das Label für einen Status zurück"""
         status_labels = {
             'open': 'Offen',
             'paid': 'Bezahlt',
             'overdue': 'Überfällig',
             'cancelled': 'Storniert'
         }
-        return status_labels.get(status, status) 
+        return status_labels.get(status, status.capitalize()) 

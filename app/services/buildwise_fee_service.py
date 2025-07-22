@@ -436,6 +436,153 @@ class BuildWiseFeeService:
             return False
     
     @staticmethod
+    async def generate_gewerk_invoice_and_save_document(
+        db: AsyncSession, 
+        fee_id: int, 
+        current_user_id: int
+    ) -> dict:
+        """
+        Generiert eine PDF-Rechnung für eine Gebühr (nur Gewerk-Daten) 
+        und speichert sie automatisch als Dokument.
+        
+        Args:
+            db: Datenbank-Session
+            fee_id: ID der BuildWise-Gebühr
+            current_user_id: ID des aktuellen Benutzers
+            
+        Returns:
+            dict: Ergebnis mit Erfolg/Fehler und Dokument-ID
+        """
+        
+        from app.models.document import Document, DocumentType
+        import shutil
+        
+        query = select(BuildWiseFee).where(BuildWiseFee.id == fee_id)
+        result = await db.execute(query)
+        fee = result.scalar_one_or_none()
+        
+        if not fee:
+            return {"success": False, "error": "Gebühr nicht gefunden"}
+        
+        try:
+            # Hole alle notwendigen Daten
+            # Angebot
+            quote_query = select(Quote).where(Quote.id == fee.quote_id)
+            quote_result = await db.execute(quote_query)
+            quote = quote_result.scalar_one_or_none()
+            
+            # Kostenposition (Gewerk)
+            cost_position_query = select(CostPosition).where(CostPosition.id == fee.cost_position_id)
+            cost_position_result = await db.execute(cost_position_query)
+            cost_position = cost_position_result.scalar_one_or_none()
+            
+            if not quote or not cost_position:
+                return {"success": False, "error": "Angebot oder Kostenposition nicht gefunden"}
+            
+            # Erstelle PDF-Generator
+            pdf_generator = BuildWisePDFGenerator()
+            
+            # Erstelle Ausgabepfad für PDF
+            invoices_dir = "storage/invoices"
+            os.makedirs(invoices_dir, exist_ok=True)
+            pdf_output_path = f"{invoices_dir}/buildwise_gewerk_invoice_{fee_id}.pdf"
+            
+            # Konvertiere SQLAlchemy-Objekte zu Dictionaries
+            fee_data = {
+                'id': fee.id,
+                'invoice_number': fee.invoice_number or f"BW-{fee.id:06d}",
+                'invoice_date': fee.invoice_date or datetime.utcnow(),
+                'due_date': fee.due_date,
+                'status': fee.status,
+                'fee_amount': float(fee.fee_amount),
+                'fee_percentage': float(fee.fee_percentage),
+                'tax_rate': float(fee.tax_rate),
+                'notes': fee.notes
+            }
+            
+            quote_data = {
+                'id': quote.id,
+                'title': quote.title,
+                'total_amount': float(quote.total_amount),
+                'currency': quote.currency,
+                'valid_until': quote.valid_until,
+                'company_name': quote.company_name,
+                'contact_person': quote.contact_person,
+                'email': quote.email,
+                'phone': quote.phone
+            }
+            
+            cost_position_data = {
+                'title': cost_position.title,
+                'description': cost_position.description,
+                'amount': float(cost_position.amount),
+                'category': cost_position.category,
+                'status': cost_position.status,
+                'contractor_name': cost_position.contractor_name
+            }
+            
+            # Generiere PDF (nur Gewerk-Daten)
+            success = pdf_generator.generate_gewerk_invoice_pdf(
+                fee_data=fee_data,
+                quote_data=quote_data,
+                cost_position_data=cost_position_data,
+                output_path=pdf_output_path
+            )
+            
+            if not success:
+                return {"success": False, "error": "PDF-Generierung fehlgeschlagen"}
+            
+            # Erstelle Dokument-Verzeichnis
+            documents_dir = f"storage/uploads/project_{fee.project_id}"
+            os.makedirs(documents_dir, exist_ok=True)
+            
+            # Kopiere PDF in Dokument-Verzeichnis
+            document_filename = f"buildwise_gewerk_invoice_{fee_id}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
+            document_path = f"{documents_dir}/{document_filename}"
+            shutil.copy2(pdf_output_path, document_path)
+            
+            # Hole Dateigröße
+            file_size = os.path.getsize(document_path)
+            
+            # Erstelle Dokument-Eintrag in der Datenbank
+            document = Document(
+                project_id=fee.project_id,
+                uploaded_by=current_user_id,
+                title=f"BuildWise Rechnung - {cost_position.title}",
+                description=f"BuildWise-Gebühren-Rechnung für Gewerk: {cost_position.title}. Gebühr: {fee.fee_percentage}% = {fee.fee_amount} EUR",
+                document_type=DocumentType.INVOICE,
+                file_name=document_filename,
+                file_path=document_path,
+                file_size=file_size,
+                mime_type="application/pdf",
+                category="BuildWise Gebühren",
+                tags="buildwise,gebühren,rechnung,gewerk",
+                is_public=False,
+                is_encrypted=False
+            )
+            
+            db.add(document)
+            await db.commit()
+            await db.refresh(document)
+            
+            # Aktualisiere BuildWise-Gebühr
+            fee.invoice_pdf_generated = True
+            fee.invoice_pdf_path = pdf_output_path
+            await db.commit()
+            
+            return {
+                "success": True,
+                "document_id": document.id,
+                "document_path": document_path,
+                "pdf_path": pdf_output_path,
+                "message": f"PDF-Rechnung erfolgreich generiert und als Dokument gespeichert (ID: {document.id})"
+            }
+                
+        except Exception as e:
+            print(f"Fehler beim Generieren der Gewerk-PDF und Speichern als Dokument: {e}")
+            return {"success": False, "error": f"Fehler: {str(e)}"}
+    
+    @staticmethod
     async def delete_fee(db: AsyncSession, fee_id: int) -> bool:
         """Löscht eine BuildWise-Gebühr."""
         
