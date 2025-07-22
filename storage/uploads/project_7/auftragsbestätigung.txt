@@ -1,7 +1,7 @@
 
 # AUFTRAGSBESTÄTIGUNG
 
-**Auftragsnummer:** AB-7-2-2-1753194875303  
+**Auftragsnummer:** AB-7-2-2-1753196025638  
 **Datum:** 22.7.2025  
 **Status:** Verbindlich angenommen
 
@@ -18,10 +18,10 @@
 
 ## 2. GEWERKSAUSSCHREIBUNG
 
-**Gewerk:** Sauna Einbau und Montage TEST2  
-**Kategorie:** sanitaer  
+**Gewerk:** Elektroinstallation EG  
+**Kategorie:** Elektroinstallation  
 **Beschreibung:** undefined  
-**Geplantes Datum:** 27.7.2025  
+**Geplantes Datum:** 31.7.2025  
 **Priorität:** medium  
 **Status:** planned
 
@@ -49,15 +49,15 @@ Standard-Umweltanforderungen
 **Status:** submitted
 
 ### Kostenaufschlüsselung:
-- **Gesamtbetrag:** 20.000,00 €
+- **Gesamtbetrag:** 10.000,00 CHF
 - **Arbeitskosten:** Nicht angegeben
 - **Materialkosten:** Nicht angegeben
 - **Gemeinkosten:** Nicht angegeben
 
 ### Zeitplan:
-- **Geschätzte Dauer:** 23 Tage
-- **Startdatum:** 24.7.2025
-- **Fertigstellungsdatum:** 29.8.2025
+- **Geschätzte Dauer:** 9 Tage
+- **Startdatum:** 23.7.2025
+- **Fertigstellungsdatum:** 5.8.2025
 
 ### Bedingungen:
 - **Zahlungsbedingungen:** Standard
@@ -68,7 +68,7 @@ Standard-Umweltanforderungen
 
 ## 4. DIENSTLEISTER
 
-**Firma:** Boran GmBh  
+**Firma:** BaccoGMBH  
 **Ansprechpartner:** Banause Boran  
 **Telefon:** Nicht angegeben  
 **E-Mail:** BanauseBoran@lotterlifeGmbH.de  
@@ -118,7 +118,7 @@ Diese Auftragsbestätigung stellt eine verbindliche Vereinbarung zwischen dem Ba
 
 **Erstellt am:** 22.7.2025  
 **Erstellt von:** BuildWise System  
-**Dokument-ID:** AB-7-2-2-1753194875303
+**Dokument-ID:** AB-7-2-2-1753196025638
 
 ---
 

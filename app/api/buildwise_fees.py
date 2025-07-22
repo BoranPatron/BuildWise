@@ -54,7 +54,7 @@ async def test_buildwise_fees_endpoint():
         "timestamp": "2024-01-01T00:00:00Z"
     }
 
-@router.get("/", response_model=List[BuildWiseFee])
+@router.get("/")
 async def get_buildwise_fees(
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000),
