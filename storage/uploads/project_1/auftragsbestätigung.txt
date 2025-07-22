@@ -1,8 +1,8 @@
 
 # AUFTRAGSBESTÄTIGUNG
 
-**Auftragsnummer:** AB-1-1-1-1752938587278  
-**Datum:** 19.7.2025  
+**Auftragsnummer:** AB-1-1-1-1752992245950  
+**Datum:** 20.7.2025  
 **Status:** Verbindlich angenommen
 
 ---
@@ -18,11 +18,11 @@
 
 ## 2. GEWERKSAUSSCHREIBUNG
 
-**Gewerk:** Sauna Einbau und Montage  
-**Kategorie:** sanitaer  
+**Gewerk:** Elektroinstallation EG  
+**Kategorie:** Elektroinstallation  
 **Beschreibung:** undefined  
-**Geplantes Datum:** 31.7.2025  
-**Priorität:** medium  
+**Geplantes Datum:** 30.7.2025  
+**Priorität:** low  
 **Status:** planned
 
 ### Technische Spezifikationen:
@@ -44,7 +44,7 @@ Standard-Umweltanforderungen
 ## 3. KOSTENVORANSCHLAG
 
 **Angebotsnummer:** 1  
-**Angebotsdatum:** 19.7.2025  
+**Angebotsdatum:** 20.7.2025  
 **Gültig bis:** -  
 **Status:** submitted
 
@@ -55,9 +55,9 @@ Standard-Umweltanforderungen
 - **Gemeinkosten:** Nicht angegeben
 
 ### Zeitplan:
-- **Geschätzte Dauer:** 12 Tage
-- **Startdatum:** 31.7.2025
-- **Fertigstellungsdatum:** 10.8.2025
+- **Geschätzte Dauer:** 13 Tage
+- **Startdatum:** 1.7.2025
+- **Fertigstellungsdatum:** 8.8.2025
 
 ### Bedingungen:
 - **Zahlungsbedingungen:** 50_50
@@ -78,8 +78,8 @@ Standard-Umweltanforderungen
 
 ## 5. VERBINDLICHE VEREINBARUNG
 
-**Annahmedatum:** 19.7.2025  
-**Angenommen von:** System Administrator  
+**Annahmedatum:** 20.7.2025  
+**Angenommen von:** Admin BuildWise  
 **Benutzer-ID:** 1
 
 ### Wichtige Hinweise:
@@ -116,9 +116,9 @@ Keine KI-Empfehlung verfügbar
 
 Diese Auftragsbestätigung stellt eine verbindliche Vereinbarung zwischen dem Bauträger und dem Dienstleister dar. Alle rechtlichen Bestimmungen des deutschen Bauvertragsrechts (VOB/B) gelten entsprechend.
 
-**Erstellt am:** 19.7.2025  
+**Erstellt am:** 20.7.2025  
 **Erstellt von:** BuildWise System  
-**Dokument-ID:** AB-1-1-1-1752938587278
+**Dokument-ID:** AB-1-1-1-1752992245950
 
 ---
 

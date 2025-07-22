@@ -10,24 +10,43 @@ from ..schemas.milestone import MilestoneCreate, MilestoneUpdate
 
 
 async def create_milestone(db: AsyncSession, milestone_in: MilestoneCreate, created_by: int) -> Milestone:
-    milestone = Milestone(
-        project_id=milestone_in.project_id,
-        created_by=created_by,
-        title=milestone_in.title,
-        description=milestone_in.description,
-        status=milestone_in.status,
-        priority=milestone_in.priority,
-        category=milestone_in.category,
-        planned_date=milestone_in.planned_date,
-        start_date=milestone_in.start_date,
-        end_date=milestone_in.end_date,
-        budget=milestone_in.budget,
-        actual_costs=milestone_in.actual_costs,
-        contractor=milestone_in.contractor,
-        is_critical=milestone_in.is_critical,
-        notify_on_completion=milestone_in.notify_on_completion,
-        notes=milestone_in.notes
+    """Erstellt ein neues Gewerk mit automatischer Bauphasen-Zuordnung"""
+    from ..models import Project
+    
+    # Hole das Projekt, um die aktuelle Bauphase zu ermitteln
+    project_result = await db.execute(
+        select(Project).where(Project.id == milestone_in.project_id)
     )
+    project = project_result.scalar_one_or_none()
+    
+    # Erstelle das Gewerk
+    milestone_data = {
+        'project_id': milestone_in.project_id,
+        'created_by': created_by,
+        'title': milestone_in.title,
+        'description': milestone_in.description,
+        'status': milestone_in.status,
+        'priority': milestone_in.priority,
+        'category': milestone_in.category,
+        'planned_date': milestone_in.planned_date,
+        'start_date': milestone_in.start_date,
+        'end_date': milestone_in.end_date,
+        'budget': milestone_in.budget,
+        'actual_costs': milestone_in.actual_costs,
+        'contractor': milestone_in.contractor,
+        'is_critical': milestone_in.is_critical,
+        'notify_on_completion': milestone_in.notify_on_completion,
+        'notes': milestone_in.notes
+    }
+    
+    # Setze automatisch die aktuelle Bauphase des Projekts
+    if project and project.construction_phase:
+        milestone_data['construction_phase'] = project.construction_phase
+        print(f"🏗️ Gewerk erstellt mit Bauphase: {project.construction_phase}")
+    else:
+        print(f"⚠️ Projekt hat keine Bauphase gesetzt")
+    
+    milestone = Milestone(**milestone_data)
     db.add(milestone)
     await db.commit()
     await db.refresh(milestone)
@@ -210,4 +229,66 @@ async def get_all_active_milestones(db: AsyncSession) -> list:
     logging.warning(f"[SERVICE] Session {session_id}: get_all_active_milestones: {len(milestones)} gefunden.")
     for m in milestones:
         logging.warning(f"[SERVICE] Session {session_id}: Milestone: id={m.id}, title={m.title}, status={m.status}, project_id={m.project_id}")
-    return milestones 
+    return milestones
+
+
+async def get_milestones_by_construction_phase(db: AsyncSession, project_id: int, construction_phase: str) -> List[Milestone]:
+    """Holt Gewerke nach Bauphase"""
+    result = await db.execute(
+        select(Milestone)
+        .where(
+            Milestone.project_id == project_id,
+            Milestone.construction_phase == construction_phase
+        )
+        .order_by(Milestone.planned_date)
+    )
+    return list(result.scalars().all())
+
+
+async def get_milestone_statistics_by_phase(db: AsyncSession, project_id: int) -> dict:
+    """Holt Statistiken für Gewerke nach Bauphasen"""
+    # Gesamtanzahl pro Bauphase
+    phase_distribution_result = await db.execute(
+        select(
+            Milestone.construction_phase,
+            func.count(Milestone.id).label('count'),
+            func.sum(Milestone.budget).label('total_budget'),
+            func.sum(Milestone.actual_costs).label('total_costs'),
+            func.avg(Milestone.progress_percentage).label('avg_progress')
+        )
+        .where(Milestone.project_id == project_id)
+        .group_by(Milestone.construction_phase)
+    )
+    
+    phase_distribution = {}
+    for row in phase_distribution_result.all():
+        phase = row.construction_phase or 'Keine Phase'
+        phase_distribution[phase] = {
+            'count': row.count,
+            'total_budget': float(row.total_budget or 0),
+            'total_costs': float(row.total_costs or 0),
+            'avg_progress': round(float(row.avg_progress or 0), 1),
+            'budget_variance': float((row.total_budget or 0) - (row.total_costs or 0))
+        }
+    
+    # Gesamtstatistiken
+    total_stats_result = await db.execute(
+        select(
+            func.count(Milestone.id).label('total_count'),
+            func.sum(Milestone.budget).label('total_budget'),
+            func.sum(Milestone.actual_costs).label('total_costs'),
+            func.avg(Milestone.progress_percentage).label('avg_progress')
+        )
+        .where(Milestone.project_id == project_id)
+    )
+    
+    total_stats = total_stats_result.scalar_one()
+    
+    return {
+        "phase_distribution": phase_distribution,
+        "total_count": total_stats.total_count,
+        "total_budget": float(total_stats.total_budget or 0),
+        "total_costs": float(total_stats.total_costs or 0),
+        "avg_progress": round(float(total_stats.avg_progress or 0), 1),
+        "total_budget_variance": float((total_stats.total_budget or 0) - (total_stats.total_costs or 0))
+    } 

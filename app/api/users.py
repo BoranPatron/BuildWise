@@ -1,13 +1,15 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
-from datetime import datetime
 
 from ..core.database import get_db
 from ..schemas.user import UserRead, UserUpdate, UserProfile
 from ..api.deps import get_current_user
-from ..models import User, UserType, UserStatus
-from ..services.user_service import UserService
+from ..models import User, UserType
+from ..services.user_service import (
+    get_user_by_id, update_user, get_service_providers, 
+    search_users, deactivate_user
+)
 
 router = APIRouter(prefix="/users", tags=["users"])
 
@@ -26,7 +28,7 @@ async def update_users_me(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    updated_user = await UserService.update_user(db, current_user.id, user_update)
+    updated_user = await update_user(db, current_user.id, user_update)
     if not updated_user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -41,7 +43,7 @@ async def get_user_profile(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    user = await UserService.get_user_by_id(db, user_id)
+    user = await get_user_by_id(db, user_id)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -57,10 +59,7 @@ async def get_service_providers_list(
     db: AsyncSession = Depends(get_db)
 ):
     """Holt alle verifizierten Dienstleister"""
-    providers = await UserService.get_users_by_type(db, UserType.SERVICE_PROVIDER)
-    # Filtere nach Region falls angegeben
-    if region:
-        providers = [p for p in providers if p.region and region.lower() in p.region.lower()]
+    providers = await get_service_providers(db, region)
     return providers
 
 
@@ -78,22 +77,8 @@ async def search_users_endpoint(
             detail="Suchbegriff muss mindestens 2 Zeichen lang sein"
         )
     
-    # Einfache Suche - erweitere dies nach Bedarf
-    all_users = await UserService.get_active_users(db)
-    filtered_users = []
-    
-    for user in all_users:
-        # Suche in Namen, E-Mail und Firmenname
-        search_fields = [
-            user.first_name, user.last_name, user.email,
-            user.company_name, user.bio, user.region
-        ]
-        
-        if any(q.lower() in str(field).lower() for field in search_fields if field):
-            if user_type is None or user.user_type == user_type:
-                filtered_users.append(user)
-    
-    return filtered_users
+    users = await search_users(db, q, user_type)
+    return users
 
 
 @router.delete("/me", status_code=status.HTTP_204_NO_CONTENT)
@@ -102,10 +87,10 @@ async def deactivate_users_me(
     db: AsyncSession = Depends(get_db)
 ):
     """Deaktiviert das eigene Benutzerkonto"""
-    # Aktualisiere Benutzer-Status
-    current_user.is_active = False
-    current_user.status = UserStatus.INACTIVE
-    current_user.updated_at = datetime.utcnow()
-    await db.commit()
-    
+    success = await deactivate_user(db, current_user.id)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Benutzer nicht gefunden"
+        )
     return None

@@ -2,9 +2,7 @@ import time
 import asyncio
 from typing import Dict, Optional, Tuple
 from collections import defaultdict
-from .config import get_settings
-
-settings = get_settings()
+from .config import settings
 
 class RateLimiter:
     """In-memory rate limiter for API protection."""

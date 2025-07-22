@@ -12,9 +12,7 @@ except ImportError:
     Redis = None
     ConnectionPool = None
 
-from .config import get_settings
-
-settings = get_settings()
+from .config import settings
 
 class CacheService:
     """Redis-based cache service for high performance."""

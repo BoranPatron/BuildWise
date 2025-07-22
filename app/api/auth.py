@@ -1,19 +1,26 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Optional
+from pydantic import BaseModel
 
 from ..core.database import get_db
 from ..core.security import create_access_token
 from ..api.deps import get_current_user
-from ..schemas.user import (
-    UserCreate, UserRead, UserLogin, PasswordReset, PasswordChange, 
-    EmailVerification, ConsentUpdate
-)
-from ..services.user_service import UserService
+from ..schemas.user import UserCreate, UserRead, UserLogin, PasswordReset, PasswordChange
+from ..services.user_service import authenticate_user, create_user, get_user_by_email, change_password
 from ..services.security_service import SecurityService
+from ..services.oauth_service import OAuthService
 from ..models.audit_log import AuditAction
+from ..models.user import AuthProvider
 
 router = APIRouter(prefix="/auth", tags=["auth"])
+
+
+class OAuthCallbackRequest(BaseModel):
+    code: str
+    state: str | None = None
+    error: str | None = None
 
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
@@ -22,15 +29,22 @@ async def register(
     db: AsyncSession = Depends(get_db),
     request: Request = None
 ):
-    """Erweiterte Benutzerregistrierung mit DSGVO-Konformität"""
+    # Prüfe ob Benutzer bereits existiert
+    existing_user = await get_user_by_email(db, user_in.email)
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Ein Benutzer mit dieser E-Mail-Adresse existiert bereits"
+        )
+    
     try:
-        user = await UserService.create_user(db, user_in)
+        user = await create_user(db, user_in)
         
         # Audit-Log für Registrierung
         ip_address = request.client.host if request else None
         await SecurityService.create_audit_log(
             db, user.id, AuditAction.USER_REGISTER,
-            f"Neuer Benutzer registriert: {user.email} (Typ: {user.user_type}, Plan: {user.subscription_plan})",
+            f"Neuer Benutzer registriert: {user.email}",
             resource_type="user", resource_id=user.id,
             ip_address=SecurityService.anonymize_ip_address(ip_address) if ip_address else None,
             processing_purpose="Benutzerregistrierung",
@@ -51,11 +65,10 @@ async def login(
     db: AsyncSession = Depends(get_db),
     request: Request = None
 ):
-    """Erweiterte Anmeldung mit Rollen- und Subscription-Informationen"""
     # IP-Adresse für Audit-Log
     ip_address = request.client.host if request else None
     
-    user = await UserService.authenticate_user(db, form_data.username, form_data.password, ip_address)
+    user = await authenticate_user(db, form_data.username, form_data.password, ip_address)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED, 
@@ -69,38 +82,14 @@ async def login(
             detail="Benutzerkonto ist deaktiviert"
         )
     
-    # Prüfe E-Mail-Verifizierung (Bypass für Admin)
-    if not user.email_verified and user.email != "admin@buildwise.de":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="E-Mail-Adresse muss zuerst verifiziert werden"
-        )
-    
-    # Prüfe DSGVO-Einwilligungen (Bypass für Admin)
-    if not user.data_processing_consent and user.email != "admin@buildwise.de":
+    # Prüfe DSGVO-Einwilligungen
+    if not user.data_processing_consent:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Einwilligung zur Datenverarbeitung erforderlich"
         )
     
-    # Prüfe Subscription-Status (Bypass für Admin)
-    if not user.subscription_active and user.email != "admin@buildwise.de":
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Subscription ist nicht aktiv"
-        )
-    
     token = create_access_token({"sub": user.email})
-    
-    # Audit-Log für erfolgreiche Anmeldung
-    await SecurityService.create_audit_log(
-        db, user.id, AuditAction.USER_LOGIN,
-        f"Erfolgreiche Anmeldung: {user.email}",
-        resource_type="user", resource_id=user.id,
-        ip_address=SecurityService.anonymize_ip_address(ip_address) if ip_address else None,
-        risk_level="low"
-    )
-    
     return {
         "access_token": token, 
         "token_type": "bearer",
@@ -110,9 +99,7 @@ async def login(
             "first_name": user.first_name,
             "last_name": user.last_name,
             "user_type": user.user_type,
-            "subscription_plan": user.subscription_plan,
-            "roles": user.roles,
-            "permissions": user.permissions,
+            "auth_provider": user.auth_provider.value,
             "consents": {
                 "data_processing": user.data_processing_consent,
                 "marketing": user.marketing_consent,
@@ -123,60 +110,197 @@ async def login(
     }
 
 
-@router.post("/verify-email/{token}")
-async def verify_email(
-    token: str, 
+# Social-Login Endpunkte
+
+@router.get("/oauth/{provider}/url")
+async def get_oauth_url(
+    provider: str,
+    state: Optional[str] = None
+):
+    """Generiert OAuth-URL für den angegebenen Provider"""
+    try:
+        url = await OAuthService.get_oauth_url(provider, state)
+        return {"oauth_url": url, "provider": provider}
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.post("/oauth/{provider}/callback")
+async def oauth_callback(
+    provider: str,
+    body: OAuthCallbackRequest,
     db: AsyncSession = Depends(get_db),
     request: Request = None
 ):
-    """Verifiziert die E-Mail-Adresse eines Benutzers"""
-    success = await UserService.verify_email(db, token)
+    code = body.code
+    state = body.state
+    error = body.error
+    """Verarbeitet OAuth-Callback und erstellt/verknüpft Benutzer"""
     
-    if not success:
+    if error:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Ungültiger oder abgelaufener Verifizierungs-Token"
+            detail=f"OAuth-Fehler: {error}"
         )
     
-    # Audit-Log für E-Mail-Verifizierung
     ip_address = request.client.host if request else None
-    await SecurityService.create_audit_log(
-        db, None, AuditAction.USER_UPDATE,
-        f"E-Mail-Verifizierung erfolgreich mit Token: {token[:10]}...",
-        ip_address=SecurityService.anonymize_ip_address(ip_address) if ip_address else None,
-        processing_purpose="E-Mail-Verifizierung",
-        legal_basis="Vertragserfüllung"
-    )
     
-    return {"message": "E-Mail erfolgreich verifiziert"}
+    try:
+        # Authorization Code gegen Token tauschen
+        token_data = await OAuthService.exchange_code_for_token(provider, code)
+        if not token_data:
+            # Bei invalid_grant: Code wurde bereits verwendet, aber das ist normal
+            # wenn der User bereits erfolgreich eingeloggt ist
+            # Wir geben eine spezifischere Fehlermeldung
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="OAuth-Code bereits verwendet - bitte versuchen Sie es erneut"
+            )
+        
+        # Benutzerinformationen abrufen
+        if provider == "google":
+            user_info = await OAuthService.get_google_user_info(token_data.get("access_token"))
+            auth_provider = AuthProvider.GOOGLE
+        elif provider == "microsoft":
+            user_info = await OAuthService.get_microsoft_user_info(token_data.get("access_token"))
+            auth_provider = AuthProvider.MICROSOFT
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unbekannter Provider: {provider}"
+            )
+        
+        if not user_info:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Benutzerinformationen konnten nicht abgerufen werden"
+            )
+        
+        # Benutzer finden oder erstellen
+        user = await OAuthService.find_or_create_user_by_social_login(
+            db, auth_provider, user_info, ip_address
+        )
+        
+        # Prüfe ob Benutzer aktiv ist
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Benutzerkonto ist deaktiviert"
+            )
+        
+        # Audit-Log für Social-Login
+        await SecurityService.create_audit_log(
+            db, user.id, AuditAction.USER_LOGIN,
+            f"Social-Login über {provider}: {user.email}",
+            resource_type="user", resource_id=user.id,
+            ip_address=SecurityService.anonymize_ip_address(ip_address) if ip_address else None,
+            processing_purpose="Authentifizierung über Social-Login",
+            legal_basis="Einwilligung"
+        )
+        
+        # JWT Token erstellen
+        token = create_access_token({"sub": user.email})
+        
+        return {
+            "access_token": token,
+            "token_type": "bearer",
+            "user": {
+                "id": user.id,
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "user_type": user.user_type,
+                "auth_provider": user.auth_provider.value,
+                "consents": {
+                    "data_processing": user.data_processing_consent,
+                    "marketing": user.marketing_consent,
+                    "privacy_policy": user.privacy_policy_accepted,
+                    "terms": user.terms_accepted
+                }
+            }
+        }
+        
+    except HTTPException:
+        # Re-raise HTTPExceptions
+        raise
+    except Exception as e:
+        print(f"❌ OAuth-Callback Fehler: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Social-Login fehlgeschlagen: {str(e)}"
+        )
 
 
-@router.post("/resend-verification")
-async def resend_verification_email(
-    email: str,
+@router.post("/link-social-account/{provider}")
+async def link_social_account(
+    provider: str,
+    code: str,
+    current_user = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
     request: Request = None
 ):
-    """Sendet Verifizierungs-E-Mail erneut"""
-    success = await UserService.resend_verification_email(db, email)
+    """Verknüpft Social-Login mit existierendem Benutzerkonto"""
     
-    if not success:
+    ip_address = request.client.host if request else None
+    
+    try:
+        # Token tauschen und Benutzerinformationen abrufen
+        token_data = await OAuthService.exchange_code_for_token(provider, code)
+        if not token_data:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Token-Austausch fehlgeschlagen"
+            )
+        
+        # Benutzerinformationen abrufen
+        if provider == "google":
+            user_info = await OAuthService.get_google_user_info(token_data.get("access_token"))
+            auth_provider = AuthProvider.GOOGLE
+        elif provider == "microsoft":
+            user_info = await OAuthService.get_microsoft_user_info(token_data.get("access_token"))
+            auth_provider = AuthProvider.MICROSOFT
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unbekannter Provider: {provider}"
+            )
+        
+        if not user_info:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Benutzerinformationen konnten nicht abgerufen werden"
+            )
+        
+        # Prüfe ob E-Mail-Adresse übereinstimmt
+        if user_info.get("email") != current_user.email:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="E-Mail-Adresse muss mit dem aktuellen Konto übereinstimmen"
+            )
+        
+        # Social-Account verknüpfen
+        await OAuthService._link_social_account(db, current_user, auth_provider, user_info)
+        
+        # Audit-Log
+        await SecurityService.create_audit_log(
+            db, current_user.id, AuditAction.USER_UPDATE,
+            f"Social-Account {provider} verknüpft: {current_user.email}",
+            resource_type="user", resource_id=current_user.id,
+            ip_address=SecurityService.anonymize_ip_address(ip_address) if ip_address else None,
+            processing_purpose="Verknüpfung Social-Login",
+            legal_basis="Einwilligung"
+        )
+        
+        return {"message": f"{provider.capitalize()}-Account erfolgreich verknüpft"}
+        
+    except Exception as e:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="E-Mail-Adresse nicht gefunden oder bereits verifiziert"
+            detail=f"Verknüpfung fehlgeschlagen: {str(e)}"
         )
-    
-    # Audit-Log für E-Mail-Neuversand
-    ip_address = request.client.host if request else None
-    await SecurityService.create_audit_log(
-        db, None, AuditAction.USER_UPDATE,
-        f"Verifizierungs-E-Mail erneut gesendet an: {email}",
-        ip_address=SecurityService.anonymize_ip_address(ip_address) if ip_address else None,
-        processing_purpose="E-Mail-Verifizierung",
-        legal_basis="Vertragserfüllung"
-    )
-    
-    return {"message": "Verifizierungs-E-Mail wurde erneut gesendet"}
 
 
 @router.post("/password-reset")
@@ -186,54 +310,23 @@ async def request_password_reset(
     request: Request = None
 ):
     """Anfrage für Passwort-Reset (sendet E-Mail)"""
-    success = await UserService.request_password_reset(db, password_reset.email)
+    user = await get_user_by_email(db, password_reset.email)
+    if user:
+        # TODO: Implementiere E-Mail-Versand für Passwort-Reset
+        pass
     
     # Audit-Log für Passwort-Reset-Anfrage
     ip_address = request.client.host if request else None
     await SecurityService.create_audit_log(
-        db, None, AuditAction.PASSWORD_RESET,
+        db, user.id if user else None, AuditAction.PASSWORD_RESET,
         f"Passwort-Reset angefordert für: {password_reset.email}",
-        resource_type="user", resource_id=None,
+        resource_type="user", resource_id=user.id if user else None,
         ip_address=SecurityService.anonymize_ip_address(ip_address) if ip_address else None,
         risk_level="medium"
     )
     
     # Immer Erfolg zurückgeben (Sicherheit)
     return {"message": "Wenn die E-Mail-Adresse existiert, wurde eine Reset-E-Mail gesendet"}
-
-
-@router.post("/password-reset/{token}")
-async def reset_password_with_token(
-    token: str,
-    new_password: str,
-    db: AsyncSession = Depends(get_db),
-    request: Request = None
-):
-    """Setzt Passwort mit Token zurück"""
-    try:
-        success = await UserService.reset_password_with_token(db, token, new_password)
-        
-        if not success:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Ungültiger oder abgelaufener Reset-Token"
-            )
-        
-        # Audit-Log für Passwort-Reset
-        ip_address = request.client.host if request else None
-        await SecurityService.create_audit_log(
-            db, None, AuditAction.PASSWORD_RESET,
-            f"Passwort erfolgreich zurückgesetzt mit Token: {token[:10]}...",
-            ip_address=SecurityService.anonymize_ip_address(ip_address) if ip_address else None,
-            risk_level="high"
-        )
-        
-        return {"message": "Passwort erfolgreich zurückgesetzt"}
-    except ValueError as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=str(e)
-        )
 
 
 @router.post("/password-change")
@@ -245,7 +338,7 @@ async def change_user_password(
 ):
     """Ändert das Passwort des aktuellen Benutzers"""
     try:
-        success = await UserService.change_password(
+        success = await change_password(
             db, current_user.id, password_change.current_password, password_change.new_password
         )
         
@@ -273,34 +366,26 @@ async def change_user_password(
         )
 
 
-@router.post("/consents")
-async def update_consents(
-    consents: ConsentUpdate,
-    current_user = Depends(get_current_user),
+@router.post("/verify-email/{token}")
+async def verify_email(
+    token: str, 
     db: AsyncSession = Depends(get_db),
     request: Request = None
 ):
-    """Aktualisiert DSGVO-Einwilligungen"""
-    user = await UserService.update_consents(db, current_user.id, consents)
+    """Verifiziert die E-Mail-Adresse eines Benutzers"""
+    # TODO: Implementiere Token-Validierung und E-Mail-Verifizierung
     
-    if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Benutzer nicht gefunden"
-        )
-    
-    # Audit-Log für Einwilligungsaktualisierung
+    # Audit-Log für E-Mail-Verifizierung
     ip_address = request.client.host if request else None
     await SecurityService.create_audit_log(
-        db, current_user.id, AuditAction.USER_UPDATE,
-        f"DSGVO-Einwilligungen aktualisiert: {current_user.email}",
-        resource_type="user", resource_id=current_user.id,
+        db, None, AuditAction.USER_UPDATE,
+        f"E-Mail-Verifizierung mit Token: {token[:10]}...",
         ip_address=SecurityService.anonymize_ip_address(ip_address) if ip_address else None,
-        processing_purpose="Einwilligungsverwaltung",
-        legal_basis="Einwilligung"
+        processing_purpose="E-Mail-Verifizierung",
+        legal_basis="Vertragserfüllung"
     )
     
-    return {"message": "Einwilligungen erfolgreich aktualisiert"}
+    return {"message": "E-Mail erfolgreich verifiziert"}
 
 
 @router.post("/refresh-token")

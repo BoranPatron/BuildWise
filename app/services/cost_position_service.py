@@ -8,8 +8,39 @@ from ..schemas.cost_position import CostPositionCreate, CostPositionUpdate
 
 
 async def create_cost_position(db: AsyncSession, cost_position_in: CostPositionCreate) -> CostPosition:
-    """Erstellt eine neue Kostenposition"""
-    cost_position = CostPosition(**cost_position_in.dict())
+    """Erstellt eine neue Kostenposition mit automatischer Bauphasen-Zuordnung vom Gewerk"""
+    from ..models import Project, Milestone
+    
+    # Erstelle die Kostenposition
+    cost_position_data = cost_position_in.dict()
+    
+    # Priorität 1: Bauphase vom verknüpften Gewerk (Milestone) erben
+    if cost_position_in.milestone_id:
+        milestone_result = await db.execute(
+            select(Milestone).where(Milestone.id == cost_position_in.milestone_id)
+        )
+        milestone = milestone_result.scalar_one_or_none()
+        
+        if milestone and milestone.construction_phase:
+            cost_position_data['construction_phase'] = milestone.construction_phase
+            print(f"🏗️ Kostenposition erstellt mit Bauphase vom Gewerk: {milestone.construction_phase}")
+        else:
+            print(f"⚠️ Verknüpftes Gewerk hat keine Bauphase gesetzt")
+    
+    # Priorität 2: Falls kein Gewerk verknüpft, Bauphase vom Projekt erben
+    else:
+        project_result = await db.execute(
+            select(Project).where(Project.id == cost_position_in.project_id)
+        )
+        project = project_result.scalar_one_or_none()
+        
+        if project and project.construction_phase:
+            cost_position_data['construction_phase'] = project.construction_phase
+            print(f"🏗️ Kostenposition erstellt mit Bauphase vom Projekt: {project.construction_phase}")
+        else:
+            print(f"⚠️ Projekt hat keine Bauphase gesetzt")
+    
+    cost_position = CostPosition(**cost_position_data)
     db.add(cost_position)
     await db.commit()
     await db.refresh(cost_position)
@@ -304,4 +335,67 @@ async def get_cost_position_by_quote_id(db: AsyncSession, quote_id: int):
     result = await db.execute(
         select(CostPosition).where(CostPosition.quote_id == quote_id)
     )
-    return result.scalar_one_or_none() 
+    return result.scalar_one_or_none()
+
+
+async def get_cost_positions_by_construction_phase(db: AsyncSession, project_id: int, construction_phase: str) -> List[CostPosition]:
+    """Holt Kostenpositionen nach Bauphase"""
+    result = await db.execute(
+        select(CostPosition)
+        .options(selectinload(CostPosition.quote))
+        .options(selectinload(CostPosition.milestone))
+        .options(selectinload(CostPosition.service_provider))
+        .where(
+            and_(
+                CostPosition.project_id == project_id,
+                CostPosition.construction_phase == construction_phase
+            )
+        )
+        .order_by(CostPosition.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
+async def get_cost_position_statistics_by_phase(db: AsyncSession, project_id: int) -> dict:
+    """Holt Statistiken für Kostenpositionen nach Bauphasen"""
+    # Gesamtbetrag pro Bauphase
+    phase_distribution_result = await db.execute(
+        select(
+            CostPosition.construction_phase,
+            func.count(CostPosition.id).label('count'),
+            func.sum(CostPosition.amount).label('total_amount'),
+            func.sum(CostPosition.paid_amount).label('total_paid')
+        )
+        .where(CostPosition.project_id == project_id)
+        .group_by(CostPosition.construction_phase)
+    )
+    
+    phase_distribution = {}
+    for row in phase_distribution_result.all():
+        phase = row.construction_phase or 'Keine Phase'
+        phase_distribution[phase] = {
+            'count': row.count,
+            'total_amount': float(row.total_amount or 0),
+            'total_paid': float(row.total_paid or 0),
+            'remaining': float((row.total_amount or 0) - (row.total_paid or 0))
+        }
+    
+    # Gesamtstatistiken
+    total_stats_result = await db.execute(
+        select(
+            func.count(CostPosition.id).label('total_count'),
+            func.sum(CostPosition.amount).label('total_amount'),
+            func.sum(CostPosition.paid_amount).label('total_paid')
+        )
+        .where(CostPosition.project_id == project_id)
+    )
+    
+    total_stats = total_stats_result.scalar_one()
+    
+    return {
+        "phase_distribution": phase_distribution,
+        "total_count": total_stats.total_count,
+        "total_amount": float(total_stats.total_amount or 0),
+        "total_paid": float(total_stats.total_paid or 0),
+        "total_remaining": float((total_stats.total_amount or 0) - (total_stats.total_paid or 0))
+    } 

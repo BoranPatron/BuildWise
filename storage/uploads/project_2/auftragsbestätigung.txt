@@ -1,0 +1,126 @@
+
+# AUFTRAGSBESTÄTIGUNG
+
+**Auftragsnummer:** AB-2-2-2-1752994103841  
+**Datum:** 20.7.2025  
+**Status:** Verbindlich angenommen
+
+---
+
+## 1. PROJEKTINFORMATIONEN
+
+**Projekt:** Tecino Lakevilla  
+**Projekt-ID:** 2  
+**Projektbeschreibung:** Keine Beschreibung verfügbar  
+**Projektadresse:** Seefeldstrasse 317, 8008 Zürich
+
+---
+
+## 2. GEWERKSAUSSCHREIBUNG
+
+**Gewerk:** Rohbau  
+**Kategorie:** eigene  
+**Beschreibung:** undefined  
+**Geplantes Datum:** 1.8.2025  
+**Priorität:** medium  
+**Status:** planned
+
+### Technische Spezifikationen:
+Keine technischen Spezifikationen verfügbar
+
+### Qualitätsanforderungen:
+Standard-Qualitätsanforderungen
+
+### Sicherheitsanforderungen:
+Standard-Sicherheitsanforderungen
+
+### Umweltanforderungen:
+Standard-Umweltanforderungen
+
+
+
+---
+
+## 3. KOSTENVORANSCHLAG
+
+**Angebotsnummer:** 2  
+**Angebotsdatum:** 20.7.2025  
+**Gültig bis:** -  
+**Status:** submitted
+
+### Kostenaufschlüsselung:
+- **Gesamtbetrag:** 800.000,00 €
+- **Arbeitskosten:** Nicht angegeben
+- **Materialkosten:** Nicht angegeben
+- **Gemeinkosten:** Nicht angegeben
+
+### Zeitplan:
+- **Geschätzte Dauer:** 300 Tage
+- **Startdatum:** 1.8.2025
+- **Fertigstellungsdatum:** 30.11.2025
+
+### Bedingungen:
+- **Zahlungsbedingungen:** milestone
+- **Garantie:** 24 Monate
+- **Gültig bis:** -
+
+---
+
+## 4. DIENSTLEISTER
+
+**Firma:** Boran GmBh  
+**Ansprechpartner:** BaronPatron  
+**Telefon:** Nicht angegeben  
+**E-Mail:** BanauseBoran@lotterlifeGmbH.de  
+**Website:** Nicht angegeben
+
+---
+
+## 5. VERBINDLICHE VEREINBARUNG
+
+**Annahmedatum:** 20.7.2025  
+**Angenommen von:** steve schelli  
+**Benutzer-ID:** 3
+
+### Wichtige Hinweise:
+- Diese Auftragsbestätigung ist verbindlich
+- Alle anderen Angebote für dieses Gewerk werden automatisch abgelehnt
+- Das angenommene Angebot wird als Kostenposition in der Finanzübersicht angezeigt
+- Änderungen bedürfen der schriftlichen Vereinbarung beider Parteien
+
+---
+
+## 6. DOKUMENTE UND ANHÄNGE
+
+### Gewerk-Dokumente:
+Keine Dokumente verfügbar
+
+### Kostenvoranschlag-Dokumente:
+Keine PDF verfügbar
+
+---
+
+## 7. QUALITÄTSSICHERUNG
+
+### Bewertungskriterien:
+- Technische Eignung: Nicht bewertet
+- Risiko-Bewertung: Nicht bewertet
+- Preisabweichung: Nicht berechnet
+
+### KI-Empfehlung:
+Keine KI-Empfehlung verfügbar
+
+---
+
+## 8. RECHTLICHE HINWEISE
+
+Diese Auftragsbestätigung stellt eine verbindliche Vereinbarung zwischen dem Bauträger und dem Dienstleister dar. Alle rechtlichen Bestimmungen des deutschen Bauvertragsrechts (VOB/B) gelten entsprechend.
+
+**Erstellt am:** 20.7.2025  
+**Erstellt von:** BuildWise System  
+**Dokument-ID:** AB-2-2-2-1752994103841
+
+---
+
+*Ende der Auftragsbestätigung*
+    

@@ -16,9 +16,7 @@ except ImportError:
 
 from .database import check_db_connection, get_db_stats
 from .cache import cache_service
-from .config import get_settings
-
-settings = get_settings()
+from .config import settings
 
 # Prometheus metrics
 if PROMETHEUS_AVAILABLE:

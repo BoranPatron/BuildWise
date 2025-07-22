@@ -26,6 +26,10 @@ class CostPositionBase(BaseModel):
     material_cost: Optional[float] = None
     overhead_cost: Optional[float] = None
     notes: Optional[str] = None
+    # Bauphasen-Tracking
+    construction_phase: Optional[str] = None
+    # Bauphasen-Tracking
+    construction_phase: Optional[str] = None
 
 
 class CostPositionCreate(CostPositionBase):
@@ -74,6 +78,8 @@ class CostPositionRead(CostPositionBase):
     paid_amount: float
     last_payment_date: Optional[date] = None
     invoice_references: Optional[str] = None
+    # Bauphasen-Tracking
+    construction_phase: Optional[str] = None
     created_at: datetime
     updated_at: datetime
     completed_at: Optional[datetime] = None

@@ -59,6 +59,9 @@ class Milestone(Base):
     # Notizen
     notes = Column(Text, nullable=True)
     
+    # Bauphasen-Tracking
+    construction_phase = Column(String, nullable=True)  # Aktuelle Bauphase beim Erstellen des Gewerks
+    
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

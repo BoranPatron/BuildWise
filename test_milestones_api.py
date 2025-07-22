@@ -1,67 +1,84 @@
 #!/usr/bin/env python3
 """
-Skript um die Milestones-API zu testen
+Test-Skript für die Milestones-API
 """
 
 import requests
 import json
 
 def test_milestones_api():
-    """Teste die Milestones-API"""
-    base_url = "http://localhost:8000"
+    """Testet die Milestones-API"""
+    base_url = "http://localhost:8000/api/v1"
     
-    print("🔍 Teste Milestones-API...")
-    
-    try:
-        # Teste Backend-Verfügbarkeit
-        response = requests.get(f"{base_url}/docs", timeout=5)
-        if response.status_code == 200:
-            print("✅ Backend ist erreichbar")
-        else:
-            print(f"⚠️ Backend antwortet mit Status {response.status_code}")
-            return
-    except requests.exceptions.ConnectionError:
-        print("❌ Backend ist nicht erreichbar - ist es gestartet?")
-        print("   Starte das Backend mit: python -m uvicorn app.main:app --reload")
-        return
-    
-    # Teste Login
-    print("\n🔐 Teste Login...")
-    login_data = {
-        'username': 'test-dienstleister@buildwise.de',
-        'password': 'test1234'
+    # Test-Token (ersetzen Sie dies durch einen gültigen Token)
+    headers = {
+        "Authorization": "Bearer YOUR_TOKEN_HERE",
+        "Content-Type": "application/json"
     }
     
     try:
-        response = requests.post(f"{base_url}/api/v1/auth/login", data=login_data)
+        # Teste GET /milestones mit project_id
+        print("🔧 Teste GET /milestones...")
+        response = requests.get(
+            f"{base_url}/milestones?project_id=1",
+            headers=headers
+        )
+        
+        print(f"Status Code: {response.status_code}")
+        print(f"Response Headers: {dict(response.headers)}")
+        
         if response.status_code == 200:
-            print("✅ Login erfolgreich")
-            token = response.json()['access_token']
-            print(f"🔑 Token erhalten: {token[:20]}...")
-            
-            # Teste Milestones-API
-            print("\n📋 Teste Milestones-API...")
-            headers = {'Authorization': f'Bearer {token}'}
-            response = requests.get(f"{base_url}/api/v1/milestones/all", headers=headers)
-            
-            print(f"📡 API Response Status: {response.status_code}")
-            print(f"📡 API Response Headers: {dict(response.headers)}")
-            
-            if response.status_code == 200:
-                data = response.json()
-                print(f"✅ Milestones geladen: {len(data)} gefunden")
-                for milestone in data:
-                    print(f"   - {milestone.get('title', 'N/A')} (ID: {milestone.get('id', 'N/A')}, Status: {milestone.get('status', 'N/A')})")
-            else:
-                print(f"❌ API-Fehler: {response.status_code}")
-                print(f"📄 Response: {response.text}")
-                
+            data = response.json()
+            print(f"✅ Erfolgreich! {len(data)} Milestones gefunden")
+            for milestone in data:
+                print(f"  • {milestone.get('title', 'N/A')} (ID: {milestone.get('id', 'N/A')})")
         else:
-            print(f"❌ Login fehlgeschlagen: {response.status_code}")
-            print(f"📄 Response: {response.text}")
+            print(f"❌ Fehler: {response.status_code}")
+            print(f"Response: {response.text}")
             
+    except requests.exceptions.ConnectionError:
+        print("❌ Verbindung zum Server fehlgeschlagen. Ist der Server gestartet?")
     except Exception as e:
-        print(f"❌ Fehler beim API-Test: {e}")
+        print(f"❌ Fehler: {e}")
+
+
+def test_milestones_all():
+    """Testet GET /milestones/all"""
+    base_url = "http://localhost:8000/api/v1"
+    
+    headers = {
+        "Authorization": "Bearer YOUR_TOKEN_HERE",
+        "Content-Type": "application/json"
+    }
+    
+    try:
+        print("🔧 Teste GET /milestones/all...")
+        response = requests.get(
+            f"{base_url}/milestones/all",
+            headers=headers
+        )
+        
+        print(f"Status Code: {response.status_code}")
+        
+        if response.status_code == 200:
+            data = response.json()
+            print(f"✅ Erfolgreich! {len(data)} Milestones gefunden")
+            for milestone in data:
+                print(f"  • {milestone.get('title', 'N/A')} (ID: {milestone.get('id', 'N/A')})")
+        else:
+            print(f"❌ Fehler: {response.status_code}")
+            print(f"Response: {response.text}")
+            
+    except requests.exceptions.ConnectionError:
+        print("❌ Verbindung zum Server fehlgeschlagen. Ist der Server gestartet?")
+    except Exception as e:
+        print(f"❌ Fehler: {e}")
+
 
 if __name__ == "__main__":
-    test_milestones_api() 
+    print("🧪 Teste Milestones-API...")
+    print("=" * 50)
+    
+    test_milestones_api()
+    print("\n" + "=" * 50)
+    test_milestones_all() 

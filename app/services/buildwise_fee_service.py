@@ -16,7 +16,7 @@ from app.schemas.buildwise_fee import (
     BuildWiseFeeItemCreate,
     BuildWiseFeeStatistics
 )
-from app.core.config import get_settings
+from app.core.config import settings
 from app.services.pdf_generator import BuildWisePDFGenerator
 
 class BuildWiseFeeService:

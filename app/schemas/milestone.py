@@ -19,6 +19,8 @@ class MilestoneBase(BaseModel):
     is_critical: bool = False
     notify_on_completion: bool = True
     notes: Optional[str] = None
+    # Bauphasen-Tracking
+    construction_phase: Optional[str] = None
 
 
 class MilestoneCreate(MilestoneBase):
@@ -42,6 +44,8 @@ class MilestoneUpdate(BaseModel):
     is_critical: Optional[bool] = None
     notify_on_completion: Optional[bool] = None
     notes: Optional[str] = None
+    # Bauphasen-Tracking
+    construction_phase: Optional[str] = None
 
 
 class MilestoneRead(MilestoneBase):
@@ -53,6 +57,8 @@ class MilestoneRead(MilestoneBase):
     created_at: datetime
     updated_at: datetime
     completed_at: Optional[datetime] = None
+    # Bauphasen-Tracking
+    construction_phase: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -75,6 +81,8 @@ class MilestoneSummary(BaseModel):
     progress_percentage: int
     is_critical: bool
     project_id: Optional[int] = None  # Projekt-ID hinzufügen
+    # Bauphasen-Tracking
+    construction_phase: Optional[str] = None
 
     class Config:
         from_attributes = True 
@@ -98,6 +106,7 @@ class MilestoneSummary(BaseModel):
             'contractor': obj.contractor,
             'progress_percentage': obj.progress_percentage,
             'is_critical': obj.is_critical,
-            'project_id': obj.project_id
+            'project_id': obj.project_id,
+            'construction_phase': obj.construction_phase
         }
         return cls(**data) 

@@ -99,6 +99,9 @@ class CostPosition(Base):
     notes = Column(Text, nullable=True)
     invoice_references = Column(Text, nullable=True)  # JSON-Array mit Rechnungsreferenzen
     
+    # Bauphasen-Tracking
+    construction_phase = Column(String, nullable=True)  # Aktuelle Bauphase beim Erstellen der Kostenposition
+    
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

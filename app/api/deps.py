@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from ..core.database import get_db
 from ..core.security import decode_access_token, oauth2_scheme_name
 from ..models import User
-from ..services.user_service import UserService
+from ..services.user_service import get_user_by_email
 
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
@@ -22,7 +22,7 @@ async def get_current_user(
             detail="Could not validate credentials",
         )
     email: str = payload["sub"]
-    user = await UserService.get_user_by_email(db, email=email)
+    user = await get_user_by_email(db, email=email)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user

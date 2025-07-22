@@ -1,27 +1,27 @@
 
 # AUFTRAGSBESTÄTIGUNG
 
-**Auftragsnummer:** AB-5-6-5-1752929021320  
-**Datum:** 19.7.2025  
+**Auftragsnummer:** AB-5-4-4-1753017447109  
+**Datum:** 20.7.2025  
 **Status:** Verbindlich angenommen
 
 ---
 
 ## 1. PROJEKTINFORMATIONEN
 
-**Projekt:** Toskana Luxus-Villa Boranie  
+**Projekt:** Landhaus Uster  
 **Projekt-ID:** 5  
 **Projektbeschreibung:** Keine Beschreibung verfügbar  
-**Projektadresse:** Forchstrasse 1, 8610 Uster, Schweiz
+**Projektadresse:** Forchstrasse 28, 8610 Uster
 
 ---
 
 ## 2. GEWERKSAUSSCHREIBUNG
 
-**Gewerk:** Pool UG  
+**Gewerk:** Interior Küchengestaltung  
 **Kategorie:** eigene  
 **Beschreibung:** undefined  
-**Geplantes Datum:** 10.8.2025  
+**Geplantes Datum:** 31.7.2025  
 **Priorität:** medium  
 **Status:** planned
 
@@ -43,24 +43,24 @@ Standard-Umweltanforderungen
 
 ## 3. KOSTENVORANSCHLAG
 
-**Angebotsnummer:** 5  
-**Angebotsdatum:** 19.7.2025  
+**Angebotsnummer:** 4  
+**Angebotsdatum:** 20.7.2025  
 **Gültig bis:** -  
 **Status:** submitted
 
 ### Kostenaufschlüsselung:
-- **Gesamtbetrag:** 45.000,00 €
+- **Gesamtbetrag:** 5.000,00 €
 - **Arbeitskosten:** Nicht angegeben
 - **Materialkosten:** Nicht angegeben
 - **Gemeinkosten:** Nicht angegeben
 
 ### Zeitplan:
 - **Geschätzte Dauer:** 12 Tage
-- **Startdatum:** 16.7.2025
-- **Fertigstellungsdatum:** 8.8.2025
+- **Startdatum:** 31.7.2025
+- **Fertigstellungsdatum:** 10.8.2025
 
 ### Bedingungen:
-- **Zahlungsbedingungen:** milestone
+- **Zahlungsbedingungen:** immediate
 - **Garantie:** 24 Monate
 - **Gültig bis:** -
 
@@ -78,9 +78,9 @@ Standard-Umweltanforderungen
 
 ## 5. VERBINDLICHE VEREINBARUNG
 
-**Annahmedatum:** 19.7.2025  
-**Angenommen von:** Admin BuildWise  
-**Benutzer-ID:** 2
+**Annahmedatum:** 20.7.2025  
+**Angenommen von:** steve schelli  
+**Benutzer-ID:** 3
 
 ### Wichtige Hinweise:
 - Diese Auftragsbestätigung ist verbindlich
@@ -116,9 +116,9 @@ Keine KI-Empfehlung verfügbar
 
 Diese Auftragsbestätigung stellt eine verbindliche Vereinbarung zwischen dem Bauträger und dem Dienstleister dar. Alle rechtlichen Bestimmungen des deutschen Bauvertragsrechts (VOB/B) gelten entsprechend.
 
-**Erstellt am:** 19.7.2025  
+**Erstellt am:** 20.7.2025  
 **Erstellt von:** BuildWise System  
-**Dokument-ID:** AB-5-6-5-1752929021320
+**Dokument-ID:** AB-5-4-4-1753017447109
 
 ---
 

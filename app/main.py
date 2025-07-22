@@ -87,10 +87,10 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(api_router, prefix="/api/v1")
 
 # Datenbank-Tabellen erstellen
-#@app.on_event("startup")
-#async def on_startup():
-#    async with engine.begin() as conn:
-#        await conn.run_sync(Base.metadata.create_all)
+@app.on_event("startup")
+async def on_startup():
+    async with engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
 
 # Health Check
 @app.get("/health")

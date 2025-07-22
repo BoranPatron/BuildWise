@@ -1,396 +1,383 @@
-import secrets
-import hashlib
-from datetime import datetime, timedelta
-from typing import Optional, List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
-from sqlalchemy.orm import selectinload
+from typing import Optional, List
+from datetime import datetime, date
 
-from ..models.user import User, UserType, SubscriptionPlan, UserStatus
-from ..schemas.user import UserCreate, UserUpdate, ConsentUpdate, SubscriptionUpdate
-from ..core.security import get_password_hash, verify_password
-from ..services.security_service import SecurityService
+from ..models import User, UserType
+from ..models.user import UserStatus
 from ..models.audit_log import AuditAction
-from .email_service import email_service
+from ..services.security_service import SecurityService
+from ..schemas.user import UserCreate, UserUpdate
 
 
-class UserService:
-    """Erweiterter User-Service mit Rollen-Management und E-Mail-Verifizierung"""
-    
-    # Standard-Rollen und Berechtigungen
-    ROLES = {
-        "admin": {
-            "permissions": ["*"],  # Alle Berechtigungen
-            "description": "System-Administrator"
-        },
-        "service_provider": {
-            "permissions": [
-                "view_trades",
-                "create_quotes", 
-                "view_projects",
-                "view_milestones",
-                "view_documents",
-                "send_messages",
-                "view_buildwise_fees"
-            ],
-            "description": "Dienstleister"
-        },
-        "builder_basic": {
-            "permissions": [
-                "view_trades",
-                "view_documents", 
-                "visualize"
-            ],
-            "description": "Bauträger (Basis)"
-        },
-        "builder_pro": {
-            "permissions": [
-                "view_trades",
-                "create_projects",
-                "manage_milestones",
-                "view_documents",
-                "visualize",
-                "manage_quotes",
-                "view_analytics",
-                "manage_tasks",
-                "view_finance"
-            ],
-            "description": "Bauträger (Pro)"
-        }
-    }
-    
-    @staticmethod
-    def generate_verification_token() -> str:
-        """Generiert einen sicheren Verifizierungs-Token"""
-        return secrets.token_urlsafe(32)
-    
-    @staticmethod
-    def get_default_roles(user_type: UserType, subscription_plan: SubscriptionPlan) -> List[str]:
-        """Ermittelt Standard-Rollen basierend auf User-Type und Subscription"""
-        if user_type == UserType.SERVICE_PROVIDER:
-            return ["service_provider"]
-        elif user_type in [UserType.PRIVATE, UserType.PROFESSIONAL]:
-            if subscription_plan == SubscriptionPlan.BASIS:
-                return ["builder_basic"]
-            else:
-                return ["builder_pro"]
-        return []
-    
-    @staticmethod
-    def get_default_permissions(roles: List[str]) -> Dict[str, Any]:
-        """Ermittelt Standard-Berechtigungen basierend auf Rollen"""
-        permissions = {}
-        for role in roles:
-            if role in UserService.ROLES:
-                role_permissions = UserService.ROLES[role]["permissions"]
-                for permission in role_permissions:
-                    if permission == "*":
-                        permissions["*"] = True
-                    else:
-                        permissions[permission] = True
-        return permissions
-    
-    @staticmethod
-    async def create_user(db: AsyncSession, user_in: UserCreate) -> User:
-        """Erstellt einen neuen Benutzer mit vollständiger Validierung"""
-        # Prüfe ob Benutzer bereits existiert
-        existing_user = await UserService.get_user_by_email(db, user_in.email)
-        if existing_user:
-            raise ValueError("Ein Benutzer mit dieser E-Mail-Adresse existiert bereits")
-        
-        # Validiere User-Type und Subscription-Kombination
-        if user_in.user_type == UserType.SERVICE_PROVIDER and user_in.subscription_plan == SubscriptionPlan.PRO:
-            raise ValueError("Dienstleister können nur das Basis-Modell wählen")
-        
-        # Erstelle Verifizierungs-Token
-        verification_token = UserService.generate_verification_token()
-        
-        # Ermittle Standard-Rollen und Berechtigungen
-        default_roles = UserService.get_default_roles(user_in.user_type, user_in.subscription_plan)
-        default_permissions = UserService.get_default_permissions(default_roles)
-        
-        # Erstelle User-Objekt
-        user_data = user_in.dict()
-        user_data["hashed_password"] = get_password_hash(user_in.password)
-        user_data["email_verification_token"] = verification_token
-        user_data["email_verification_sent_at"] = datetime.utcnow()
-        user_data["roles"] = default_roles
-        user_data["permissions"] = default_permissions
-        user_data["status"] = UserStatus.PENDING_VERIFICATION
-        
-        # Entferne Passwort aus user_data
-        user_data.pop("password", None)
-        
-        user = User(**user_data)
-        db.add(user)
-        await db.commit()
-        await db.refresh(user)
-        
-        # Sende E-Mail-Verifizierung
-        try:
-            user_name = f"{user.first_name} {user.last_name}"
-            email_sent = email_service.send_verification_email(
-                user.email, verification_token, user_name
-            )
-            if email_sent:
-                print(f"✅ Verifizierungs-E-Mail gesendet an: {user.email}")
-            else:
-                print(f"❌ Fehler beim Senden der Verifizierungs-E-Mail an: {user.email}")
-        except Exception as e:
-            print(f"❌ E-Mail-Service-Fehler: {e}")
-        
-        return user
-    
-    @staticmethod
-    async def get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
-        """Ermittelt Benutzer anhand E-Mail-Adresse"""
-        result = await db.execute(select(User).where(User.email == email))
-        return result.scalar_one_or_none()
-    
-    @staticmethod
-    async def get_user_by_id(db: AsyncSession, user_id: int) -> Optional[User]:
-        """Ermittelt Benutzer anhand ID"""
-        result = await db.execute(select(User).where(User.id == user_id))
-        return result.scalar_one_or_none()
-    
-    @staticmethod
-    async def authenticate_user(db: AsyncSession, email: str, password: str, ip_address: str = None) -> Optional[User]:
-        """Authentifiziert einen Benutzer"""
-        user = await UserService.get_user_by_email(db, email)
-        if not user:
-            return None
-        
-        if not verify_password(password, user.hashed_password):
-            # Erhöhe fehlgeschlagene Login-Versuche
-            user.failed_login_attempts += 1
-            if user.failed_login_attempts >= 5:
-                user.account_locked_until = datetime.utcnow() + timedelta(minutes=30)
-            await db.commit()
-            return None
-        
-        # Prüfe Account-Sperre
-        if user.account_locked_until and user.account_locked_until > datetime.utcnow():
-            return None
-        
-        # Reset fehlgeschlagene Login-Versuche
-        user.failed_login_attempts = 0
-        user.last_login_at = datetime.utcnow()
-        user.last_activity_at = datetime.utcnow()
-        await db.commit()
-        
-        return user
-    
-    @staticmethod
-    async def verify_email(db: AsyncSession, token: str) -> bool:
-        """Verifiziert E-Mail-Adresse mit Token"""
-        result = await db.execute(
-            select(User).where(
-                User.email_verification_token == token,
-                User.email_verified == False
-            )
-        )
-        user = result.scalar_one_or_none()
-        
-        if not user:
-            return False
-        
-        # Prüfe Token-Gültigkeit (24 Stunden)
-        if user.email_verification_sent_at:
-            token_age = datetime.utcnow() - user.email_verification_sent_at
-            if token_age > timedelta(hours=24):
-                return False
-        
-        # Verifiziere E-Mail
-        user.email_verified = True
-        user.email_verified_at = datetime.utcnow()
-        user.email_verification_token = None
-        user.status = UserStatus.ACTIVE
-        await db.commit()
-        
-        return True
-    
-    @staticmethod
-    async def resend_verification_email(db: AsyncSession, email: str) -> bool:
-        """Sendet Verifizierungs-E-Mail erneut"""
-        user = await UserService.get_user_by_email(db, email)
-        if not user or user.email_verified:
-            return False
-        
-        # Generiere neuen Token
-        new_token = UserService.generate_verification_token()
-        user.email_verification_token = new_token
-        user.email_verification_sent_at = datetime.utcnow()
-        await db.commit()
-        
-        # Sende E-Mail
-        try:
-            user_name = f"{user.first_name} {user.last_name}"
-            email_sent = email_service.send_verification_email(
-                user.email, new_token, user_name
-            )
-            return email_sent
-        except Exception as e:
-            print(f"❌ E-Mail-Service-Fehler: {e}")
-            return False
-    
-    @staticmethod
-    async def request_password_reset(db: AsyncSession, email: str) -> bool:
-        """Erstellt Passwort-Reset-Token und sendet E-Mail"""
-        user = await UserService.get_user_by_email(db, email)
-        if not user:
-            return False
-        
-        # Generiere Reset-Token
-        reset_token = UserService.generate_verification_token()
-        user.password_reset_token = reset_token
-        user.password_reset_sent_at = datetime.utcnow()
-        user.password_reset_expires_at = datetime.utcnow() + timedelta(hours=1)
-        await db.commit()
-        
-        # Sende Passwort-Reset-E-Mail
-        try:
-            user_name = f"{user.first_name} {user.last_name}"
-            email_sent = email_service.send_password_reset_email(
-                user.email, reset_token, user_name
-            )
-            return email_sent
-        except Exception as e:
-            print(f"❌ E-Mail-Service-Fehler: {e}")
-            return False
-    
-    @staticmethod
-    async def reset_password_with_token(db: AsyncSession, token: str, new_password: str) -> bool:
-        """Setzt Passwort mit Token zurück"""
-        result = await db.execute(
-            select(User).where(
-                User.password_reset_token == token,
-                User.password_reset_expires_at > datetime.utcnow()
-            )
-        )
-        user = result.scalar_one_or_none()
-        
-        if not user:
-            return False
-        
-        # Validiere neues Passwort
-        if len(new_password) < 8:
-            raise ValueError("Passwort muss mindestens 8 Zeichen lang sein")
-        
-        # Setze neues Passwort
-        user.hashed_password = get_password_hash(new_password)
-        user.password_reset_token = None
-        user.password_reset_sent_at = None
-        user.password_reset_expires_at = None
-        user.password_changed_at = datetime.utcnow()
-        user.updated_at = datetime.utcnow()
-        await db.commit()
-        
-        return True
-    
-    @staticmethod
-    async def update_user(db: AsyncSession, user_id: int, user_update: UserUpdate) -> Optional[User]:
-        """Aktualisiert Benutzer-Daten"""
-        user = await UserService.get_user_by_id(db, user_id)
-        if not user:
-            return None
-        
-        update_data = user_update.dict(exclude_unset=True)
-        
-        # Aktualisiere Subscription-spezifische Felder
-        if "subscription_plan" in update_data:
-            user.subscription_plan = update_data["subscription_plan"]
-            # Aktualisiere Rollen basierend auf neuer Subscription
-            new_roles = UserService.get_default_roles(user.user_type, user.subscription_plan)
-            user.roles = new_roles
-            user.permissions = UserService.get_default_permissions(new_roles)
-        
-        # Aktualisiere andere Felder
-        for field, value in update_data.items():
-            if hasattr(user, field):
-                setattr(user, field, value)
-        
-        user.updated_at = datetime.utcnow()
-        await db.commit()
-        await db.refresh(user)
-        
-        return user
-    
-    @staticmethod
-    async def update_consents(db: AsyncSession, user_id: int, consents: ConsentUpdate) -> Optional[User]:
-        """Aktualisiert DSGVO-Einwilligungen"""
-        user = await UserService.get_user_by_id(db, user_id)
-        if not user:
-            return None
-        
-        update_data = consents.dict(exclude_unset=True)
-        for field, value in update_data.items():
-            if hasattr(user, field):
-                setattr(user, field, value)
-        
-        user.updated_at = datetime.utcnow()
-        await db.commit()
-        await db.refresh(user)
-        
-        return user
-    
-    @staticmethod
-    async def change_password(db: AsyncSession, user_id: int, current_password: str, new_password: str) -> bool:
-        """Ändert das Passwort eines Benutzers"""
-        user = await UserService.get_user_by_id(db, user_id)
-        if not user:
-            return False
-        
-        if not verify_password(current_password, user.hashed_password):
-            return False
-        
-        user.hashed_password = get_password_hash(new_password)
-        user.password_changed_at = datetime.utcnow()
-        user.updated_at = datetime.utcnow()
-        await db.commit()
-        
-        return True
-    
-    @staticmethod
-    async def has_permission(user: User, permission: str) -> bool:
-        """Prüft ob Benutzer eine bestimmte Berechtigung hat"""
-        if not user.permissions:
-            return False
-        
-        # Admin hat alle Berechtigungen
-        if user.permissions.get("*"):
-            return True
-        
-        return user.permissions.get(permission, False)
-    
-    @staticmethod
-    async def get_users_by_type(db: AsyncSession, user_type: UserType) -> List[User]:
-        """Ermittelt alle Benutzer eines bestimmten Typs"""
-        result = await db.execute(
-            select(User).where(User.user_type == user_type)
-        )
-        return result.scalars().all()
-    
-    @staticmethod
-    async def get_active_users(db: AsyncSession) -> List[User]:
-        """Ermittelt alle aktiven Benutzer"""
-        result = await db.execute(
-            select(User).where(
-                User.is_active == True,
-                User.status == UserStatus.ACTIVE
-            )
-        )
-        return result.scalars().all()
+async def get_user_by_email(db: AsyncSession, email: str) -> User | None:
+    result = await db.execute(select(User).where(User.email == email))
+    return result.scalars().first()
 
 
-# Legacy-Funktionen für Kompatibilität
+async def get_user_by_id(db: AsyncSession, user_id: int) -> User | None:
+    result = await db.execute(select(User).where(User.id == user_id))
+    return result.scalars().first()
+
+
 async def create_user(db: AsyncSession, user_in: UserCreate) -> User:
-    return await UserService.create_user(db, user_in)
+    # Passwort-Stärke validieren
+    password_validation = SecurityService.validate_password_strength(user_in.password)
+    if not password_validation['is_valid']:
+        raise ValueError(f"Passwort erfüllt nicht die Sicherheitsanforderungen: {', '.join(password_validation['errors'])}")
+    
+    # Passwort hashen
+    hashed_password = SecurityService.hash_password(user_in.password)
+    
+    # DSGVO: Standard-Datenaufbewahrung (2 Jahre)
+    data_retention_until = date.today().replace(year=date.today().year + 2)
+    
+    user = User(
+        email=user_in.email,
+        hashed_password=hashed_password,
+        first_name=user_in.first_name,
+        last_name=user_in.last_name,
+        phone=user_in.phone,
+        user_type=user_in.user_type,
+        # DSGVO: Einwilligungen aus user_in übernehmen
+        data_processing_consent=user_in.data_processing_consent,
+        marketing_consent=user_in.marketing_consent,
+        privacy_policy_accepted=user_in.privacy_policy_accepted,
+        terms_accepted=user_in.terms_accepted,
+        data_retention_until=data_retention_until,
+        status=UserStatus.ACTIVE
+    )
+    db.add(user)
+    await db.commit()
+    await db.refresh(user)
+    
+    # Audit-Log erstellen
+    user_id = getattr(user, 'id', None)
+    if user_id:
+        await SecurityService.create_audit_log(
+            db, user_id, AuditAction.USER_REGISTER,
+            f"Neuer Benutzer registriert: {user.email}",
+            resource_type="user", resource_id=user_id,
+            processing_purpose="Benutzerregistrierung",
+            legal_basis="Einwilligung"
+        )
+    
+    return user
 
-async def get_user_by_email(db: AsyncSession, email: str) -> Optional[User]:
-    return await UserService.get_user_by_email(db, email)
 
-async def authenticate_user(db: AsyncSession, email: str, password: str, ip_address: str = None) -> Optional[User]:
-    return await UserService.authenticate_user(db, email, password, ip_address)
+async def authenticate_user(db: AsyncSession, email: str, password: str, ip_address: str = None) -> User | None:
+    user = await get_user_by_email(db, email)
+    if not user:
+        return None
+    
+    # Prüfe ob Account gesperrt ist
+    account_locked_until = getattr(user, 'account_locked_until', None)
+    if account_locked_until and SecurityService.is_account_locked(account_locked_until):
+        user_id = getattr(user, 'id', None)
+        if user_id:
+            await SecurityService.create_audit_log(
+                db, user_id, AuditAction.UNAUTHORIZED_ACCESS,
+                f"Anmeldeversuch bei gesperrtem Account: {email}",
+                resource_type="user", resource_id=user_id,
+                ip_address=SecurityService.anonymize_ip_address(ip_address) if ip_address else None,
+                risk_level="high"
+            )
+        return None
+    
+    # Passwort überprüfen
+    hashed_password = getattr(user, 'hashed_password', '')
+    if not SecurityService.verify_password(password, str(hashed_password)):
+        # Fehlgeschlagene Anmeldung behandeln
+        user_id = getattr(user, 'id', None)
+        failed_attempts = getattr(user, 'failed_login_attempts', 0)
+        if user_id:
+            await SecurityService.handle_failed_login(db, user, ip_address or "")
+        return None
+    
+    # Erfolgreiche Anmeldung
+    user_id = getattr(user, 'id', None)
+    if user_id:
+        await SecurityService.reset_failed_login_attempts(db, user_id)
+    
+    # Login-Zeit aktualisieren
+    await db.execute(
+        update(User)
+        .where(User.id == user.id)
+        .values(
+            last_login_at=datetime.utcnow(),
+            last_activity_at=datetime.utcnow()
+        )
+    )
+    await db.commit()
+    
+    # Audit-Log für erfolgreiche Anmeldung
+    if user_id:
+        await SecurityService.create_audit_log(
+            db, user_id, AuditAction.USER_LOGIN,
+            f"Erfolgreiche Anmeldung: {email}",
+            resource_type="user", resource_id=user_id,
+            ip_address=SecurityService.anonymize_ip_address(ip_address) if ip_address else None,
+            risk_level="low"
+        )
+    
+    return user
+
+
+async def update_user(db: AsyncSession, user_id: int, user_update: UserUpdate) -> User | None:
+    user = await get_user_by_id(db, user_id)
+    if not user:
+        return None
+    
+    update_data = user_update.dict(exclude_unset=True)
+    if update_data:
+        await db.execute(
+            update(User)
+            .where(User.id == user_id)
+            .values(**update_data, updated_at=datetime.utcnow())
+        )
+        await db.commit()
+        await db.refresh(user)
+        
+        # Audit-Log erstellen
+        await SecurityService.create_audit_log(
+            db, user_id, AuditAction.USER_UPDATE,
+            f"Benutzerdaten aktualisiert: {user.email}",
+            resource_type="user", resource_id=user_id,
+            processing_purpose="Profilaktualisierung",
+            legal_basis="Vertragserfüllung"
+        )
+    
+    return user
+
+
+async def verify_email(db: AsyncSession, user_id: int) -> bool:
+    user = await get_user_by_id(db, user_id)
+    if not user:
+        return False
+    
+    await db.execute(
+        update(User)
+        .where(User.id == user_id)
+        .values(email_verified=True, updated_at=datetime.utcnow())
+    )
+    await db.commit()
+    
+    # Audit-Log erstellen
+    await SecurityService.create_audit_log(
+        db, user_id, AuditAction.USER_UPDATE,
+        f"E-Mail verifiziert: {user.email}",
+        resource_type="user", resource_id=user_id,
+        processing_purpose="E-Mail-Verifizierung",
+        legal_basis="Vertragserfüllung"
+    )
+    
+    return True
+
 
 async def change_password(db: AsyncSession, user_id: int, current_password: str, new_password: str) -> bool:
-    return await UserService.change_password(db, user_id, current_password, new_password)
+    user = await get_user_by_id(db, user_id)
+    if not user:
+        return False
+    
+    hashed_password = getattr(user, 'hashed_password', '')
+    if not SecurityService.verify_password(current_password, str(hashed_password)):
+        return False
+    
+    # Neue Passwort-Stärke validieren
+    password_validation = SecurityService.validate_password_strength(new_password)
+    if not password_validation['is_valid']:
+        raise ValueError(f"Neues Passwort erfüllt nicht die Sicherheitsanforderungen: {', '.join(password_validation['errors'])}")
+    
+    # Neues Passwort hashen
+    hashed_new_password = SecurityService.hash_password(new_password)
+    
+    await db.execute(
+        update(User)
+        .where(User.id == user_id)
+        .values(
+            hashed_password=hashed_new_password,
+            password_changed_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+    )
+    await db.commit()
+    
+    # Audit-Log erstellen
+    await SecurityService.create_audit_log(
+        db, user_id, AuditAction.PASSWORD_CHANGE,
+        f"Passwort geändert: {user.email}",
+        resource_type="user", resource_id=user_id,
+        risk_level="medium"
+    )
+    
+    return True
+
+
+async def get_service_providers(db: AsyncSession, region: Optional[str] = None) -> List[User]:
+    query = select(User).where(
+        User.user_type == UserType.SERVICE_PROVIDER,
+        User.status == UserStatus.ACTIVE,
+        User.is_verified == True,
+        User.data_processing_consent == True  # Nur bei Einwilligung
+    )
+    
+    if region:
+        query = query.where(User.region == region)
+    
+    result = await db.execute(query)
+    return list(result.scalars().all())
+
+
+async def search_users(db: AsyncSession, search_term: str, user_type: Optional[UserType] = None) -> List[User]:
+    query = select(User).where(
+        User.status == UserStatus.ACTIVE,
+        User.data_processing_consent == True  # Nur bei Einwilligung
+    )
+    
+    if user_type:
+        query = query.where(User.user_type == user_type)
+    
+    # Suche in Name, Email und Firmenname
+    search_filter = (
+        User.first_name.ilike(f"%{search_term}%") |
+        User.last_name.ilike(f"%{search_term}%") |
+        User.email.ilike(f"%{search_term}%") |
+        User.company_name.ilike(f"%{search_term}%")
+    )
+    
+    query = query.where(search_filter)
+    result = await db.execute(query)
+    return list(result.scalars().all())
+
+
+async def deactivate_user(db: AsyncSession, user_id: int) -> bool:
+    user = await get_user_by_id(db, user_id)
+    if not user:
+        return False
+    
+    await db.execute(
+        update(User)
+        .where(User.id == user_id)
+        .values(
+            status=UserStatus.INACTIVE,
+            updated_at=datetime.utcnow()
+        )
+    )
+    await db.commit()
+    
+    # Audit-Log erstellen
+    await SecurityService.create_audit_log(
+        db, user_id, AuditAction.USER_DELETE,
+        f"Benutzer deaktiviert: {user.email}",
+        resource_type="user", resource_id=user_id,
+        processing_purpose="Account-Deaktivierung",
+        legal_basis="Einwilligung"
+    )
+    
+    return True
+
+
+async def request_data_deletion(db: AsyncSession, user_id: int) -> bool:
+    """DSGVO: Antrag auf Datenlöschung"""
+    user = await get_user_by_id(db, user_id)
+    if not user:
+        return False
+    
+    await db.execute(
+        update(User)
+        .where(User.id == user_id)
+        .values(
+            data_deletion_requested=True,
+            data_deletion_requested_at=datetime.utcnow(),
+            updated_at=datetime.utcnow()
+        )
+    )
+    await db.commit()
+    
+    # Audit-Log erstellen
+    await SecurityService.create_audit_log(
+        db, user_id, AuditAction.DATA_DELETION_REQUEST,
+        f"Datenlöschung beantragt: {user.email}",
+        resource_type="user", resource_id=user_id,
+        processing_purpose="DSGVO-Datenlöschung",
+        legal_basis="Recht auf Löschung",
+        risk_level="high"
+    )
+    
+    return True
+
+
+async def anonymize_user_data(db: AsyncSession, user_id: int) -> bool:
+    """DSGVO: Benutzerdaten anonymisieren"""
+    user = await get_user_by_id(db, user_id)
+    if not user:
+        return False
+    
+    await db.execute(
+        update(User)
+        .where(User.id == user_id)
+        .values(
+            first_name="Anonym",
+            last_name="Benutzer",
+            email=f"anonym_{user_id}@deleted.local",
+            phone=None,
+            company_name=None,
+            company_address=None,
+            company_phone=None,
+            company_website=None,
+            bio=None,
+            profile_image=None,
+            data_anonymized=True,
+            updated_at=datetime.utcnow()
+        )
+    )
+    await db.commit()
+    
+    # Audit-Log erstellen
+    await SecurityService.create_audit_log(
+        db, user_id, AuditAction.DATA_ANONYMIZATION,
+        f"Benutzerdaten anonymisiert: ID {user_id}",
+        resource_type="user", resource_id=user_id,
+        processing_purpose="DSGVO-Datenanonymisierung",
+        legal_basis="Recht auf Löschung",
+        risk_level="medium"
+    )
+    
+    return True
+
+
+async def update_consent(db: AsyncSession, user_id: int, consent_type: str, granted: bool) -> bool:
+    """DSGVO: Einwilligung aktualisieren"""
+    user = await get_user_by_id(db, user_id)
+    if not user:
+        return False
+    
+    update_data = {}
+    if consent_type == "data_processing":
+        update_data["data_processing_consent"] = granted
+    elif consent_type == "marketing":
+        update_data["marketing_consent"] = granted
+    elif consent_type == "privacy_policy":
+        update_data["privacy_policy_accepted"] = granted
+    elif consent_type == "terms":
+        update_data["terms_accepted"] = granted
+    
+    if update_data:
+        await db.execute(
+            update(User)
+            .where(User.id == user_id)
+            .values(**update_data, updated_at=datetime.utcnow())
+        )
+        await db.commit()
+        
+        # Audit-Log erstellen
+        action = AuditAction.CONSENT_GIVEN if granted else AuditAction.CONSENT_WITHDRAWN
+        await SecurityService.create_audit_log(
+            db, user_id, action,
+            f"Einwilligung {consent_type}: {'erteilt' if granted else 'zurückgezogen'}",
+            resource_type="user", resource_id=user_id,
+            processing_purpose="Einwilligungsverwaltung",
+            legal_basis="Einwilligung"
+        )
+    
+    return True

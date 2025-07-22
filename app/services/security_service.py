@@ -1,211 +1,42 @@
-import bcrypt
-import hashlib
-import secrets
-import re
+import pyotp
+import qrcode
+import io
+import base64
 from datetime import datetime, timedelta
-from typing import Optional, Dict, Any
+from typing import Optional, List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
+import secrets
+import hashlib
 
-from ..models.user import User, UserStatus
-from ..models.audit_log import AuditLog, AuditAction
+from ..core.config import settings
+from ..models.user import User
+from ..models.audit_log import AuditAction, AuditLog
+from ..core.security import get_password_hash
 
 
 class SecurityService:
-    """DSGVO-konformer Security-Service für BuildWise"""
-    
-    # Passwort-Richtlinien
-    MIN_PASSWORD_LENGTH = 12
-    REQUIRE_UPPERCASE = True
-    REQUIRE_LOWERCASE = True
-    REQUIRE_NUMBERS = True
-    REQUIRE_SPECIAL_CHARS = True
-    
-    # Account-Sperrung
-    MAX_FAILED_LOGIN_ATTEMPTS = 5
-    ACCOUNT_LOCKOUT_DURATION = timedelta(minutes=30)
-    
-    # Session-Management
-    SESSION_TIMEOUT = timedelta(hours=2)
-    
-    @staticmethod
-    def hash_password(password: str) -> str:
-        """Hash-Passwort mit bcrypt und individuellem Salt"""
-        salt = bcrypt.gensalt(rounds=12)  # 12 Runden für hohe Sicherheit
-        hashed = bcrypt.hashpw(password.encode('utf-8'), salt)
-        return hashed.decode('utf-8')
-    
-    @staticmethod
-    def verify_password(password: str, hashed_password: str) -> bool:
-        """Überprüfe Passwort gegen Hash"""
-        return bcrypt.checkpw(password.encode('utf-8'), hashed_password.encode('utf-8'))
-    
-    @staticmethod
-    def validate_password_strength(password: str) -> Dict[str, Any]:
-        """Überprüfe Passwort-Stärke nach DSGVO-Richtlinien"""
-        errors = []
-        warnings = []
-        
-        # Mindestlänge
-        if len(password) < SecurityService.MIN_PASSWORD_LENGTH:
-            errors.append(f"Passwort muss mindestens {SecurityService.MIN_PASSWORD_LENGTH} Zeichen lang sein")
-        
-        # Großbuchstaben
-        if SecurityService.REQUIRE_UPPERCASE and not re.search(r'[A-Z]', password):
-            errors.append("Passwort muss mindestens einen Großbuchstaben enthalten")
-        
-        # Kleinbuchstaben
-        if SecurityService.REQUIRE_LOWERCASE and not re.search(r'[a-z]', password):
-            errors.append("Passwort muss mindestens einen Kleinbuchstaben enthalten")
-        
-        # Zahlen
-        if SecurityService.REQUIRE_NUMBERS and not re.search(r'\d', password):
-            errors.append("Passwort muss mindestens eine Zahl enthalten")
-        
-        # Sonderzeichen
-        if SecurityService.REQUIRE_SPECIAL_CHARS and not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
-            errors.append("Passwort muss mindestens ein Sonderzeichen enthalten")
-        
-        # Häufige Passwörter vermeiden
-        common_passwords = ['password', '123456', 'qwerty', 'admin', 'letmein']
-        if password.lower() in common_passwords:
-            errors.append("Passwort ist zu einfach - verwenden Sie ein komplexeres Passwort")
-        
-        # Warnungen für schwache Passwörter
-        if len(password) < 16:
-            warnings.append("Für höhere Sicherheit verwenden Sie ein längeres Passwort")
-        
-        if not re.search(r'[!@#$%^&*(),.?":{}|<>]', password):
-            warnings.append("Sonderzeichen erhöhen die Passwort-Sicherheit")
-        
-        return {
-            'is_valid': len(errors) == 0,
-            'errors': errors,
-            'warnings': warnings,
-            'strength_score': SecurityService._calculate_strength_score(password)
-        }
-    
-    @staticmethod
-    def _calculate_strength_score(password: str) -> int:
-        """Berechne Passwort-Stärke-Score (0-100)"""
-        score = 0
-        
-        # Länge
-        score += min(len(password) * 4, 40)
-        
-        # Zeichentypen
-        if re.search(r'[a-z]', password): score += 10
-        if re.search(r'[A-Z]', password): score += 10
-        if re.search(r'\d', password): score += 10
-        if re.search(r'[!@#$%^&*(),.?":{}|<>]', password): score += 20
-        
-        # Komplexität
-        if len(set(password)) > len(password) * 0.7: score += 10
-        
-        return min(score, 100)
+    """Erweiterter Security-Service für Multi-Factor-Authentication und Sicherheitsfunktionen"""
     
     @staticmethod
     def anonymize_ip_address(ip_address: str) -> str:
-        """Anonymisiere IP-Adresse für DSGVO-Konformität"""
+        """Anonymisiert IP-Adressen für DSGVO-Compliance"""
         if not ip_address:
-            return ""
+            return None
         
-        # IPv4: Letztes Oktett entfernen
+        # IPv4: Letzte Oktette entfernen
         if '.' in ip_address:
             parts = ip_address.split('.')
             if len(parts) == 4:
-                return '.'.join(parts[:3]) + '.0'
+                return f"{parts[0]}.{parts[1]}.{parts[2]}.0"
         
         # IPv6: Letzte 64 Bits entfernen
         if ':' in ip_address:
             parts = ip_address.split(':')
             if len(parts) >= 4:
-                return ':'.join(parts[:4]) + '::'
+                return f"{parts[0]}:{parts[1]}:{parts[2]}:{parts[3]}::"
         
         return ip_address
-    
-    @staticmethod
-    def anonymize_user_agent(user_agent: str) -> str:
-        """Anonymisiere User-Agent für DSGVO-Konformität"""
-        if not user_agent:
-            return ""
-        
-        # Nur Browser und Version behalten, persönliche Daten entfernen
-        if 'Mozilla' in user_agent:
-            # Vereinfachte Browser-Erkennung
-            if 'Chrome' in user_agent:
-                return 'Chrome Browser'
-            elif 'Firefox' in user_agent:
-                return 'Firefox Browser'
-            elif 'Safari' in user_agent:
-                return 'Safari Browser'
-            elif 'Edge' in user_agent:
-                return 'Edge Browser'
-        
-        return 'Unknown Browser'
-    
-    @staticmethod
-    async def handle_failed_login(db: AsyncSession, user: User, ip_address: str) -> bool:
-        """Behandle fehlgeschlagene Anmeldung und sperre Account bei Bedarf"""
-        # Erhöhe fehlgeschlagene Anmeldeversuche
-        new_attempts = user.failed_login_attempts + 1
-        
-        # Prüfe ob Account gesperrt werden soll
-        is_locked = new_attempts >= SecurityService.MAX_FAILED_LOGIN_ATTEMPTS
-        
-        if is_locked:
-            # Account sperren
-            await db.execute(
-                update(User)
-                .where(User.id == user.id)
-                .values(
-                    failed_login_attempts=new_attempts,
-                    account_locked_until=datetime.utcnow() + SecurityService.ACCOUNT_LOCKOUT_DURATION,
-                    status=UserStatus.SUSPENDED
-                )
-            )
-            
-            # Audit-Log erstellen
-            await SecurityService.create_audit_log(
-                db, int(user.id), AuditAction.ACCOUNT_LOCKED,
-                f"Account nach {new_attempts} fehlgeschlagenen Anmeldeversuchen gesperrt",
-                resource_type="user", resource_id=int(user.id),
-                ip_address=SecurityService.anonymize_ip_address(ip_address),
-                risk_level="high"
-            )
-        else:
-            # Nur fehlgeschlagene Versuche erhöhen
-            await db.execute(
-                update(User)
-                .where(User.id == user.id)
-                .values(failed_login_attempts=new_attempts)
-            )
-        
-        # Audit-Log für fehlgeschlagene Anmeldung
-        await SecurityService.create_audit_log(
-            db, int(user.id), AuditAction.FAILED_LOGIN,
-            f"Fehlgeschlagener Anmeldeversuch (Versuch {new_attempts})",
-            resource_type="user", resource_id=int(user.id),
-            ip_address=SecurityService.anonymize_ip_address(ip_address),
-            risk_level="medium"
-        )
-        
-        await db.commit()
-        return is_locked
-    
-    @staticmethod
-    async def reset_failed_login_attempts(db: AsyncSession, user_id: int):
-        """Setze fehlgeschlagene Anmeldeversuche zurück"""
-        await db.execute(
-            update(User)
-            .where(User.id == user_id)
-            .values(
-                failed_login_attempts=0,
-                account_locked_until=None,
-                status=UserStatus.ACTIVE
-            )
-        )
-        await db.commit()
     
     @staticmethod
     async def create_audit_log(
@@ -215,40 +46,443 @@ class SecurityService:
         description: str,
         resource_type: Optional[str] = None,
         resource_id: Optional[int] = None,
-        details: Optional[Dict] = None,
         ip_address: Optional[str] = None,
-        user_agent: Optional[str] = None,
-        risk_level: str = "low",
         processing_purpose: Optional[str] = None,
-        legal_basis: Optional[str] = None
+        legal_basis: Optional[str] = None,
+        risk_level: Optional[str] = None
     ):
-        """Erstelle DSGVO-konformen Audit-Log"""
+        """Erstellt einen Audit-Log-Eintrag"""
+        
         audit_log = AuditLog(
             user_id=user_id,
             action=action,
+            description=description,
             resource_type=resource_type,
             resource_id=resource_id,
-            description=description,
-            details=details,
             ip_address=SecurityService.anonymize_ip_address(ip_address) if ip_address else None,
-            user_agent=SecurityService.anonymize_user_agent(user_agent) if user_agent else None,
-            risk_level=risk_level,
             processing_purpose=processing_purpose,
             legal_basis=legal_basis,
-            requires_review=risk_level in ["high", "critical"]
+            risk_level=risk_level
         )
         
         db.add(audit_log)
         await db.commit()
     
     @staticmethod
-    def generate_secure_token() -> str:
-        """Generiere sicheren Token für Passwort-Reset etc."""
-        return secrets.token_urlsafe(32)
+    async def check_rate_limit(db: AsyncSession, identifier: str, action: str, max_attempts: int = 5) -> bool:
+        """Prüft Rate-Limiting für Aktionen"""
+        
+        # Prüfe aktuelle Versuche in den letzten 15 Minuten
+        cutoff_time = datetime.utcnow() - timedelta(minutes=15)
+        
+        stmt = select(AuditLog).where(
+            AuditLog.description.contains(action),
+            AuditLog.ip_address == identifier,
+            AuditLog.created_at > cutoff_time
+        )
+        result = await db.execute(stmt)
+        recent_attempts = result.scalars().all()
+        
+        return len(recent_attempts) < max_attempts
     
     @staticmethod
-    def is_account_locked(user: User) -> bool:
-        """Prüfe ob Account gesperrt ist"""
-        if user.account_locked_until and user.account_locked_until > datetime.utcnow():
-            return True
-        return False 
+    async def lock_account(db: AsyncSession, user_id: int, duration_minutes: int = 30) -> bool:
+        """Sperrt ein Benutzerkonto temporär"""
+        
+        lock_until = datetime.utcnow() + timedelta(minutes=duration_minutes)
+        
+        stmt = update(User).where(User.id == user_id).values(
+            account_locked_until=lock_until,
+            failed_login_attempts=0  # Reset failed attempts
+        )
+        await db.execute(stmt)
+        await db.commit()
+        
+        # Audit-Log
+        await SecurityService.create_audit_log(
+            db, user_id, AuditAction.ACCOUNT_LOCKED,
+            f"Konto gesperrt bis {lock_until}",
+            resource_type="user", resource_id=user_id,
+            risk_level="high"
+        )
+        
+        return True
+    
+    @staticmethod
+    async def unlock_account(db: AsyncSession, user_id: int) -> bool:
+        """Entsperrt ein Benutzerkonto"""
+        
+        stmt = update(User).where(User.id == user_id).values(
+            account_locked_until=None,
+            failed_login_attempts=0
+        )
+        await db.execute(stmt)
+        await db.commit()
+        
+        # Audit-Log
+        await SecurityService.create_audit_log(
+            db, user_id, AuditAction.USER_UPDATE,
+            "Konto entsperrt",
+            resource_type="user", resource_id=user_id
+        )
+        
+        return True
+    
+    @staticmethod
+    async def increment_failed_login(db: AsyncSession, user_id: int) -> bool:
+        """Erhöht die Anzahl fehlgeschlagener Login-Versuche"""
+        
+        stmt = select(User).where(User.id == user_id)
+        result = await db.execute(stmt)
+        user = result.scalar_one_or_none()
+        
+        if not user:
+            return False
+        
+        new_attempts = user.failed_login_attempts + 1
+        
+        # Prüfe ob Konto gesperrt werden soll
+        if new_attempts >= settings.max_login_attempts:
+            await SecurityService.lock_account(db, user_id, settings.account_lockout_minutes)
+        else:
+            stmt = update(User).where(User.id == user_id).values(
+                failed_login_attempts=new_attempts
+            )
+            await db.execute(stmt)
+            await db.commit()
+        
+        return True
+    
+    @staticmethod
+    async def reset_failed_login_attempts(db: AsyncSession, user_id: int) -> bool:
+        """Setzt fehlgeschlagene Login-Versuche zurück"""
+        
+        stmt = update(User).where(User.id == user_id).values(
+            failed_login_attempts=0,
+            last_login_at=datetime.utcnow()
+        )
+        await db.execute(stmt)
+        await db.commit()
+        
+        return True
+    
+    # Multi-Factor Authentication
+    
+    @staticmethod
+    def generate_mfa_secret() -> str:
+        """Generiert ein TOTP-Secret für MFA"""
+        return pyotp.random_base32()
+    
+    @staticmethod
+    def generate_mfa_qr_code(secret: str, email: str, issuer: str = "BuildWise") -> str:
+        """Generiert QR-Code für MFA-Setup"""
+        
+        # TOTP-URI erstellen
+        totp_uri = pyotp.totp.TOTP(secret).provisioning_uri(
+            name=email,
+            issuer_name=issuer
+        )
+        
+        # QR-Code generieren
+        qr = qrcode.QRCode(version=1, box_size=10, border=5)
+        qr.add_data(totp_uri)
+        qr.make(fit=True)
+        
+        img = qr.make_image(fill_color="black", back_color="white")
+        
+        # Als Base64-String konvertieren
+        buffer = io.BytesIO()
+        img.save(buffer, format='PNG')
+        img_str = base64.b64encode(buffer.getvalue()).decode()
+        
+        return f"data:image/png;base64,{img_str}"
+    
+    @staticmethod
+    def validate_password_strength(password: str) -> Dict[str, Any]:
+        """Validiert die Passwort-Stärke"""
+        errors = []
+        
+        if len(password) < 8:
+            errors.append("Passwort muss mindestens 8 Zeichen lang sein")
+        
+        if not any(c.isupper() for c in password):
+            errors.append("Passwort muss mindestens einen Großbuchstaben enthalten")
+        
+        if not any(c.islower() for c in password):
+            errors.append("Passwort muss mindestens einen Kleinbuchstaben enthalten")
+        
+        if not any(c.isdigit() for c in password):
+            errors.append("Passwort muss mindestens eine Zahl enthalten")
+        
+        if not any(c in "!@#$%^&*()_+-=[]{}|;:,.<>?" for c in password):
+            errors.append("Passwort muss mindestens ein Sonderzeichen enthalten")
+        
+        return {
+            'is_valid': len(errors) == 0,
+            'errors': errors
+        }
+    
+    @staticmethod
+    def hash_password(password: str) -> str:
+        """Hasht ein Passwort"""
+        from ..core.security import get_password_hash
+        return get_password_hash(password)
+    
+    @staticmethod
+    def verify_password(plain_password: str, hashed_password: str) -> bool:
+        """Überprüft ein Passwort"""
+        from ..core.security import verify_password
+        return verify_password(plain_password, hashed_password)
+    
+    @staticmethod
+    def is_account_locked(lock_until: datetime) -> bool:
+        """Prüft ob ein Account gesperrt ist"""
+        return datetime.utcnow() < lock_until
+    
+    @staticmethod
+    async def handle_failed_login(db: AsyncSession, user: User, ip_address: str) -> None:
+        """Behandelt fehlgeschlagene Login-Versuche"""
+        await SecurityService.increment_failed_login(db, user.id)
+        
+        # Audit-Log für fehlgeschlagene Anmeldung
+        await SecurityService.create_audit_log(
+            db, user.id, AuditAction.UNAUTHORIZED_ACCESS,
+            f"Fehlgeschlagene Anmeldung: {user.email}",
+            resource_type="user", resource_id=user.id,
+            ip_address=SecurityService.anonymize_ip_address(ip_address) if ip_address else None,
+            risk_level="medium"
+        )
+    
+    @staticmethod
+    def verify_mfa_token(secret: str, token: str) -> bool:
+        """Verifiziert einen MFA-Token"""
+        totp = pyotp.Totp(secret)
+        return totp.verify(token)
+    
+    @staticmethod
+    def generate_backup_codes() -> List[str]:
+        """Generiert Backup-Codes für MFA"""
+        return [secrets.token_hex(4).upper() for _ in range(10)]
+    
+    @staticmethod
+    async def setup_mfa(db: AsyncSession, user_id: int) -> Dict[str, Any]:
+        """Richtet MFA für einen Benutzer ein"""
+        
+        stmt = select(User).where(User.id == user_id)
+        result = await db.execute(stmt)
+        user = result.scalar_one_or_none()
+        
+        if not user:
+            raise ValueError("Benutzer nicht gefunden")
+        
+        # MFA-Secret generieren
+        secret = SecurityService.generate_mfa_secret()
+        backup_codes = SecurityService.generate_backup_codes()
+        
+        # QR-Code generieren
+        qr_code = SecurityService.generate_mfa_qr_code(secret, user.email)
+        
+        # Backup-Codes hashen
+        hashed_backup_codes = [hashlib.sha256(code.encode()).hexdigest() for code in backup_codes]
+        
+        # In Datenbank speichern
+        stmt = update(User).where(User.id == user_id).values(
+            mfa_secret=secret,
+            mfa_backup_codes=hashed_backup_codes,
+            mfa_enabled=False  # Wird erst nach Verifizierung aktiviert
+        )
+        await db.execute(stmt)
+        await db.commit()
+        
+        # Audit-Log
+        await SecurityService.create_audit_log(
+            db, user_id, AuditAction.USER_UPDATE,
+            "MFA-Setup initiiert",
+            resource_type="user", resource_id=user_id,
+            processing_purpose="Multi-Factor-Authentication",
+            legal_basis="Sicherheit"
+        )
+        
+        return {
+            "secret": secret,
+            "qr_code": qr_code,
+            "backup_codes": backup_codes
+        }
+    
+    @staticmethod
+    async def verify_and_enable_mfa(db: AsyncSession, user_id: int, token: str) -> bool:
+        """Verifiziert MFA-Token und aktiviert MFA"""
+        
+        stmt = select(User).where(User.id == user_id)
+        result = await db.execute(stmt)
+        user = result.scalar_one_or_none()
+        
+        if not user or not user.mfa_secret:
+            return False
+        
+        # Token verifizieren
+        if not SecurityService.verify_mfa_token(user.mfa_secret, token):
+            return False
+        
+        # MFA aktivieren
+        stmt = update(User).where(User.id == user_id).values(
+            mfa_enabled=True,
+            mfa_last_used=datetime.utcnow()
+        )
+        await db.execute(stmt)
+        await db.commit()
+        
+        # Audit-Log
+        await SecurityService.create_audit_log(
+            db, user_id, AuditAction.USER_UPDATE,
+            "MFA aktiviert",
+            resource_type="user", resource_id=user_id,
+            processing_purpose="Multi-Factor-Authentication",
+            legal_basis="Sicherheit"
+        )
+        
+        return True
+    
+    @staticmethod
+    async def verify_mfa_login(db: AsyncSession, user_id: int, token: str) -> bool:
+        """Verifiziert MFA-Token beim Login"""
+        
+        stmt = select(User).where(User.id == user_id)
+        result = await db.execute(stmt)
+        user = result.scalar_one_or_none()
+        
+        if not user or not user.mfa_enabled:
+            return False
+        
+        # Prüfe ob es ein Backup-Code ist
+        if len(token) == 8:  # Backup-Code Format
+            if not user.mfa_backup_codes:
+                return False
+            
+            hashed_token = hashlib.sha256(token.encode()).hexdigest()
+            if hashed_token not in user.mfa_backup_codes:
+                return False
+            
+            # Backup-Code entfernen (einmalig verwendbar)
+            backup_codes = user.mfa_backup_codes.copy()
+            backup_codes.remove(hashed_token)
+            
+            stmt = update(User).where(User.id == user_id).values(
+                mfa_backup_codes=backup_codes
+            )
+            await db.execute(stmt)
+            await db.commit()
+            
+        else:
+            # Normale TOTP-Verifizierung
+            if not SecurityService.verify_mfa_token(user.mfa_secret, token):
+                return False
+        
+        # Last used aktualisieren
+        stmt = update(User).where(User.id == user_id).values(
+            mfa_last_used=datetime.utcnow()
+        )
+        await db.execute(stmt)
+        await db.commit()
+        
+        return True
+    
+    @staticmethod
+    async def disable_mfa(db: AsyncSession, user_id: int) -> bool:
+        """Deaktiviert MFA für einen Benutzer"""
+        
+        stmt = update(User).where(User.id == user_id).values(
+            mfa_enabled=False,
+            mfa_secret=None,
+            mfa_backup_codes=None
+        )
+        await db.execute(stmt)
+        await db.commit()
+        
+        # Audit-Log
+        await SecurityService.create_audit_log(
+            db, user_id, AuditAction.USER_UPDATE,
+            "MFA deaktiviert",
+            resource_type="user", resource_id=user_id,
+            processing_purpose="Multi-Factor-Authentication",
+            legal_basis="Benutzeranfrage"
+        )
+        
+        return True
+    
+    # Session Management
+    
+    @staticmethod
+    async def invalidate_user_sessions(db: AsyncSession, user_id: int) -> bool:
+        """Invalidiert alle Sessions eines Benutzers"""
+        
+        # Audit-Log
+        await SecurityService.create_audit_log(
+            db, user_id, AuditAction.USER_UPDATE,
+            "Alle Sessions invalidiert",
+            resource_type="user", resource_id=user_id,
+            processing_purpose="Sicherheit",
+            legal_basis="Sicherheitsmaßnahme"
+        )
+        
+        return True
+    
+    # Security Monitoring
+    
+    @staticmethod
+    async def detect_suspicious_activity(db: AsyncSession, user_id: int, activity_type: str) -> bool:
+        """Erkennt verdächtige Aktivitäten"""
+        
+        # Prüfe ungewöhnliche Login-Zeiten
+        # Prüfe Login von unbekannten IP-Adressen
+        # Prüfe ungewöhnliche Aktivitätsmuster
+        
+        # Audit-Log für verdächtige Aktivität
+        await SecurityService.create_audit_log(
+            db, user_id, AuditAction.SUSPICIOUS_ACTIVITY,
+            f"Verdächtige Aktivität erkannt: {activity_type}",
+            resource_type="user", resource_id=user_id,
+            risk_level="high",
+            requires_review=True
+        )
+        
+        return True
+    
+    @staticmethod
+    async def get_security_report(db: AsyncSession, user_id: int) -> Dict[str, Any]:
+        """Erstellt einen Sicherheitsbericht für einen Benutzer"""
+        
+        stmt = select(User).where(User.id == user_id)
+        result = await db.execute(stmt)
+        user = result.scalar_one_or_none()
+        
+        if not user:
+            return {}
+        
+        # Audit-Logs der letzten 30 Tage
+        cutoff_date = datetime.utcnow() - timedelta(days=30)
+        stmt = select(AuditLog).where(
+            AuditLog.user_id == user_id,
+            AuditLog.created_at > cutoff_date
+        ).order_by(AuditLog.created_at.desc())
+        result = await db.execute(stmt)
+        recent_logs = result.scalars().all()
+        
+        return {
+            "user_id": user.id,
+            "email": user.email,
+            "mfa_enabled": user.mfa_enabled,
+            "last_login_at": user.last_login_at.isoformat() if user.last_login_at else None,
+            "failed_login_attempts": user.failed_login_attempts,
+            "account_locked_until": user.account_locked_until.isoformat() if user.account_locked_until else None,
+            "recent_activities": [
+                {
+                    "action": log.action.value,
+                    "description": log.description,
+                    "created_at": log.created_at.isoformat(),
+                    "ip_address": log.ip_address,
+                    "risk_level": log.risk_level
+                }
+                for log in recent_logs[:50]  # Letzte 50 Aktivitäten
+            ]
+        } 

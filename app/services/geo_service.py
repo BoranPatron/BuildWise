@@ -15,7 +15,7 @@ import math
 from ..models.user import User, UserType
 from ..models.project import Project
 from ..models.milestone import Milestone
-from ..core.config import get_settings
+from ..core.config import settings
 
 logger = logging.getLogger(__name__)
 

@@ -25,6 +25,7 @@ class ProjectBase(BaseModel):
     budget: Optional[float] = None
     is_public: bool = False
     allow_quotes: bool = True
+    construction_phase: Optional[str] = None
 
 
 class ProjectCreate(ProjectBase):
@@ -54,6 +55,7 @@ class ProjectUpdate(BaseModel):
     progress_percentage: Optional[float] = None
     is_public: Optional[bool] = None
     allow_quotes: Optional[bool] = None
+    construction_phase: Optional[str] = None
 
 
 class ProjectRead(ProjectBase):
@@ -83,6 +85,9 @@ class ProjectSummary(BaseModel):
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     created_at: datetime
+    # Neue Felder für Bauphasen
+    construction_phase: Optional[str] = None
+    address_country: Optional[str] = None
 
     class Config:
         from_attributes = True
