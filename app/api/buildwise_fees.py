@@ -62,6 +62,7 @@ async def get_buildwise_fees(
     status: Optional[str] = Query(None),
     month: Optional[int] = Query(None, ge=1, le=12),
     year: Optional[int] = Query(None, ge=2020, le=2030),
+    service_provider_id: Optional[int] = Query(None),
     db: AsyncSession = Depends(get_db),
     current_user = Depends(get_current_user)
 ):
@@ -69,7 +70,12 @@ async def get_buildwise_fees(
     Holt alle BuildWise-Gebühren mit optionalen Filtern
     """
     try:
-        print(f"🔍 Debug: Lade BuildWise-Gebühren mit Parametern: skip={skip}, limit={limit}, project_id={project_id}, status={status}, month={month}, year={year}")
+        print(f"🔍 Debug: Lade BuildWise-Gebühren mit Parametern: skip={skip}, limit={limit}, project_id={project_id}, status={status}, month={month}, year={year}, service_provider_id={service_provider_id}")
+        
+        # Wenn kein service_provider_id angegeben ist, verwende den aktuellen User
+        if service_provider_id is None:
+            service_provider_id = current_user.id
+            print(f"🔍 Verwende aktuellen User als service_provider_id: {service_provider_id}")
         
         fees = await BuildWiseFeeService.get_fees(
             db=db,
@@ -78,10 +84,11 @@ async def get_buildwise_fees(
             project_id=project_id,
             status=status,
             month=month,
-            year=year
+            year=year,
+            service_provider_id=service_provider_id
         )
         
-        print(f"✅ Debug: {len(fees)} Gebühren erfolgreich geladen")
+        print(f"✅ Debug: {len(fees)} Gebühren erfolgreich geladen für service_provider_id={service_provider_id}")
         
         # Einfache JSON-Response ohne Pydantic-Validierung
         result = []

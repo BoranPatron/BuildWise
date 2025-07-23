@@ -108,12 +108,13 @@ class BuildWiseFeeService:
         project_id: Optional[int] = None,
         status: Optional[str] = None,
         month: Optional[int] = None,
-        year: Optional[int] = None
+        year: Optional[int] = None,
+        service_provider_id: Optional[int] = None
     ) -> List[BuildWiseFee]:
         """Holt BuildWise-Gebühren mit optionalen Filtern."""
         
         try:
-            print(f"🔍 Debug: BuildWiseFeeService.get_fees aufgerufen mit: skip={skip}, limit={limit}, project_id={project_id}, status={status}, month={month}, year={year}")
+            print(f"🔍 Debug: BuildWiseFeeService.get_fees aufgerufen mit: skip={skip}, limit={limit}, project_id={project_id}, status={status}, month={month}, year={year}, service_provider_id={service_provider_id}")
             
             # Robuste Prüfung: Prüfe ob Tabelle existiert und Daten hat
             try:
@@ -131,7 +132,7 @@ class BuildWiseFeeService:
                 
                 # Zeige alle Datensätze für Debug
                 for i, fee in enumerate(all_fees):
-                    print(f"  Datensatz {i+1}: ID={fee.id}, Project={fee.project_id}, Status={fee.status}, Amount={fee.fee_amount}")
+                    print(f"  Datensatz {i+1}: ID={fee.id}, Project={fee.project_id}, Status={fee.status}, Amount={fee.fee_amount}, ServiceProvider={fee.service_provider_id}")
                     
             except Exception as table_error:
                 print(f"⚠️ Debug: Fehler beim Zugriff auf buildwise_fees Tabelle: {table_error}")
@@ -149,6 +150,11 @@ class BuildWiseFeeService:
             if status:
                 query = query.where(BuildWiseFee.status == status)
                 print(f"🔍 Debug: Filter für status={status} angewendet")
+            
+            # Service Provider Filter - WICHTIG: Nur Gebühren des aktuellen Dienstleisters anzeigen
+            if service_provider_id:
+                query = query.where(BuildWiseFee.service_provider_id == service_provider_id)
+                print(f"🔍 Debug: Filter für service_provider_id={service_provider_id} angewendet")
             
             # Datum-Filter - nur anwenden wenn beide Parameter vorhanden sind
             if month and year:
@@ -180,7 +186,7 @@ class BuildWiseFeeService:
             
             # Zeige gefilterte Datensätze für Debug
             for i, fee in enumerate(fees):
-                print(f"  Gefilterter Datensatz {i+1}: ID={fee.id}, Project={fee.project_id}, Status={fee.status}, Amount={fee.fee_amount}")
+                print(f"  Gefilterter Datensatz {i+1}: ID={fee.id}, Project={fee.project_id}, Status={fee.status}, Amount={fee.fee_amount}, ServiceProvider={fee.service_provider_id}")
             
             # Konvertiere zu Liste
             fees_list = list(fees)

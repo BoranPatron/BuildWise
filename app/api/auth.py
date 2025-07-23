@@ -541,14 +541,16 @@ async def select_role(
 ):
     """Speichert die gewählte Rolle des Benutzers"""
     
-    from datetime import datetime, timedelta
+    from datetime import datetime, timedelta, timezone
     
     # Prüfe ob User "neu" ist (innerhalb der ersten 24 Stunden nach Registrierung)
     if current_user.created_at is None:
         # Fallback für User ohne created_at
         is_new_user = True
     else:
-        user_age = datetime.utcnow() - current_user.created_at
+        # Verwende timezone-aware datetime für den Vergleich
+        now = datetime.now(timezone.utc)
+        user_age = now - current_user.created_at
         is_new_user = user_age.total_seconds() < 24 * 60 * 60  # 24 Stunden
     
     # Erlaube Rollenänderung nur für neue User oder wenn noch keine Rolle gesetzt
@@ -567,7 +569,6 @@ async def select_role(
     
     try:
         # Setze die Rolle
-        from datetime import datetime
         from sqlalchemy import update
         
         role_enum = UserRole.BAUTRAEGER if request.role == "bautraeger" else UserRole.DIENSTLEISTER
@@ -578,7 +579,7 @@ async def select_role(
             .values(
                 user_role=role_enum,
                 role_selected=True,
-                role_selected_at=datetime.utcnow(),
+                role_selected_at=datetime.now(timezone.utc),  # Verwende timezone-aware datetime
                 role_selection_modal_shown=True  # Markiere dass Modal angezeigt wurde
             )
         )
