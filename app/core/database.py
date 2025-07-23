@@ -1,20 +1,13 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from .config import settings
 
-# Verwende SQLite für die Entwicklung
-DATABASE_URL = "sqlite+aiosqlite:///./buildwise.db"
+# Verwende PostgreSQL für die Entwicklung
+DATABASE_URL = "postgresql+asyncpg://buildwise_user:buildwise123@localhost:5432/buildwise"
 
 engine = create_async_engine(
     DATABASE_URL, 
     echo=False, 
     future=True,
-    # SQLite-Optimierungen für bessere Konkurrenz
-    connect_args={
-        "check_same_thread": False,
-        "timeout": 60.0,
-        "isolation_level": None,
-        "uri": True
-    },
     pool_pre_ping=True,
     pool_recycle=3600,
     pool_size=10,

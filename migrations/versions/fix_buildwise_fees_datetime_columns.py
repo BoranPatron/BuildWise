@@ -23,15 +23,16 @@ def upgrade():
     # Für SQLite verwenden wir eine andere Strategie
     
     # Aktualisiere bestehende Daten mit aktuellen Timestamps
+    # PostgreSQL-kompatible Version
     op.execute("""
         UPDATE buildwise_fees 
-        SET created_at = datetime('now'), updated_at = datetime('now') 
+        SET created_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP 
         WHERE created_at IS NULL OR updated_at IS NULL
     """)
     
     op.execute("""
         UPDATE buildwise_fee_items 
-        SET created_at = datetime('now') 
+        SET created_at = CURRENT_TIMESTAMP 
         WHERE created_at IS NULL
     """)
     

@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     """Application configuration loaded from environment variables."""
 
     # Datenbank
-    database_url: str = "sqlite:///./buildwise.db"
+    database_url: str = "postgresql+asyncpg://buildwise_user:buildwise123@localhost:5432/buildwise"
     
     # Debug-Modus (für Entwicklung)
     DEBUG: bool = True  # Standardmäßig aktiviert für Entwicklung
