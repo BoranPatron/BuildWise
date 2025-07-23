@@ -98,8 +98,20 @@ async def login(
             "email": user.email,
             "first_name": user.first_name,
             "last_name": user.last_name,
-            "user_type": user.user_type,
+            "user_type": user.user_type.value,
             "auth_provider": user.auth_provider.value,
+            # Rolleninformationen hinzufügen
+            "user_role": user.user_role.value if user.user_role else None,
+            "role_selected": user.role_selected,
+            "role_selection_modal_shown": user.role_selection_modal_shown,
+            # Subscription-Informationen hinzufügen
+            "subscription_plan": user.subscription_plan.value if user.subscription_plan else "BASIS",
+            "subscription_status": user.subscription_status.value if user.subscription_status else "INACTIVE",
+            "max_gewerke": user.max_gewerke,
+            # Onboarding-Informationen
+            "first_login_completed": user.first_login_completed,
+            "onboarding_completed": user.onboarding_completed,
+            "onboarding_step": user.onboarding_step,
             "consents": {
                 "data_processing": user.data_processing_consent,
                 "marketing": user.marketing_consent,
@@ -258,6 +270,18 @@ async def oauth_callback(
                 "last_name": user.last_name,
                 "user_type": user.user_type.value,  # .value für JSON-Serialisierung
                 "auth_provider": user.auth_provider.value,
+                # Rolleninformationen hinzufügen
+                "user_role": user.user_role.value if user.user_role else None,
+                "role_selected": user.role_selected,
+                "role_selection_modal_shown": user.role_selection_modal_shown,
+                # Subscription-Informationen hinzufügen
+                "subscription_plan": user.subscription_plan.value if user.subscription_plan else "BASIS",
+                "subscription_status": user.subscription_status.value if user.subscription_status else "INACTIVE",
+                "max_gewerke": user.max_gewerke,
+                # Onboarding-Informationen
+                "first_login_completed": user.first_login_completed,
+                "onboarding_completed": user.onboarding_completed,
+                "onboarding_step": user.onboarding_step,
                 "consents": {
                     "data_processing": user.data_processing_consent,
                     "marketing": user.marketing_consent,
@@ -520,8 +544,12 @@ async def select_role(
     from datetime import datetime, timedelta
     
     # Prüfe ob User "neu" ist (innerhalb der ersten 24 Stunden nach Registrierung)
-    user_age = datetime.utcnow() - current_user.created_at
-    is_new_user = user_age.total_seconds() < 24 * 60 * 60  # 24 Stunden
+    if current_user.created_at is None:
+        # Fallback für User ohne created_at
+        is_new_user = True
+    else:
+        user_age = datetime.utcnow() - current_user.created_at
+        is_new_user = user_age.total_seconds() < 24 * 60 * 60  # 24 Stunden
     
     # Erlaube Rollenänderung nur für neue User oder wenn noch keine Rolle gesetzt
     if current_user.role_selected and current_user.user_role and not is_new_user:

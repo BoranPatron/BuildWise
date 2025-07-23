@@ -8,7 +8,7 @@ import base64
 from datetime import datetime, timedelta
 
 from ..core.config import settings
-from ..models.user import User, AuthProvider, UserType, UserStatus
+from ..models.user import User, AuthProvider, UserType, UserStatus, SubscriptionPlan, SubscriptionStatus
 from ..services.security_service import SecurityService
 from ..models.audit_log import AuditAction
 
@@ -313,6 +313,17 @@ class OAuthService:
             is_active=True,
             is_verified=True,
             email_verified=True,
+            # Onboarding-Felder für neue OAuth-User
+            user_role=None,  # Rolle muss noch ausgewählt werden
+            role_selected=False,  # Rolle noch nicht ausgewählt
+            role_selection_modal_shown=False,  # Modal noch nicht angezeigt
+            first_login_completed=False,  # Erster Login noch nicht abgeschlossen
+            onboarding_completed=False,  # Onboarding noch nicht abgeschlossen
+            onboarding_step=0,  # Onboarding nicht gestartet
+            # Subscription-Felder (Standard: BASIS)
+            subscription_plan=SubscriptionPlan.BASIS,
+            subscription_status=SubscriptionStatus.INACTIVE,
+            max_gewerke=3,
             # DSGVO-Einwilligungen (Standard: True für Social-Login)
             data_processing_consent=True,
             marketing_consent=False,  # Opt-out für Marketing
@@ -325,9 +336,16 @@ class OAuthService:
             social_profile_data=json.dumps(user_info)
         )
         
-        db.add(new_user)
-        await db.commit()
-        await db.refresh(new_user)
+        try:
+            db.add(new_user)
+            await db.flush()  # Flush vor commit um ID zu generieren
+            await db.commit()
+            await db.refresh(new_user)
+            print(f"✅ Neuer OAuth-User erfolgreich erstellt: {new_user.id}")
+        except Exception as e:
+            await db.rollback()
+            print(f"❌ Fehler beim Erstellen des OAuth-Users: {e}")
+            raise ValueError(f"Social-Login fehlgeschlagen: {str(e)}")
         
         # Audit-Log für Benutzerregistrierung
         await SecurityService.create_audit_log(

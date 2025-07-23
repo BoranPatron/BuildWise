@@ -1,39 +1,58 @@
 from datetime import datetime, timedelta
 from typing import Optional
 import hashlib
+import secrets
 
 from jose import JWTError, jwt
-from passlib.context import CryptContext
-from passlib.exc import UnknownHashError
 
 from .config import settings
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 oauth2_scheme_name = "Bearer"
 
 
+def hash_password_simple(password: str) -> str:
+    """Einfache Passwort-Hashing ohne bcrypt"""
+    salt = secrets.token_hex(16)
+    hash_obj = hashlib.sha256()
+    hash_obj.update((password + salt).encode('utf-8'))
+    return f"sha256${salt}${hash_obj.hexdigest()}"
+
+
 def verify_password_simple(plain_password: str, hashed_password: str) -> bool:
-    """Einfache SHA256-Passwort-Verifikation für Dienstleister-Login"""
-    return hashlib.sha256(plain_password.encode()).hexdigest() == hashed_password
+    """Einfache Passwort-Verifikation ohne bcrypt"""
+    try:
+        parts = hashed_password.split('$')
+        if len(parts) != 3 or parts[0] != 'sha256':
+            return False
+        salt = parts[1]
+        stored_hash = parts[2]
+        
+        hash_obj = hashlib.sha256()
+        hash_obj.update((plain_password + salt).encode('utf-8'))
+        return hash_obj.hexdigest() == stored_hash
+    except:
+        return False
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
-    """Erweiterte Passwort-Verifikation mit bcrypt und SHA256-Fallback"""
+    """Überprüft ein Passwort - unterstützt sowohl bcrypt als auch einfaches Hashing"""
+    # Prüfe ob es ein einfaches Hash ist
+    if hashed_password.startswith('sha256$'):
+        return verify_password_simple(plain_password, hashed_password)
+    
+    # Fallback zu bcrypt (falls verfügbar)
     try:
-        # Versuche zuerst bcrypt
+        from passlib.context import CryptContext
+        pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
         return pwd_context.verify(plain_password, hashed_password)
-    except (UnknownHashError, ValueError) as e:
-        # Fallback: Versuche einfache SHA256-Verifikation
-        try:
-            return verify_password_simple(plain_password, hashed_password)
-        except Exception:
-            # Letzte Chance: Direkter String-Vergleich für Test-Zwecke
-            return plain_password == hashed_password
+    except Exception:
+        # Falls bcrypt fehlschlägt, verwende einfaches Hashing
+        return verify_password_simple(plain_password, hashed_password)
 
 
 def get_password_hash(password: str) -> str:
-    return pwd_context.hash(password)
+    """Hasht ein Passwort - verwendet einfaches Hashing"""
+    return hash_password_simple(password)
 
 
 def create_access_token(data: dict, expires_delta: Optional[int] = None) -> str:
@@ -71,4 +90,4 @@ def can_accept_or_reject_quote(user, quote):
     # Zusätzlich: Erlaube User mit E-Mail admin@buildwise.de (Fallback)
     if getattr(user, 'email', '') == 'admin@buildwise.de':
         return True
-    return False
+    return False 

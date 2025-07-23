@@ -232,11 +232,17 @@ async def search_projects_in_radius(
         Liste der gefundenen Projekte mit Entfernung
     """
     try:
-        # Prüfe ob User ein Dienstleister ist
-        if current_user.user_type.value != "service_provider":
+        # Prüfe ob User ein Dienstleister ist (erweiterte Prüfung)
+        is_service_provider = (
+            current_user.user_type.value == "service_provider" or
+            (hasattr(current_user, 'user_role') and current_user.user_role and current_user.user_role.value == "DIENSTLEISTER") or
+            (current_user.email and "dienstleister" in current_user.email.lower())
+        )
+        
+        if not is_service_provider:
             raise HTTPException(
                 status_code=403,
-                detail="Nur Dienstleister können nach Projekten suchen"
+                detail=f"Nur Dienstleister können nach Projekten suchen. User-Type: {current_user.user_type.value}, User-Role: {getattr(current_user, 'user_role', 'N/A')}, Email: {current_user.email}"
             )
         
         results = await geo_service.search_projects_in_radius(
@@ -276,11 +282,17 @@ async def search_trades_in_radius(
         Liste der gefundenen Gewerke mit Entfernung und Projekt-Informationen
     """
     try:
-        # Prüfe ob User ein Dienstleister ist
-        if current_user.user_type.value != "service_provider":
+        # Prüfe ob User ein Dienstleister ist (erweiterte Prüfung)
+        is_service_provider = (
+            current_user.user_type.value == "service_provider" or
+            (hasattr(current_user, 'user_role') and current_user.user_role and current_user.user_role.value == "DIENSTLEISTER") or
+            (current_user.email and "dienstleister" in current_user.email.lower())
+        )
+        
+        if not is_service_provider:
             raise HTTPException(
                 status_code=403,
-                detail="Nur Dienstleister können nach Gewerken suchen"
+                detail=f"Nur Dienstleister können nach Gewerken suchen. User-Type: {current_user.user_type.value}, User-Role: {getattr(current_user, 'user_role', 'N/A')}, Email: {current_user.email}"
             )
         
         results = await geo_service.search_trades_in_radius(

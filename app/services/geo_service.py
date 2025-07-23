@@ -365,13 +365,14 @@ class GeoService:
             Liste der gefundenen Gewerke mit Entfernung und Projekt-Informationen
         """
         try:
-            # Basis-Query für Gewerke mit Projekt-Join
+            # Basis-Query für Gewerke mit Projekt-Join - verwende bereits geocodierte Projekte
             query = select(Milestone, Project).join(
                 Project, Milestone.project_id == Project.id
             ).where(
                 Project.is_public == True,
                 Project.allow_quotes == True,
-                Project.address.isnot(None)
+                Project.address_latitude.isnot(None),
+                Project.address_longitude.isnot(None)
             )
             
             # Filter anwenden
@@ -392,49 +393,42 @@ class GeoService:
             # Entfernung berechnen und filtern
             trades_with_distance = []
             for milestone, project in milestone_project_pairs:
-                project_address = getattr(project, 'address', None)
-                if project_address and isinstance(project_address, str):
-                    # Geocoding für die Projekt-Adresse durchführen
-                    geocoding_result = await self.geocode_address_from_string(project_address)
+                # Verwende bereits vorhandene Koordinaten
+                if project.address_latitude and project.address_longitude:
+                    distance = self.calculate_distance(
+                        center_lat, center_lon,
+                        project.address_latitude, project.address_longitude
+                    )
                     
-                    if geocoding_result:
-                        distance = self.calculate_distance(
-                            center_lat, center_lon,
-                            geocoding_result["latitude"], geocoding_result["longitude"]
-                        )
-                        
-                        if distance <= radius_km:
-                            # Adresse parsen
-                            address_parts = self.parse_address(project_address)
-                            
-                            trade_dict = {
-                                "id": milestone.id,
-                                "title": milestone.title,
-                                "description": milestone.description,
-                                "category": milestone.category or "Unbekannt",
-                                "status": milestone.status.value,
-                                "priority": milestone.priority.value,
-                                "budget": milestone.budget,
-                                "planned_date": milestone.planned_date.isoformat() if milestone.planned_date else "",
-                                "start_date": milestone.start_date.isoformat() if milestone.start_date else None,
-                                "end_date": milestone.end_date.isoformat() if milestone.end_date else None,
-                                "progress_percentage": milestone.progress_percentage,
-                                "contractor": milestone.contractor,
-                                # Projekt-Informationen
-                                "project_id": project.id,
-                                "project_name": project.name,
-                                "project_type": project.project_type.value,
-                                "project_status": project.status.value,
-                                # Adress-Informationen (vom übergeordneten Projekt)
-                                "address_street": address_parts.get("street", ""),
-                                "address_zip": address_parts.get("zip", ""),
-                                "address_city": address_parts.get("city", ""),
-                                "address_latitude": geocoding_result["latitude"],
-                                "address_longitude": geocoding_result["longitude"],
-                                "distance_km": round(distance, 2),
-                                "created_at": milestone.created_at.isoformat() if milestone.created_at is not None else None
-                            }
-                            trades_with_distance.append(trade_dict)
+                    if distance <= radius_km:
+                        trade_dict = {
+                            "id": milestone.id,
+                            "title": milestone.title,
+                            "description": milestone.description,
+                            "category": milestone.category or "Unbekannt",
+                            "status": milestone.status.value,
+                            "priority": milestone.priority.value,
+                            "budget": milestone.budget,
+                            "planned_date": milestone.planned_date.isoformat() if milestone.planned_date else "",
+                            "start_date": milestone.start_date.isoformat() if milestone.start_date else None,
+                            "end_date": milestone.end_date.isoformat() if milestone.end_date else None,
+                            "progress_percentage": milestone.progress_percentage,
+                            "contractor": milestone.contractor,
+                            # Projekt-Informationen
+                            "project_id": project.id,
+                            "project_name": project.name,
+                            "project_type": project.project_type.value,
+                            "project_status": project.status.value,
+                            # Adress-Informationen (vom übergeordneten Projekt)
+                            "address_street": project.address_street or "",
+                            "address_zip": project.address_zip or "",
+                            "address_city": project.address_city or "",
+                            "address_latitude": project.address_latitude,
+                            "address_longitude": project.address_longitude,
+                            "distance_km": round(distance, 2),
+                            "created_at": milestone.created_at.isoformat() if milestone.created_at is not None else None
+                        }
+                        trades_with_distance.append(trade_dict)
             
             # Nach Entfernung sortieren
             trades_with_distance.sort(key=lambda x: x["distance_km"])
