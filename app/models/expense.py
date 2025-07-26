@@ -14,6 +14,10 @@ class Expense(Base):
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=False)
     date = Column(DateTime, nullable=False)
     receipt_url = Column(String(500), nullable=True)
+    
+    # Bauphase zum Zeitpunkt der Ausgabe (für Analytics)
+    construction_phase = Column(String(100), nullable=True)  # Aktuelle Bauphase des Projekts
+    
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), onupdate=func.now())
     

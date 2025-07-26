@@ -234,6 +234,97 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
             print(f"❌ Fehler beim Erstellen der BuildWise Gebühr: {e}")
             # Fehler beim Erstellen der Gebühr sollte nicht die Quote-Akzeptierung blockieren
     
+    # Credit-Zuordnung für Bauträger - ERWEITERT FÜR BESICHTIGUNGSSYSTEM
+    try:
+        from ..services.credit_service import CreditService
+        from ..models.credit_event import CreditEventType
+        from ..models.user import UserRole
+        from ..models import Project
+        from ..models.inspection import Inspection
+        from ..models.quote_revision import QuoteRevision
+        
+        # Hole Projekt-Owner (Bauträger)
+        project_result = await db.execute(
+            select(Project).where(Project.id == quote.project_id)
+        )
+        project = project_result.scalar_one_or_none()
+        
+        if project and project.owner:
+            # Prüfe ob dieses Angebot aus einem Besichtigungsprozess stammt
+            inspection_result = await db.execute(
+                select(Inspection)
+                .join(Inspection.invitations)
+                .where(
+                    and_(
+                        Inspection.milestone_id == quote.milestone_id,
+                        Inspection.invitations.any(quote_id=quote.id)
+                    )
+                )
+            )
+            inspection = inspection_result.scalar_one_or_none()
+            
+            # Prüfe ob es eine aktive Revision gibt (Indikator für Besichtigungsprozess)
+            revision_result = await db.execute(
+                select(QuoteRevision).where(
+                    and_(
+                        QuoteRevision.original_quote_id == quote.id,
+                        QuoteRevision.is_active == True
+                    )
+                )
+            )
+            revision = revision_result.scalar_one_or_none()
+            
+            # Vergebe erhöhte Credits wenn Besichtigungsprozess durchlaufen wurde
+            if inspection or revision:
+                # BONUS-CREDITS für vollständigen Besichtigungsprozess!
+                success = await CreditService.reward_inspection_quote_acceptance(
+                    db=db,
+                    user_id=project.owner,
+                    quote_id=quote.id,
+                    inspection_id=inspection.id if inspection else None
+                )
+                
+                if success:
+                    print(f"🎉 BONUS-CREDITS vergeben! Bauträger {project.owner} erhielt 15 Credits für Besichtigungsangebot")
+                else:
+                    print(f"⚠️  Bonus-Credits konnten nicht vergeben werden")
+            else:
+                # Standard-Credits für normale Angebotsakzeptanz
+                success = await CreditService.reward_user_action(
+                    db=db,
+                    user_id=project.owner,
+                    action_type=CreditEventType.QUOTE_ACCEPTED,
+                    related_entity_type="quote",
+                    related_entity_id=quote.id
+                )
+                
+                if success:
+                    print(f"✅ Standard-Credits vergeben für Quote-Akzeptanz")
+                else:
+                    print(f"⚠️  Standard-Credits konnten nicht vergeben werden")
+        
+        if project and project.owner:
+            owner = project.owner
+            
+            # Prüfe ob Owner ein Bauträger ist
+            if owner.user_role == UserRole.BAUTRAEGER:
+                # Füge Credits für akzeptiertes Angebot hinzu
+                await CreditService.add_credits_for_activity(
+                    db=db,
+                    user_id=owner.id,
+                    event_type=CreditEventType.QUOTE_ACCEPTED,
+                    description=f"Angebot akzeptiert: {quote.title}",
+                    related_entity_type="quote",
+                    related_entity_id=quote.id
+                )
+                print(f"✅ Credits für Bauträger {owner.id} hinzugefügt: Angebot akzeptiert")
+            else:
+                print(f"ℹ️  Projekt-Owner {owner.id} ist kein Bauträger, keine Credits hinzugefügt")
+                
+    except Exception as e:
+        print(f"❌ Fehler bei Credit-Zuordnung: {e}")
+        # Fehler bei Credit-Zuordnung sollte nicht die Quote-Akzeptierung blockieren
+    
     await db.commit()
     await db.refresh(quote)
     return quote

@@ -75,8 +75,8 @@ class UserRead(UserBase):
     email_verified: bool
     two_factor_enabled: bool
     language_preference: str
-    created_at: datetime
-    updated_at: datetime
+    created_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True
@@ -92,7 +92,7 @@ class UserProfile(BaseModel):
     region: Optional[str] = None
     languages: Optional[str] = None
     is_verified: bool
-    created_at: datetime
+    created_at: Optional[datetime] = None
 
     class Config:
         from_attributes = True

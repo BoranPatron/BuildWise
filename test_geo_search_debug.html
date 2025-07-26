@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Geo-Search Debug</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .line-clamp-2 {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+        }
+    </style>
+</head>
+<body class="bg-[#2c3539] text-white min-h-screen p-8">
+    <div class="container mx-auto">
+        <h1 class="text-3xl font-bold mb-8 text-[#ffbd59]">Geo-Search Debug - Dienstleister-Design</h1>
+        
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <!-- Test Trade mit Dienstleister-Design -->
+            <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4 hover:bg-white/20 transition-all duration-300 cursor-pointer border border-white/10 flex flex-col h-full">
+                <div class="flex items-start justify-between mb-3">
+                    <div class="flex items-center gap-3">
+                        <div class="p-2 bg-[#ffbd59]/20 rounded-lg">
+                            <svg class="w-4 h-4 text-[#ffbd59]" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path>
+                            </svg>
+                        </div>
+                        <div class="flex-1 min-w-0">
+                            <h3 class="font-semibold text-white text-lg mb-3 line-clamp-2">Sauna Einbau und Montage TES</h3>
+                            
+                            <!-- Dienstleister-Badges - Fokus auf relevante Infos -->
+                            <div class="flex items-center gap-2 mt-1 mb-3">
+                                <!-- Kategorie Badge -->
+                                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-500/20 text-gray-300 border border-gray-500/30">
+                                    <svg class="w-2.5 h-2.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
+                                    </svg>
+                                    Sanitär
+                                </span>
+                                
+                                <!-- Besichtigung Badge - Wichtig für Dienstleister -->
+                                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-500/20 text-orange-300 border border-orange-500/30">
+                                    🔍 Besichtigung
+                                </span>
+                                
+                                <!-- Bewerber-Anzahl - Wichtig für Dienstleister -->
+                                <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                                    <svg class="w-2.5 h-2.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"></path>
+                                    </svg>
+                                    5 Bewerber
+                                </span>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Status-Badges - Dienstleister-relevant -->
+                    <div class="flex flex-col gap-1">
+                        <!-- Start-Zeitpunkt Badge -->
+                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-300 border border-green-500/30">
+                            <svg class="w-2.5 h-2.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            15.01.2024
+                        </span>
+                        
+                        <!-- Budget-Badge - Wichtig für Dienstleister -->
+                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                            <svg class="w-2.5 h-2.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
+                            </svg>
+                            15.000€
+                        </span>
+                    </div>
+                </div>
+
+                <!-- Dienstleister-relevante Details -->
+                <div class="space-y-2 text-sm mt-3">
+                    <div class="flex items-center gap-2">
+                        <span class="text-gray-400">Kategorie:</span>
+                        <span class="text-white">Sanitär</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-gray-400">Budget:</span>
+                        <span class="text-white font-medium">€15,000</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <span class="text-gray-400">Entfernung:</span>
+                        <span class="text-white">6.3 km</span>
+                    </div>
+                    
+                    <!-- Dienstleister-spezifische Infos -->
+                    <div class="flex items-center gap-2">
+                        <span class="text-gray-400">Bewerber:</span>
+                        <span class="text-white font-medium">5</span>
+                    </div>
+                    
+                    <div class="flex items-center gap-2">
+                        <span class="text-gray-400">Start:</span>
+                        <span class="text-white">15.01.2024</span>
+                    </div>
+                </div>
+
+                <div class="mt-auto pt-3 border-t border-white/10">
+                    <button class="w-full bg-[#ffbd59] text-[#2c3539] px-3 py-2 rounded text-sm font-medium hover:bg-[#ffa726] transition-colors">
+                        Details anzeigen
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-8 p-6 bg-blue-500/20 border border-blue-400/30 rounded-lg">
+            <h2 class="text-lg font-semibold text-blue-200 mb-4">🔍 Debug-Anweisungen</h2>
+            <div class="text-blue-100 space-y-2">
+                <p><strong>Erwartete Dienstleister-Badges:</strong></p>
+                <ul class="list-disc list-inside ml-4 space-y-1">
+                    <li>⚪ <strong>Kategorie-Badge:</strong> "Sanitär" (grau mit Tag-Icon)</li>
+                    <li>🟠 <strong>Besichtigung-Badge:</strong> "🔍 Besichtigung" (orange)</li>
+                    <li>🔵 <strong>Bewerber-Badge:</strong> "5 Bewerber" (blau mit Users-Icon)</li>
+                    <li>🟢 <strong>Start-Badge:</strong> "15.01.2024" (grün mit Clock-Icon)</li>
+                    <li>🟣 <strong>Budget-Badge:</strong> "15.000€" (lila mit Euro-Icon)</li>
+                </ul>
+                
+                <p class="mt-4"><strong>Wenn Badges hier sichtbar sind:</strong></p>
+                <ul class="list-disc list-inside ml-4 space-y-1">
+                    <li>Das Styling funktioniert korrekt</li>
+                    <li>Das Problem liegt im Frontend-Cache</li>
+                    <li>Frontend-Server neu starten</li>
+                    <li>Browser-Cache leeren (Strg+F5)</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        console.log('🎯 Geo-Search Debug geladen');
+        console.log('📊 Erwartete Dienstleister-Badges:');
+        console.log('  - Kategorie: Sanitär (grau)');
+        console.log('  - Besichtigung: 🔍 Besichtigung (orange)');
+        console.log('  - Bewerber: 5 Bewerber (blau)');
+        console.log('  - Start: 15.01.2024 (grün)');
+        console.log('  - Budget: 15.000€ (lila)');
+        
+        // Teste Badge-Sichtbarkeit
+        const badges = document.querySelectorAll('[class*="bg-gray-500/20"], [class*="bg-orange-500/20"], [class*="bg-blue-500/20"], [class*="bg-green-500/20"], [class*="bg-purple-500/20"]');
+        console.log('✅ Gefundene Badges:', badges.length);
+        
+        if (badges.length > 0) {
+            console.log('🎉 Dienstleister-Badges sind sichtbar!');
+        } else {
+            console.log('❌ Keine Badges gefunden!');
+        }
+    </script>
+</body>
+</html> 

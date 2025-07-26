@@ -366,6 +366,7 @@ class GeoService:
         """
         try:
             # Basis-Query für Gewerke mit Projekt-Join - verwende bereits geocodierte Projekte
+            # Zeige ALLE Gewerke an (mit und ohne Besichtigungsoption)
             query = select(Milestone, Project).join(
                 Project, Milestone.project_id == Project.id
             ).where(
@@ -390,6 +391,31 @@ class GeoService:
             result = await db.execute(query)
             milestone_project_pairs = result.all()
             
+            # Lade Quote-Statistiken für Badge-System
+            from ..models.quote import Quote, QuoteStatus
+            quote_stats = {}
+            for milestone, _ in milestone_project_pairs:
+                quote_result = await db.execute(
+                    select(Quote).where(Quote.milestone_id == milestone.id)
+                )
+                quotes = list(quote_result.scalars().all())
+                
+                # Berechne Quote-Statistiken mit korrekten Enum-Werten
+                total_quotes = len(quotes)
+                accepted_quotes = len([q for q in quotes if q.status == QuoteStatus.ACCEPTED])
+                pending_quotes = len([q for q in quotes if q.status in [QuoteStatus.SUBMITTED, QuoteStatus.UNDER_REVIEW]])
+                rejected_quotes = len([q for q in quotes if q.status == QuoteStatus.REJECTED])
+                
+                quote_stats[milestone.id] = {
+                    "total_quotes": total_quotes,
+                    "accepted_quotes": accepted_quotes,
+                    "pending_quotes": pending_quotes,
+                    "rejected_quotes": rejected_quotes,
+                    "has_accepted_quote": accepted_quotes > 0,
+                    "has_pending_quotes": pending_quotes > 0,
+                    "has_rejected_quotes": rejected_quotes > 0
+                }
+            
             # Entfernung berechnen und filtern
             trades_with_distance = []
             for milestone, project in milestone_project_pairs:
@@ -401,24 +427,37 @@ class GeoService:
                     )
                     
                     if distance <= radius_km:
+                        # Quote-Statistiken für Badge-System
+                        stats = quote_stats.get(milestone.id, {
+                            "total_quotes": 0,
+                            "accepted_quotes": 0,
+                            "pending_quotes": 0,
+                            "rejected_quotes": 0,
+                            "has_accepted_quote": False,
+                            "has_pending_quotes": False,
+                            "has_rejected_quotes": False
+                        })
+                        
                         trade_dict = {
                             "id": milestone.id,
                             "title": milestone.title,
                             "description": milestone.description,
                             "category": milestone.category or "Unbekannt",
-                            "status": milestone.status.value,
-                            "priority": milestone.priority.value,
+                            "status": milestone.status,
+                            "priority": milestone.priority,
                             "budget": milestone.budget,
                             "planned_date": milestone.planned_date.isoformat() if milestone.planned_date else "",
                             "start_date": milestone.start_date.isoformat() if milestone.start_date else None,
                             "end_date": milestone.end_date.isoformat() if milestone.end_date else None,
                             "progress_percentage": milestone.progress_percentage,
                             "contractor": milestone.contractor,
+                            # Besichtigungssystem - Explizit übertragen
+                            "requires_inspection": bool(getattr(milestone, 'requires_inspection', False)),
                             # Projekt-Informationen
                             "project_id": project.id,
                             "project_name": project.name,
-                            "project_type": project.project_type.value,
-                            "project_status": project.status.value,
+                            "project_type": project.project_type,
+                            "project_status": project.status,
                             # Adress-Informationen (vom übergeordneten Projekt)
                             "address_street": project.address_street or "",
                             "address_zip": project.address_zip or "",
@@ -426,7 +465,9 @@ class GeoService:
                             "address_latitude": project.address_latitude,
                             "address_longitude": project.address_longitude,
                             "distance_km": round(distance, 2),
-                            "created_at": milestone.created_at.isoformat() if milestone.created_at is not None else None
+                            "created_at": milestone.created_at.isoformat() if milestone.created_at is not None else None,
+                            # Badge-System Daten
+                            "quote_stats": stats
                         }
                         trades_with_distance.append(trade_dict)
             

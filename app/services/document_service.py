@@ -8,6 +8,7 @@ from pathlib import Path
 
 from ..models import Document, DocumentType
 from ..schemas.document import DocumentCreate, DocumentUpdate
+from ..models.user import User
 
 
 async def create_document(db: AsyncSession, document_in: DocumentCreate, uploaded_by: int) -> Document:
@@ -28,6 +29,37 @@ async def create_document(db: AsyncSession, document_in: DocumentCreate, uploade
     db.add(document)
     await db.commit()
     await db.refresh(document)
+    
+    # Credit-Zuordnung für Bauträger
+    try:
+        from ..services.credit_service import CreditService
+        from ..models.credit_event import CreditEventType
+        from ..models.user import UserRole
+        
+        # Prüfe ob User ein Bauträger ist
+        user_result = await db.execute(
+            select(User).where(User.id == uploaded_by)
+        )
+        user = user_result.scalar_one_or_none()
+        
+        if user and user.user_role == UserRole.BAUTRAEGER:
+            # Füge Credits für hochgeladenes Dokument hinzu
+            await CreditService.add_credits_for_activity(
+                db=db,
+                user_id=uploaded_by,
+                event_type=CreditEventType.DOCUMENT_UPLOADED,
+                description=f"Dokument hochgeladen: {document_in.title}",
+                related_entity_type="document",
+                related_entity_id=document.id
+            )
+            print(f"✅ Credits für Bauträger {uploaded_by} hinzugefügt: Dokument hochgeladen")
+        else:
+            print(f"ℹ️  User {uploaded_by} ist kein Bauträger, keine Credits hinzugefügt")
+            
+    except Exception as e:
+        print(f"❌ Fehler bei Credit-Zuordnung: {e}")
+        # Fehler bei Credit-Zuordnung sollte nicht die Dokument-Erstellung blockieren
+    
     return document
 
 

@@ -27,6 +27,12 @@ from .message import (
 from .cost_position import (
     CostPositionCreate, CostPositionRead, CostPositionUpdate, CostPositionSummary, CostPositionStatistics
 )
+from .appointment import (
+    AppointmentBase, AppointmentCreate, AppointmentUpdate, AppointmentResponse,
+    ServiceProviderInvite, ServiceProviderResponse, InspectionDecisionRequest,
+    AppointmentResponseRequest, CalendarEventData, NotificationRequest,
+    AppointmentType, AppointmentStatus
+)
 
 __all__ = [
     # User schemas
@@ -50,4 +56,9 @@ __all__ = [
     "MessageBase", "MessageCreate", "MessageRead", "MessageSummary", "ChatRoom",
     # Cost Position schemas
     "CostPositionCreate", "CostPositionRead", "CostPositionUpdate", "CostPositionSummary", "CostPositionStatistics",
+    # Appointment schemas
+    "AppointmentBase", "AppointmentCreate", "AppointmentUpdate", "AppointmentResponse",
+    "ServiceProviderInvite", "ServiceProviderResponse", "InspectionDecisionRequest",
+    "AppointmentResponseRequest", "CalendarEventData", "NotificationRequest",
+    "AppointmentType", "AppointmentStatus",
 ]

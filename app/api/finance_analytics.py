@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy import select, func, and_, extract
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Dict, Any
@@ -11,6 +11,7 @@ from ..models.milestone import Milestone
 from ..models.project import Project
 from ..api.deps import get_current_user
 from ..models.user import User
+from ..services.finance_analytics_service import FinanceAnalyticsService
 
 router = APIRouter(prefix="/finance-analytics", tags=["Finance Analytics"])
 
@@ -416,3 +417,98 @@ async def get_finance_summary(
         "categories": categories_data,
         "statuses": status_data
     } 
+
+@router.get("/project/{project_id}/expense-analytics")
+async def get_expense_analytics_by_phase(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Lädt Ausgaben-Analytics nach Bauphasen"""
+    
+    try:
+        analytics = await FinanceAnalyticsService.get_expense_analytics_by_phase(
+            db=db,
+            project_id=project_id
+        )
+        
+        return analytics
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Laden der Ausgaben-Analytics: {str(e)}"
+        )
+
+@router.get("/project/{project_id}/comprehensive")
+async def get_comprehensive_finance_analytics(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Lädt umfassende Finanz-Analytics mit allen Komponenten"""
+    
+    try:
+        analytics = await FinanceAnalyticsService.get_comprehensive_finance_analytics(
+            db=db,
+            project_id=project_id
+        )
+        
+        return analytics
+        
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Laden der Finanz-Analytics: {str(e)}"
+        )
+
+@router.get("/project/{project_id}/expense-trends")
+async def get_expense_trends_by_phase(
+    project_id: int,
+    months: int = 6,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Lädt Ausgaben-Trends nach Bauphasen über Zeit"""
+    
+    try:
+        trends = await FinanceAnalyticsService.get_expense_trends_by_phase(
+            db=db,
+            project_id=project_id,
+            months=months
+        )
+        
+        return trends
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Laden der Ausgaben-Trends: {str(e)}"
+        )
+
+@router.get("/project/{project_id}/phase-comparison")
+async def get_phase_comparison_analytics(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Lädt Vergleichs-Analytics zwischen Bauphasen"""
+    
+    try:
+        comparison = await FinanceAnalyticsService.get_phase_comparison_analytics(
+            db=db,
+            project_id=project_id
+        )
+        
+        return comparison
+        
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Laden der Phasen-Vergleichs-Analytics: {str(e)}"
+        ) 

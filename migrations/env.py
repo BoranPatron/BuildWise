@@ -16,8 +16,8 @@ config = context.config
 if config.config_file_name:
     fileConfig(config.config_file_name)
 
-# Verwende PostgreSQL für die Entwicklung
-DATABASE_URL = "postgresql://buildwise_user:buildwise123@localhost:5432/buildwise"
+# Verwende SQLite für die Entwicklung
+DATABASE_URL = "sqlite:///./buildwise.db"
 
 
 def run_migrations_offline() -> None:

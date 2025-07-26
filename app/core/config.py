@@ -9,7 +9,7 @@ class Settings(BaseSettings):
     """Application configuration loaded from environment variables."""
 
     # Datenbank
-    database_url: str = "postgresql+asyncpg://buildwise_user:buildwise123@localhost:5432/buildwise"
+    database_url: str = "sqlite:///./buildwise.db"
     
     # Debug-Modus (für Entwicklung)
     DEBUG: bool = True  # Standardmäßig aktiviert für Entwicklung
@@ -30,8 +30,8 @@ class Settings(BaseSettings):
     google_redirect_uri: str = "http://localhost:5173/auth/google/callback"
     
     # Microsoft OAuth
-    microsoft_client_id: Optional[str] = None
-    microsoft_client_secret: Optional[str] = None
+    microsoft_client_id: str = "1039127200110-vav094cta93qmtleivdj63un5dne17eb.apps.googleusercontent.com"  # Temporär für Tests
+    microsoft_client_secret: str = "temp-secret-for-testing"  # Temporär für Tests
     microsoft_redirect_uri: str = "http://localhost:5173/auth/microsoft/callback"
     
     # BuildWise Fee Configuration

@@ -1,8 +1,8 @@
 
 # AUFTRAGSBESTÄTIGUNG
 
-**Auftragsnummer:** AB-7-12-4-1753266279141  
-**Datum:** 23.7.2025  
+**Auftragsnummer:** AB-7-2-2-1753196025638  
+**Datum:** 22.7.2025  
 **Status:** Verbindlich angenommen
 
 ---
@@ -18,11 +18,11 @@
 
 ## 2. GEWERKSAUSSCHREIBUNG
 
-**Gewerk:** Elektroinstallation Küche  
+**Gewerk:** Elektroinstallation EG  
 **Kategorie:** Elektroinstallation  
 **Beschreibung:** undefined  
 **Geplantes Datum:** 31.7.2025  
-**Priorität:** high  
+**Priorität:** medium  
 **Status:** planned
 
 ### Technische Spezifikationen:
@@ -43,32 +43,32 @@ Standard-Umweltanforderungen
 
 ## 3. KOSTENVORANSCHLAG
 
-**Angebotsnummer:** 4  
-**Angebotsdatum:** 23.7.2025  
+**Angebotsnummer:** 2  
+**Angebotsdatum:** 22.7.2025  
 **Gültig bis:** -  
-**Status:** draft
+**Status:** submitted
 
 ### Kostenaufschlüsselung:
-- **Gesamtbetrag:** 8.000,00 CHF
+- **Gesamtbetrag:** 10.000,00 CHF
 - **Arbeitskosten:** Nicht angegeben
 - **Materialkosten:** Nicht angegeben
 - **Gemeinkosten:** Nicht angegeben
 
 ### Zeitplan:
-- **Geschätzte Dauer:** 3 Tage
-- **Startdatum:** 31.7.2025
-- **Fertigstellungsdatum:** 10.8.2025
+- **Geschätzte Dauer:** 9 Tage
+- **Startdatum:** 23.7.2025
+- **Fertigstellungsdatum:** 5.8.2025
 
 ### Bedingungen:
-- **Zahlungsbedingungen:** immediate
-- **Garantie:** 12 Monate
+- **Zahlungsbedingungen:** Standard
+- **Garantie:** 24 Monate
 - **Gültig bis:** -
 
 ---
 
 ## 4. DIENSTLEISTER
 
-**Firma:** Boran GmBh  
+**Firma:** BaccoGMBH  
 **Ansprechpartner:** Banause Boran  
 **Telefon:** Nicht angegeben  
 **E-Mail:** BanauseBoran@lotterlifeGmbH.de  
@@ -78,7 +78,7 @@ Standard-Umweltanforderungen
 
 ## 5. VERBINDLICHE VEREINBARUNG
 
-**Annahmedatum:** 23.7.2025  
+**Annahmedatum:** 22.7.2025  
 **Angenommen von:**    
 **Benutzer-ID:** 4
 
@@ -116,9 +116,9 @@ Keine KI-Empfehlung verfügbar
 
 Diese Auftragsbestätigung stellt eine verbindliche Vereinbarung zwischen dem Bauträger und dem Dienstleister dar. Alle rechtlichen Bestimmungen des deutschen Bauvertragsrechts (VOB/B) gelten entsprechend.
 
-**Erstellt am:** 23.7.2025  
+**Erstellt am:** 22.7.2025  
 **Erstellt von:** BuildWise System  
-**Dokument-ID:** AB-7-12-4-1753266279141
+**Dokument-ID:** AB-7-2-2-1753196025638
 
 ---
 

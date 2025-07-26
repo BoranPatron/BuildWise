@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frontend Status Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-[#2c3539] text-white min-h-screen p-8">
+    <div class="container mx-auto">
+        <h1 class="text-3xl font-bold mb-8 text-[#ffbd59]">Frontend Status Test</h1>
+        
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <!-- Test 1: Badge-Sichtbarkeit -->
+            <div class="bg-white/10 backdrop-blur-sm rounded-lg p-6 border border-white/10">
+                <h2 class="text-xl font-semibold text-[#ffbd59] mb-4">🔍 Badge-Test</h2>
+                
+                <div class="space-y-3">
+                    <div class="flex items-center gap-2">
+                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-gray-500/20 text-gray-300 border border-gray-500/30">
+                            <svg class="w-2.5 h-2.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z"></path>
+                            </svg>
+                            Sanitär
+                        </span>
+                        <span class="text-green-400">✓ Sichtbar</span>
+                    </div>
+                    
+                    <div class="flex items-center gap-2">
+                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-orange-500/20 text-orange-300 border border-orange-500/30">
+                            🔍 Besichtigung
+                        </span>
+                        <span class="text-green-400">✓ Sichtbar</span>
+                    </div>
+                    
+                    <div class="flex items-center gap-2">
+                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                            <svg class="w-2.5 h-2.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197m13.5-9a2.5 2.5 0 11-5 0 2.5 2.5 0 015 0z"></path>
+                            </svg>
+                            5 Bewerber
+                        </span>
+                        <span class="text-green-400">✓ Sichtbar</span>
+                    </div>
+                    
+                    <div class="flex items-center gap-2">
+                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-green-500/20 text-green-300 border border-green-500/30">
+                            <svg class="w-2.5 h-2.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path>
+                            </svg>
+                            15.01.2024
+                        </span>
+                        <span class="text-green-400">✓ Sichtbar</span>
+                    </div>
+                    
+                    <div class="flex items-center gap-2">
+                        <span class="inline-flex items-center px-2 py-1 rounded-full text-xs font-medium bg-purple-500/20 text-purple-300 border border-purple-500/30">
+                            <svg class="w-2.5 h-2.5 mr-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1"></path>
+                            </svg>
+                            15.000€
+                        </span>
+                        <span class="text-green-400">✓ Sichtbar</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Test 2: Frontend-Status -->
+            <div class="bg-white/10 backdrop-blur-sm rounded-lg p-6 border border-white/10">
+                <h2 class="text-xl font-semibold text-[#ffbd59] mb-4">⚙️ Frontend-Status</h2>
+                
+                <div class="space-y-3">
+                    <div class="flex items-center gap-2">
+                        <span class="text-gray-400">Frontend-Server:</span>
+                        <span id="server-status" class="text-yellow-400">Prüfe...</span>
+                    </div>
+                    
+                    <div class="flex items-center gap-2">
+                        <span class="text-gray-400">Browser-Cache:</span>
+                        <span class="text-blue-400">Strg+F5 empfohlen</span>
+                    </div>
+                    
+                    <div class="flex items-center gap-2">
+                        <span class="text-gray-400">Geo-Search URL:</span>
+                        <span class="text-blue-400">http://localhost:5173</span>
+                    </div>
+                </div>
+                
+                <div class="mt-4 p-4 bg-blue-500/20 border border-blue-400/30 rounded-lg">
+                    <h3 class="text-sm font-semibold text-blue-200 mb-2">🔧 Debug-Schritte:</h3>
+                    <ol class="text-xs text-blue-100 space-y-1 list-decimal list-inside">
+                        <li>Browser-Cache leeren (Strg+F5)</li>
+                        <li>Frontend-Server neu starten</li>
+                        <li>Geo-Search Seite neu laden</li>
+                        <li>Badges sollten jetzt sichtbar sein</li>
+                    </ol>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-8 p-6 bg-orange-500/20 border border-orange-400/30 rounded-lg">
+            <h2 class="text-lg font-semibold text-orange-200 mb-4">🚨 Problem-Diagnose</h2>
+            <div class="text-orange-100 space-y-2">
+                <p><strong>Wenn Badges hier sichtbar sind, aber nicht in Geo-Search:</strong></p>
+                <ul class="list-disc list-inside ml-4 space-y-1">
+                    <li>Frontend-Cache Problem</li>
+                    <li>Browser-Cache leeren (Strg+F5)</li>
+                    <li>Frontend-Server neu starten</li>
+                    <li>Hard-Refresh: Strg+Shift+R</li>
+                </ul>
+                
+                <p class="mt-4"><strong>Wenn Badges hier NICHT sichtbar sind:</strong></p>
+                <ul class="list-disc list-inside ml-4 space-y-1">
+                    <li>Tailwind CSS Problem</li>
+                    <li>Frontend-Server nicht gestartet</li>
+                    <li>Port 5173 nicht erreichbar</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        console.log('🎯 Frontend Status Test geladen');
+        
+        // Teste Frontend-Server
+        fetch('http://localhost:5173')
+            .then(response => {
+                if (response.ok) {
+                    document.getElementById('server-status').textContent = '✅ Läuft';
+                    document.getElementById('server-status').className = 'text-green-400';
+                } else {
+                    document.getElementById('server-status').textContent = '❌ Fehler';
+                    document.getElementById('server-status').className = 'text-red-400';
+                }
+            })
+            .catch(error => {
+                document.getElementById('server-status').textContent = '❌ Nicht erreichbar';
+                document.getElementById('server-status').className = 'text-red-400';
+                console.log('Frontend-Server nicht erreichbar:', error);
+            });
+        
+        // Teste Badge-Sichtbarkeit
+        const badges = document.querySelectorAll('[class*="bg-gray-500/20"], [class*="bg-orange-500/20"], [class*="bg-blue-500/20"], [class*="bg-green-500/20"], [class*="bg-purple-500/20"]');
+        console.log('✅ Gefundene Badges:', badges.length);
+        
+        if (badges.length > 0) {
+            console.log('🎉 Badges sind sichtbar!');
+        } else {
+            console.log('❌ Keine Badges gefunden!');
+        }
+    </script>
+</body>
+</html> 

@@ -5,7 +5,7 @@ from datetime import datetime
 import logging
 import uuid
 
-from ..models import Milestone, MilestoneStatus, Project
+from ..models import Milestone, Project
 from ..schemas.milestone import MilestoneCreate, MilestoneUpdate
 
 
@@ -36,7 +36,9 @@ async def create_milestone(db: AsyncSession, milestone_in: MilestoneCreate, crea
         'contractor': milestone_in.contractor,
         'is_critical': milestone_in.is_critical,
         'notify_on_completion': milestone_in.notify_on_completion,
-        'notes': milestone_in.notes
+        'notes': milestone_in.notes,
+        # Besichtigungssystem
+        'requires_inspection': milestone_in.requires_inspection
     }
     
     # Setze automatisch die aktuelle Bauphase des Projekts
@@ -96,7 +98,7 @@ async def update_milestone(db: AsyncSession, milestone_id: int, milestone_update
     if update_data:
         # Wenn Meilenstein abgeschlossen wird, setze completed_at
         new_status = update_data.get('status')
-        if new_status == MilestoneStatus.COMPLETED and milestone.status.value != MilestoneStatus.COMPLETED.value:
+        if new_status == "completed" and milestone.status != "completed":
             update_data['completed_at'] = datetime.utcnow()
             update_data['progress_percentage'] = 100
             update_data['actual_date'] = datetime.utcnow().date()
@@ -127,10 +129,10 @@ async def get_milestone_statistics(db: AsyncSession, project_id: int) -> dict:
     result = await db.execute(
         select(
             func.count(Milestone.id).label('total'),
-            func.count(Milestone.id).filter(Milestone.status == MilestoneStatus.PLANNED).label('planned'),
-            func.count(Milestone.id).filter(Milestone.status == MilestoneStatus.IN_PROGRESS).label('in_progress'),
-            func.count(Milestone.id).filter(Milestone.status == MilestoneStatus.COMPLETED).label('completed'),
-            func.count(Milestone.id).filter(Milestone.status == MilestoneStatus.DELAYED).label('delayed'),
+            func.count(Milestone.id).filter(Milestone.status == "planned").label('planned'),
+            func.count(Milestone.id).filter(Milestone.status == "in_progress").label('in_progress'),
+            func.count(Milestone.id).filter(Milestone.status == "completed").label('completed'),
+            func.count(Milestone.id).filter(Milestone.status == "delayed").label('delayed'),
             func.avg(Milestone.progress_percentage).label('avg_progress')
         ).where(Milestone.project_id == project_id)
     )
@@ -157,7 +159,7 @@ async def get_upcoming_milestones(db: AsyncSession, project_id: Optional[int] = 
     query = select(Milestone).where(
         Milestone.planned_date >= start_date,
         Milestone.planned_date <= end_date,
-        Milestone.status.in_([MilestoneStatus.PLANNED, MilestoneStatus.IN_PROGRESS])
+        Milestone.status.in_(["planned", "in_progress"])
     )
     
     if project_id:
@@ -173,7 +175,7 @@ async def get_overdue_milestones(db: AsyncSession, project_id: Optional[int] = N
     
     query = select(Milestone).where(
         Milestone.planned_date < date.today(),
-        Milestone.status.in_([MilestoneStatus.PLANNED, MilestoneStatus.IN_PROGRESS])
+        Milestone.status.in_(["planned", "in_progress"])
     )
     
     if project_id:
@@ -201,35 +203,87 @@ async def search_milestones(db: AsyncSession, search_term: str, project_id: Opti
 
 
 async def get_all_active_milestones(db: AsyncSession) -> list:
-    from ..models import Project, MilestoneStatus
+    from ..models import Project
+    from ..models.quote import Quote, QuoteStatus
     import logging
     session_id = str(uuid.uuid4())
     logging.warning(f"[SERVICE] get_all_active_milestones: Session {session_id} gestartet")
+    
     # Debug: Prüfe alle Projekte
     projects_result = await db.execute(select(Project))
     all_projects = list(projects_result.scalars().all())
     logging.warning(f"[SERVICE] Session {session_id}: Alle Projekte: {len(all_projects)}")
     for p in all_projects:
         logging.warning(f"[SERVICE] Session {session_id}: Projekt: id={p.id}, name={p.name}, is_public={p.is_public}, allow_quotes={p.allow_quotes}")
+    
     # Debug: Prüfe alle Milestones
     milestones_result = await db.execute(select(Milestone))
     all_milestones = list(milestones_result.scalars().all())
     logging.warning(f"[SERVICE] Session {session_id}: Alle Milestones: {len(all_milestones)}")
     for m in all_milestones:
         logging.warning(f"[SERVICE] Session {session_id}: Milestone: id={m.id}, status={m.status}, project_id={m.project_id}")
+    
     # Alle aktiven Gewerke zurückgeben (unabhängig von Projekt-Öffentlichkeit)
     result = await db.execute(
         select(Milestone)
         .where(
-            Milestone.status.in_([MilestoneStatus.PLANNED, MilestoneStatus.IN_PROGRESS])
+            Milestone.status.in_(["planned", "in_progress"])
         )
         .order_by(Milestone.planned_date)
     )
     milestones = list(result.scalars().all())
-    logging.warning(f"[SERVICE] Session {session_id}: get_all_active_milestones: {len(milestones)} gefunden.")
-    for m in milestones:
-        logging.warning(f"[SERVICE] Session {session_id}: Milestone: id={m.id}, title={m.title}, status={m.status}, project_id={m.project_id}")
-    return milestones
+    
+    # Lade Quote-Statistiken für jedes Milestone
+    milestones_with_stats = []
+    for milestone in milestones:
+        # Lade alle Quotes für dieses Milestone
+        quote_result = await db.execute(
+            select(Quote).where(Quote.milestone_id == milestone.id)
+        )
+        quotes = list(quote_result.scalars().all())
+        
+        # Berechne Quote-Statistiken
+        total_quotes = len(quotes)
+        accepted_quotes = len([q for q in quotes if q.status == QuoteStatus.ACCEPTED])
+        pending_quotes = len([q for q in quotes if q.status in [QuoteStatus.SUBMITTED, QuoteStatus.UNDER_REVIEW]])
+        rejected_quotes = len([q for q in quotes if q.status == QuoteStatus.REJECTED])
+        
+        # Erstelle ein Dictionary mit Milestone-Daten und Quote-Stats
+        milestone_dict = {
+            "id": milestone.id,
+            "title": milestone.title,
+            "description": milestone.description,
+            "category": milestone.category,
+            "status": milestone.status,
+            "priority": milestone.priority,
+            "budget": milestone.budget,
+            "planned_date": milestone.planned_date.isoformat() if milestone.planned_date else None,
+            "start_date": milestone.start_date.isoformat() if milestone.start_date else None,
+            "end_date": milestone.end_date.isoformat() if milestone.end_date else None,
+            "progress_percentage": milestone.progress_percentage,
+            "contractor": milestone.contractor,
+            "requires_inspection": getattr(milestone, 'requires_inspection', False),
+            "project_id": milestone.project_id,
+            "created_at": milestone.created_at.isoformat() if milestone.created_at else None,
+            "updated_at": milestone.updated_at.isoformat() if milestone.updated_at else None,
+            # Quote-Statistiken hinzufügen
+            "quote_stats": {
+                "total_quotes": total_quotes,
+                "accepted_quotes": accepted_quotes,
+                "pending_quotes": pending_quotes,
+                "rejected_quotes": rejected_quotes,
+                "has_accepted_quote": accepted_quotes > 0,
+                "has_pending_quotes": pending_quotes > 0,
+                "has_rejected_quotes": rejected_quotes > 0
+            }
+        }
+        milestones_with_stats.append(milestone_dict)
+    
+    logging.warning(f"[SERVICE] Session {session_id}: get_all_active_milestones: {len(milestones_with_stats)} gefunden mit Quote-Stats.")
+    for m in milestones_with_stats:
+        logging.warning(f"[SERVICE] Session {session_id}: Milestone: id={m['id']}, title={m['title']}, quotes={m['quote_stats']['total_quotes']}")
+    
+    return milestones_with_stats
 
 
 async def get_milestones_by_construction_phase(db: AsyncSession, project_id: int, construction_phase: str) -> List[Milestone]:

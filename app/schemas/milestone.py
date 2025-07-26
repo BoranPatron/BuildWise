@@ -1,14 +1,14 @@
 from datetime import date, datetime
 from typing import Optional
 from pydantic import BaseModel
-from ..models.milestone import MilestoneStatus, MilestonePriority
+# Enums wurden zu Strings geändert - keine Imports mehr nötig
 
 
 class MilestoneBase(BaseModel):
     title: str
     description: Optional[str] = None
-    status: MilestoneStatus = MilestoneStatus.PLANNED
-    priority: MilestonePriority = MilestonePriority.MEDIUM
+    status: str = "planned"
+    priority: str = "medium"
     category: Optional[str] = None
     planned_date: date
     start_date: Optional[date] = None
@@ -21,6 +21,8 @@ class MilestoneBase(BaseModel):
     notes: Optional[str] = None
     # Bauphasen-Tracking
     construction_phase: Optional[str] = None
+    # Besichtigungssystem
+    requires_inspection: bool = False
 
 
 class MilestoneCreate(MilestoneBase):
@@ -30,8 +32,8 @@ class MilestoneCreate(MilestoneBase):
 class MilestoneUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
-    status: Optional[MilestoneStatus] = None
-    priority: Optional[MilestonePriority] = None
+    status: Optional[str] = None
+    priority: Optional[str] = None
     category: Optional[str] = None
     planned_date: Optional[date] = None
     actual_date: Optional[date] = None
@@ -46,6 +48,8 @@ class MilestoneUpdate(BaseModel):
     notes: Optional[str] = None
     # Bauphasen-Tracking
     construction_phase: Optional[str] = None
+    # Besichtigungssystem
+    requires_inspection: Optional[bool] = None
 
 
 class MilestoneRead(MilestoneBase):
@@ -83,6 +87,8 @@ class MilestoneSummary(BaseModel):
     project_id: Optional[int] = None  # Projekt-ID hinzufügen
     # Bauphasen-Tracking
     construction_phase: Optional[str] = None
+    # Besichtigungssystem
+    requires_inspection: bool = False
 
     class Config:
         from_attributes = True 
@@ -90,12 +96,12 @@ class MilestoneSummary(BaseModel):
         
     @classmethod
     def from_orm(cls, obj):
-        # Konvertiere Enum-Werte zu Strings
+        # Status und Priority sind bereits Strings
         data = {
             'id': obj.id,
             'title': obj.title,
-            'status': str(obj.status).lower(),
-            'priority': str(obj.priority).lower(),
+            'status': obj.status,
+            'priority': obj.priority,
             'category': obj.category,
             'planned_date': obj.planned_date,
             'actual_date': obj.actual_date,
@@ -107,6 +113,7 @@ class MilestoneSummary(BaseModel):
             'progress_percentage': obj.progress_percentage,
             'is_critical': obj.is_critical,
             'project_id': obj.project_id,
-            'construction_phase': obj.construction_phase
+            'construction_phase': obj.construction_phase,
+            'requires_inspection': obj.requires_inspection
         }
         return cls(**data) 

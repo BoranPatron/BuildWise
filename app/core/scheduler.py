@@ -1,0 +1,137 @@
+import asyncio
+import logging
+from datetime import datetime, time
+from sqlalchemy.ext.asyncio import AsyncSession
+from typing import Optional
+
+from ..core.database import get_db
+from ..services.credit_service import CreditService
+
+logger = logging.getLogger(__name__)
+
+
+class CreditScheduler:
+    """Scheduler für tägliche Credit-Abzüge"""
+    
+    def __init__(self):
+        self.is_running = False
+        self.task: Optional[asyncio.Task] = None
+    
+    async def start(self):
+        """Startet den Scheduler"""
+        if self.is_running:
+            logger.warning("Credit-Scheduler läuft bereits")
+            return
+        
+        self.is_running = True
+        self.task = asyncio.create_task(self._run_scheduler())
+        logger.info("Credit-Scheduler gestartet")
+    
+    async def stop(self):
+        """Stoppt den Scheduler"""
+        if not self.is_running:
+            return
+        
+        self.is_running = False
+        if self.task:
+            self.task.cancel()
+            try:
+                await self.task
+            except asyncio.CancelledError:
+                pass
+        
+        logger.info("Credit-Scheduler gestoppt")
+    
+    async def _run_scheduler(self):
+        """Hauptschleife des Schedulers"""
+        while self.is_running:
+            try:
+                # Warte bis zur nächsten Ausführungszeit (täglich um 02:00 Uhr)
+                now = datetime.now()
+                next_run = now.replace(hour=2, minute=0, second=0, microsecond=0)
+                
+                if now >= next_run:
+                    next_run = next_run.replace(day=next_run.day + 1)
+                
+                wait_seconds = (next_run - now).total_seconds()
+                logger.info(f"Nächste Credit-Abzug-Ausführung: {next_run} (in {wait_seconds:.0f} Sekunden)")
+                
+                await asyncio.sleep(wait_seconds)
+                
+                # Führe tägliche Credit-Abzüge aus
+                await self._process_daily_deductions()
+                
+            except asyncio.CancelledError:
+                logger.info("Credit-Scheduler wurde abgebrochen")
+                break
+            except Exception as e:
+                logger.error(f"Fehler im Credit-Scheduler: {e}")
+                # Warte 1 Stunde bei Fehlern
+                await asyncio.sleep(3600)
+    
+    async def _process_daily_deductions(self):
+        """Verarbeitet tägliche Credit-Abzüge"""
+        try:
+            logger.info("Starte tägliche Credit-Abzüge...")
+            
+            # Erstelle neue Datenbank-Session
+            async for db in get_db():
+                try:
+                    result = await CreditService.process_all_daily_deductions(db)
+                    
+                    logger.info(
+                        f"Tägliche Credit-Abzüge abgeschlossen: "
+                        f"{result['processed_users']} User verarbeitet, "
+                        f"{result['downgraded_users']} downgraded"
+                    )
+                    
+                except Exception as e:
+                    logger.error(f"Fehler bei täglichen Credit-Abzügen: {e}")
+                finally:
+                    await db.close()
+                    
+        except Exception as e:
+            logger.error(f"Fehler beim Verarbeiten der täglichen Credit-Abzüge: {e}")
+
+
+# Globaler Scheduler-Instance
+credit_scheduler = CreditScheduler()
+
+
+async def start_credit_scheduler():
+    """Startet den Credit-Scheduler (für FastAPI Startup Event)"""
+    await credit_scheduler.start()
+
+
+async def stop_credit_scheduler():
+    """Stoppt den Credit-Scheduler (für FastAPI Shutdown Event)"""
+    await credit_scheduler.stop()
+
+
+# Manuelle Ausführung für Tests
+async def run_daily_deductions_manual():
+    """Manuelle Ausführung der täglichen Credit-Abzüge (für Tests/Admin)"""
+    try:
+        logger.info("Manuelle Ausführung der täglichen Credit-Abzüge...")
+        
+        async for db in get_db():
+            try:
+                result = await CreditService.process_all_daily_deductions(db)
+                
+                logger.info(
+                    f"Manuelle Credit-Abzüge abgeschlossen: "
+                    f"{result['processed_users']} User verarbeitet, "
+                    f"{result['downgraded_users']} downgraded"
+                )
+                
+                return result
+                
+            except Exception as e:
+                logger.error(f"Fehler bei manuellen Credit-Abzügen: {e}")
+                raise
+            finally:
+                await db.close()
+                
+    except Exception as e:
+        logger.error(f"Fehler bei manueller Ausführung der Credit-Abzüge: {e}")
+        raise 

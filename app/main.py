@@ -96,6 +96,32 @@ app.include_router(api_router, prefix="/api/v1")
 async def on_startup():
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    
+    # SQLite-Optimierungen anwenden
+    try:
+        from .core.database import optimize_sqlite_connection
+        await optimize_sqlite_connection()
+    except Exception as e:
+        print(f"⚠️ SQLite-Optimierungen konnten nicht angewendet werden: {e}")
+    
+    # Starte Credit-Scheduler
+    try:
+        from .core.scheduler import start_credit_scheduler
+        await start_credit_scheduler()
+        print("✅ Credit-Scheduler gestartet")
+    except Exception as e:
+        print(f"❌ Fehler beim Starten des Credit-Schedulers: {e}")
+
+
+@app.on_event("shutdown")
+async def on_shutdown():
+    # Stoppe Credit-Scheduler
+    try:
+        from .core.scheduler import stop_credit_scheduler
+        await stop_credit_scheduler()
+        print("✅ Credit-Scheduler gestoppt")
+    except Exception as e:
+        print(f"❌ Fehler beim Stoppen des Credit-Schedulers: {e}")
 
 # Health Check
 @app.get("/health")

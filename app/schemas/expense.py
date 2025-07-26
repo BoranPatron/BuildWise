@@ -10,6 +10,7 @@ class ExpenseBase(BaseModel):
     project_id: int = Field(..., gt=0)
     date: datetime
     receipt_url: Optional[str] = None
+    construction_phase: Optional[str] = None  # Bauphase zum Zeitpunkt der Ausgabe
 
 class ExpenseCreate(ExpenseBase):
     pass
@@ -21,6 +22,7 @@ class ExpenseUpdate(BaseModel):
     category: Optional[str] = Field(None, pattern="^(material|labor|equipment|services|permits|other)$")
     date: Optional[datetime] = None
     receipt_url: Optional[str] = None
+    construction_phase: Optional[str] = None
 
 class ExpenseRead(ExpenseBase):
     id: int

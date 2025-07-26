@@ -30,10 +30,10 @@ class Milestone(Base):
     
     title = Column(String, nullable=False)
     description = Column(Text, nullable=True)
-    status = Column(Enum(MilestoneStatus), nullable=False, default=MilestoneStatus.PLANNED)
+    status = Column(String, nullable=False, default="planned")
     
     # Gewerke-spezifische Felder
-    priority = Column(Enum(MilestonePriority), nullable=False, default=MilestonePriority.MEDIUM)
+    priority = Column(String, nullable=False, default="medium")
     category = Column(String, nullable=True)  # Gewerke-Kategorie
     
     # Zeitplan
@@ -62,6 +62,11 @@ class Milestone(Base):
     # Bauphasen-Tracking
     construction_phase = Column(String, nullable=True)  # Aktuelle Bauphase beim Erstellen des Gewerks
     
+    # Besichtigungssystem
+    requires_inspection = Column(Boolean, default=False)  # Checkbox für Vor-Ort-Besichtigung erforderlich
+    inspection_sent = Column(Boolean, default=False)      # Markiert ob Besichtigung versendet wurde
+    inspection_sent_at = Column(DateTime(timezone=True), nullable=True)  # Zeitpunkt der Versendung
+    
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -69,4 +74,5 @@ class Milestone(Base):
     
     # Relationships
     project = relationship("Project", back_populates="milestones")
-    creator = relationship("User") 
+    creator = relationship("User")
+    appointments = relationship("Appointment", back_populates="milestone", cascade="all, delete-orphan") 

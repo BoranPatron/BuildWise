@@ -4,6 +4,7 @@ from sqlalchemy.orm import relationship
 import enum
 
 from .base import Base
+from .user_credits import UserCredits
 
 
 class UserType(enum.Enum):
@@ -175,6 +176,9 @@ class User(Base):
     received_messages = relationship("Message", foreign_keys="Message.recipient_id", back_populates="recipient")
     quotes = relationship("Quote", back_populates="service_provider")
     buildwise_fees = relationship("BuildWiseFee", back_populates="service_provider")
+    
+    # Credit-System Relationship (nur für Bauträger)
+    user_credits = relationship("UserCredits", back_populates="user", uselist=False, cascade="all, delete-orphan")
     
     # Constraints für Social-Login
     __table_args__ = (

@@ -104,6 +104,8 @@ class TradeSearchResult(BaseModel):
     end_date: Optional[str]
     progress_percentage: int
     contractor: Optional[str]
+    # Besichtigungssystem
+    requires_inspection: bool = False
     # Projekt-Informationen
     project_id: int
     project_name: str

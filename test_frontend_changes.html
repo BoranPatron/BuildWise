@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Frontend Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-[#2c3539] text-white min-h-screen p-8">
+    <div class="container mx-auto">
+        <h1 class="text-3xl font-bold mb-8 text-[#ffbd59]">Frontend Test - Badge Sichtbarkeit</h1>
+        
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <!-- Test Trade mit garantiert sichtbaren Badges -->
+            <div class="bg-white/10 backdrop-blur-sm rounded-lg p-4 hover:bg-white/20 transition-all duration-300 cursor-pointer border border-white/10">
+                <div class="flex flex-col h-full">
+                    <div class="flex-1">
+                        <h3 class="font-semibold text-white text-lg mb-3 line-clamp-2">Test Gewerk</h3>
+                        
+                        {/* Badge-System - Garantierte Sichtbarkeit */}
+                        <div class="flex items-center gap-2 mt-1 mb-3">
+                            {/* Status Badge - Garantiert sichtbar */}
+                            <span class="px-2 py-1 rounded-full text-xs font-medium bg-red-500 text-white">
+                                STATUS: planned
+                            </span>
+                            
+                            {/* Kategorie Badge - Garantiert sichtbar */}
+                            <span class="px-2 py-1 rounded-full text-xs font-medium bg-blue-500 text-white">
+                                KAT: sanitaer
+                            </span>
+                            
+                            {/* Besichtigung Badge - Garantiert sichtbar */}
+                            <span class="px-2 py-1 rounded-full text-xs font-medium bg-orange-500 text-white">
+                                BESICHTIGUNG: JA
+                            </span>
+                            
+                            {/* Quote-Statistiken Badge - Garantiert sichtbar */}
+                            <span class="px-2 py-1 rounded-full text-xs font-medium bg-green-500 text-white">
+                                ANGEBOTE: 2
+                            </span>
+                        </div>
+                    </div>
+
+                    <div class="space-y-2 text-sm mt-3">
+                        <div class="flex items-center gap-2">
+                            <span class="text-gray-400">Kategorie:</span>
+                            <span class="text-white">Sanitär</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-gray-400">Budget:</span>
+                            <span class="text-white font-medium">€15,000</span>
+                        </div>
+                        <div class="flex items-center gap-2">
+                            <span class="text-gray-400">Entfernung:</span>
+                            <span class="text-white">6.3 km</span>
+                        </div>
+                    </div>
+
+                    <div class="mt-auto pt-3 border-t border-white/10">
+                        <button class="w-full bg-[#ffbd59] text-[#2c3539] px-3 py-2 rounded text-sm font-medium hover:bg-[#ffa726] transition-colors">
+                            Details anzeigen
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-8 p-6 bg-blue-500/20 border border-blue-400/30 rounded-lg">
+            <h2 class="text-lg font-semibold text-blue-200 mb-4">🔍 Test-Anweisungen</h2>
+            <div class="text-blue-100 space-y-2">
+                <p><strong>1. Badge-Sichtbarkeit prüfen:</strong></p>
+                <ul class="list-disc list-inside ml-4 space-y-1">
+                    <li>Roter Badge: "STATUS: planned"</li>
+                    <li>Blauer Badge: "KAT: sanitaer"</li>
+                    <li>Oranger Badge: "BESICHTIGUNG: JA"</li>
+                    <li>Grüner Badge: "ANGEBOTE: 2"</li>
+                </ul>
+                
+                <p class="mt-4"><strong>2. Wenn Badges hier sichtbar sind:</strong></p>
+                <ul class="list-disc list-inside ml-4 space-y-1">
+                    <li>Das Styling funktioniert</li>
+                    <li>Das Problem liegt im Frontend-Cache</li>
+                    <li>Browser-Cache leeren (Strg+F5)</li>
+                </ul>
+                
+                <p class="mt-4"><strong>3. Wenn Badges hier NICHT sichtbar sind:</strong></p>
+                <ul class="list-disc list-inside ml-4 space-y-1">
+                    <li>Das Problem liegt am Styling</li>
+                    <li>Tailwind CSS wird nicht geladen</li>
+                    <li>Frontend-Server neu starten</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        console.log('🎯 Frontend Test geladen');
+        console.log('📊 Erwartete Badges:');
+        console.log('  - Roter Badge: STATUS: planned');
+        console.log('  - Blauer Badge: KAT: sanitaer');
+        console.log('  - Oranger Badge: BESICHTIGUNG: JA');
+        console.log('  - Grüner Badge: ANGEBOTE: 2');
+        
+        // Teste Badge-Sichtbarkeit
+        const badges = document.querySelectorAll('[class*="bg-red-500"], [class*="bg-blue-500"], [class*="bg-orange-500"], [class*="bg-green-500"]');
+        console.log('✅ Gefundene Badges:', badges.length);
+        
+        if (badges.length > 0) {
+            console.log('🎉 Badges sind sichtbar!');
+        } else {
+            console.log('❌ Keine Badges gefunden!');
+        }
+    </script>
+</body>
+</html> 

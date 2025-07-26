@@ -164,154 +164,143 @@ async def oauth_callback(
     # IP-Adresse für Audit-Log
     ip_address = request.client.host if request else None
     
-    # CORS-Header für OAuth-Callback
-    from fastapi.responses import JSONResponse
-    from fastapi import Response
-    
     # Extrahiere Code aus Request
     code = body.code
     state = body.state
     
-    print(f"🔍 OAuth-Callback für {provider}: Code={len(code) if code else 0} Zeichen")
+    print(f"🔍 OAuth-Callback für {provider}:")
+    print(f"  - Code: {code[:10] if code else 'None'}...")
+    print(f"  - State: {state}")
+    print(f"  - IP: {ip_address}")
     
     if not code:
-        response = JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content={"detail": "Authorization Code fehlt"}
+        print(f"❌ OAuth-Callback: Authorization Code fehlt")
+        raise HTTPException(
+            status_code=400,
+            detail="Authorization Code fehlt"
         )
-        # CORS-Header hinzufügen
-        response.headers["Access-Control-Allow-Origin"] = "*"
-        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "*"
-        return response
     
     try:
-        # Authorization Code gegen Token tauschen
+        # Tausche Code gegen Token
+        print(f"🔄 Tausche {provider} Code gegen Token...")
         token_data = await OAuthService.exchange_code_for_token(provider, code)
-        if not token_data:
-            # Bei invalid_grant: Code wurde bereits verwendet oder ist abgelaufen
-            # Wir geben eine spezifischere Fehlermeldung
-            response = JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content={"detail": "OAuth-Code ist abgelaufen oder wurde bereits verwendet. Bitte starten Sie den Login-Prozess erneut."}
-            )
-            # CORS-Header hinzufügen
-            response.headers["Access-Control-Allow-Origin"] = "*"
-            response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-            response.headers["Access-Control-Allow-Headers"] = "*"
-            return response
         
-        # Benutzerinformationen abrufen
-        if provider == "google":
-            user_info = await OAuthService.get_google_user_info(token_data.get("access_token"))
-            auth_provider = AuthProvider.GOOGLE
-        elif provider == "microsoft":
-            user_info = await OAuthService.get_microsoft_user_info(token_data.get("access_token"))
-            auth_provider = AuthProvider.MICROSOFT
-        else:
-            response = JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content={"detail": f"Unbekannter Provider: {provider}"}
+        if not token_data:
+            print(f"❌ Token-Austausch fehlgeschlagen - keine Daten erhalten")
+            raise HTTPException(
+                status_code=400,
+                detail=f"OAuth-Code ist abgelaufen oder bereits verwendet"
             )
-            # CORS-Header hinzufügen
-            response.headers["Access-Control-Allow-Origin"] = "*"
-            response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-            response.headers["Access-Control-Allow-Headers"] = "*"
-            return response
+        
+        access_token = token_data.get("access_token")
+        if not access_token:
+            print(f"❌ Kein Access Token in Response: {list(token_data.keys())}")
+            raise HTTPException(
+                status_code=400,
+                detail="Kein Access Token erhalten"
+            )
+        
+        print(f"✅ Access Token erhalten: {access_token[:20]}...")
+        
+        # Hole Benutzerinformationen
+        print(f"🔄 Hole {provider} Benutzerinformationen...")
+        if provider == "google":
+            user_info = await OAuthService.get_google_user_info(access_token)
+        elif provider == "microsoft":
+            user_info = await OAuthService.get_microsoft_user_info(access_token)
+        else:
+            print(f"❌ Unbekannter Provider: {provider}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unbekannter OAuth-Provider: {provider}"
+            )
         
         if not user_info:
-            response = JSONResponse(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                content={"detail": "Benutzerinformationen konnten nicht abgerufen werden"}
+            print(f"❌ Keine Benutzerinformationen erhalten")
+            raise HTTPException(
+                status_code=400,
+                detail="Benutzerinformationen konnten nicht abgerufen werden"
             )
-            # CORS-Header hinzufügen
-            response.headers["Access-Control-Allow-Origin"] = "*"
-            response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-            response.headers["Access-Control-Allow-Headers"] = "*"
-            return response
         
-        # Benutzer finden oder erstellen
+        print(f"✅ Benutzerinformationen erhalten: {list(user_info.keys())}")
+        
+        # Bestimme AuthProvider
+        auth_provider = AuthProvider.GOOGLE if provider == "google" else AuthProvider.MICROSOFT
+        
+        # Finde oder erstelle Benutzer
+        print(f"🔄 Finde oder erstelle Benutzer...")
         user = await OAuthService.find_or_create_user_by_social_login(
             db, auth_provider, user_info, ip_address
         )
         
-        # Prüfe ob Benutzer aktiv ist
-        if not user.is_active:
-            response = JSONResponse(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                content={"detail": "Benutzerkonto ist deaktiviert"}
-            )
-            # CORS-Header hinzufügen
-            response.headers["Access-Control-Allow-Origin"] = "*"
-            response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-            response.headers["Access-Control-Allow-Headers"] = "*"
-            return response
+        print(f"✅ Benutzer erfolgreich verarbeitet: {user.id} ({user.email})")
         
-        # Audit-Log für Social-Login
-        await SecurityService.create_audit_log(
-            db, user.id, AuditAction.USER_LOGIN,
-            f"Social-Login über {provider}: {user.email}",
-            resource_type="user", resource_id=user.id,
-            ip_address=SecurityService.anonymize_ip_address(ip_address) if ip_address else None,
-            processing_purpose="Authentifizierung über Social-Login",
-            legal_basis="Einwilligung"
+        # Erstelle JWT-Token
+        print(f"🔄 Erstelle JWT-Token...")
+        jwt_token = create_access_token(
+            data={"sub": user.email, "user_id": user.id}  # ✅ sub = email, user_id = id
         )
         
-        # JWT Token erstellen
-        token = create_access_token({"sub": user.email})
+        print(f"✅ JWT-Token erstellt: {jwt_token[:20]}...")
         
+        # Erfolgreiche Antwort
         response_data = {
-            "access_token": token,
+            "access_token": jwt_token,
             "token_type": "bearer",
             "user": {
                 "id": user.id,
                 "email": user.email,
                 "first_name": user.first_name,
                 "last_name": user.last_name,
-                "user_type": user.user_type.value,  # .value für JSON-Serialisierung
-                "auth_provider": user.auth_provider.value,
-                # Rolleninformationen hinzufügen
                 "user_role": user.user_role.value if user.user_role else None,
+                "subscription_plan": user.subscription_plan.value if user.subscription_plan else None,
+                "subscription_status": user.subscription_status.value if user.subscription_status else None,
                 "role_selected": user.role_selected,
-                "role_selection_modal_shown": user.role_selection_modal_shown,
-                # Subscription-Informationen hinzufügen
-                "subscription_plan": user.subscription_plan.value if user.subscription_plan else "BASIS",
-                "subscription_status": user.subscription_status.value if user.subscription_status else "INACTIVE",
-                "max_gewerke": user.max_gewerke,
-                # Onboarding-Informationen
-                "first_login_completed": user.first_login_completed,
                 "onboarding_completed": user.onboarding_completed,
-                "onboarding_step": user.onboarding_step,
-                "consents": {
-                    "data_processing": user.data_processing_consent,
-                    "marketing": user.marketing_consent,
-                    "privacy_policy": user.privacy_policy_accepted,
-                    "terms": user.terms_accepted
-                }
+                "first_login_completed": user.first_login_completed
             }
         }
         
-        response = JSONResponse(content=response_data)
-        # CORS-Header hinzufügen
-        response.headers["Access-Control-Allow-Origin"] = "*"
-        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "*"
-        return response
+        print(f"✅ OAuth-Callback erfolgreich abgeschlossen für User {user.id}")
+        return response_data
         
     except HTTPException:
-        # Re-raise HTTPExceptions
+        # Re-raise HTTP-Exceptions
         raise
-    except Exception as e:
-        print(f"❌ OAuth-Callback Fehler: {str(e)}")
-        response = JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content={"detail": f"Social-Login fehlgeschlagen: {str(e)}"}
+    except ValueError as e:
+        print(f"❌ OAuth ValueError: {e}")
+        raise HTTPException(
+            status_code=400,
+            detail=str(e)
         )
-        # CORS-Header hinzufügen
-        response.headers["Access-Control-Allow-Origin"] = "*"
-        response.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
-        response.headers["Access-Control-Allow-Headers"] = "*"
-        return response
+    except Exception as e:
+        print(f"❌ OAuth-Callback Fehler: {e}")
+        print(f"   Typ: {type(e).__name__}")
+        import traceback
+        print(f"   Traceback: {traceback.format_exc()}")
+        
+        # Spezifische Fehlerbehandlung
+        error_message = str(e)
+        if "database is locked" in error_message:
+            raise HTTPException(
+                status_code=503,
+                detail="Datenbank ist momentan nicht verfügbar. Bitte versuchen Sie es in wenigen Sekunden erneut."
+            )
+        elif "invalid_grant" in error_message:
+            raise HTTPException(
+                status_code=400,
+                detail="OAuth-Code ist abgelaufen oder bereits verwendet"
+            )
+        elif "nicht konfiguriert" in error_message:
+            raise HTTPException(
+                status_code=500,
+                detail="OAuth ist nicht korrekt konfiguriert"
+            )
+        else:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Interner Server-Fehler beim OAuth-Login: {error_message}"
+            )
 
 
 @router.post("/link-social-account/{provider}")
@@ -541,16 +530,14 @@ async def select_role(
 ):
     """Speichert die gewählte Rolle des Benutzers"""
     
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
     
     # Prüfe ob User "neu" ist (innerhalb der ersten 24 Stunden nach Registrierung)
     if current_user.created_at is None:
         # Fallback für User ohne created_at
         is_new_user = True
     else:
-        # Verwende timezone-aware datetime für den Vergleich
-        now = datetime.now(timezone.utc)
-        user_age = now - current_user.created_at
+        user_age = datetime.utcnow() - current_user.created_at
         is_new_user = user_age.total_seconds() < 24 * 60 * 60  # 24 Stunden
     
     # Erlaube Rollenänderung nur für neue User oder wenn noch keine Rolle gesetzt
@@ -569,6 +556,7 @@ async def select_role(
     
     try:
         # Setze die Rolle
+        from datetime import datetime
         from sqlalchemy import update
         
         role_enum = UserRole.BAUTRAEGER if request.role == "bautraeger" else UserRole.DIENSTLEISTER
@@ -579,11 +567,34 @@ async def select_role(
             .values(
                 user_role=role_enum,
                 role_selected=True,
-                role_selected_at=datetime.now(timezone.utc),  # Verwende timezone-aware datetime
+                role_selected_at=datetime.utcnow(),
                 role_selection_modal_shown=True  # Markiere dass Modal angezeigt wurde
             )
         )
         await db.commit()
+        
+        # Credit-Initialisierung für Bauträger
+        if request.role == "bautraeger":
+            try:
+                from ..services.credit_service import CreditService
+                
+                # Initialisiere Credits für neuen Bauträger
+                ip_address = req.client.host if req else None
+                credits_initialized = await CreditService.initialize_credits_for_new_user(
+                    db=db,
+                    user_id=current_user.id,
+                    user_role=role_enum,
+                    ip_address=ip_address
+                )
+                
+                if credits_initialized:
+                    print(f"✅ Credits für neuen Bauträger {current_user.id} initialisiert")
+                else:
+                    print(f"ℹ️  Credits für User {current_user.id} bereits initialisiert oder nicht erforderlich")
+                    
+            except Exception as e:
+                print(f"❌ Fehler bei Credit-Initialisierung: {e}")
+                # Fehler bei Credit-Initialisierung sollte nicht die Rollenauswahl blockieren
         
         # Audit-Log
         ip_address = req.client.host if req else None

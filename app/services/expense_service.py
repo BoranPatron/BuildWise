@@ -9,6 +9,7 @@ from ..schemas.expense import ExpenseCreate, ExpenseUpdate, ExpenseRead
 from ..models.project import Project
 from ..services.security_service import SecurityService
 from ..models.audit_log import AuditAction
+from ..models.user import User
 
 class ExpenseService:
     
@@ -19,7 +20,7 @@ class ExpenseService:
         user_id: int,
         ip_address: Optional[str] = None
     ) -> ExpenseRead:
-        """Erstellt eine neue Ausgabe"""
+        """Erstellt eine neue Ausgabe mit automatischer Bauphasen-Speicherung"""
         
         # Prüfe ob Projekt existiert und User Zugriff hat
         project = await db.execute(
@@ -30,7 +31,10 @@ class ExpenseService:
         if not project:
             raise ValueError("Projekt nicht gefunden")
         
-        # Erstelle neue Ausgabe
+        # Hole aktuelle Bauphase des Projekts
+        current_construction_phase = project.construction_phase
+        
+        # Erstelle neue Ausgabe mit Bauphase
         expense = Expense(
             title=expense_data.title,
             description=expense_data.description,
@@ -38,7 +42,8 @@ class ExpenseService:
             category=expense_data.category,
             project_id=expense_data.project_id,
             date=expense_data.date,
-            receipt_url=expense_data.receipt_url
+            receipt_url=expense_data.receipt_url,
+            construction_phase=current_construction_phase  # Speichere aktuelle Bauphase
         )
         
         db.add(expense)
@@ -46,13 +51,48 @@ class ExpenseService:
         await db.commit()
         await db.refresh(expense)
         
-        # Audit-Log
+        # Audit-Log mit Bauphasen-Information
+        audit_message = f"Ausgabe erstellt: {expense_data.title} ({expense_data.amount}€)"
+        if current_construction_phase:
+            audit_message += f" - Bauphase: {current_construction_phase}"
+        
         await SecurityService.create_audit_log(
             db, user_id, AuditAction.DATA_CREATE,
-            f"Ausgabe erstellt: {expense_data.title} ({expense_data.amount}€)",
+            audit_message,
             resource_type="expense", resource_id=expense.id,
             ip_address=SecurityService.anonymize_ip_address(ip_address) if ip_address else None
         )
+        
+        # Credit-Zuordnung für Bauträger
+        try:
+            from ..services.credit_service import CreditService
+            from ..models.credit_event import CreditEventType
+            from ..models.user import UserRole
+            
+            # Prüfe ob User ein Bauträger ist
+            user_result = await db.execute(
+                select(User).where(User.id == user_id)
+            )
+            user = user_result.scalar_one_or_none()
+            
+            if user and user.user_role == UserRole.BAUTRAEGER:
+                # Füge Credits für hinzugefügte Ausgabe hinzu
+                await CreditService.add_credits_for_activity(
+                    db=db,
+                    user_id=user_id,
+                    event_type=CreditEventType.EXPENSE_ADDED,
+                    description=f"Ausgabe hinzugefügt: {expense_data.title}",
+                    related_entity_type="expense",
+                    related_entity_id=expense.id,
+                    ip_address=ip_address
+                )
+                print(f"✅ Credits für Bauträger {user_id} hinzugefügt: Ausgabe hinzugefügt")
+            else:
+                print(f"ℹ️  User {user_id} ist kein Bauträger, keine Credits hinzugefügt")
+                
+        except Exception as e:
+            print(f"❌ Fehler bei Credit-Zuordnung: {e}")
+            # Fehler bei Credit-Zuordnung sollte nicht die Ausgabe-Erstellung blockieren
         
         return ExpenseRead.model_validate(expense)
     
@@ -185,9 +225,18 @@ class ExpenseService:
                 category_totals[expense.category] = 0
             category_totals[expense.category] += expense.amount
         
+        # Gruppierung nach Bauphase (für Analytics)
+        phase_totals = {}
+        for expense in expenses:
+            if expense.construction_phase:
+                if expense.construction_phase not in phase_totals:
+                    phase_totals[expense.construction_phase] = 0
+                phase_totals[expense.construction_phase] += expense.amount
+        
         return {
             "total_amount": total_amount,
             "expense_count": len(expenses),
             "category_totals": category_totals,
+            "phase_totals": phase_totals,  # Neue Bauphasen-Gruppierung
             "latest_expense": max(expenses, key=lambda x: x.date).date if expenses else None
         } 

@@ -10,6 +10,14 @@ from .audit_log import AuditLog, AuditAction
 from .cost_position import CostPosition, CostCategory, CostType, CostStatus
 from .buildwise_fee import BuildWiseFee, BuildWiseFeeItem
 from .expense import Expense
+from .user_credits import UserCredits, PlanStatus
+from .credit_event import CreditEvent, CreditEventType
+from .credit_purchase import CreditPurchase, PurchaseStatus, CreditPackage
+
+# Besichtigungssystem
+from .inspection import Inspection, InspectionStatus, InspectionInvitation, InspectionInvitationStatus, QuoteRevision
+from .appointment import Appointment, AppointmentType, AppointmentStatus
+from .appointment_response import AppointmentResponse
 
 __all__ = [
     "Base",
@@ -40,4 +48,21 @@ __all__ = [
     "BuildWiseFee",
     "BuildWiseFeeItem",
     "Expense",
+    "UserCredits",
+    "PlanStatus",
+    "CreditEvent",
+    "CreditEventType",
+    "CreditPurchase",
+    "PurchaseStatus",
+    "CreditPackage",
+    # Besichtigungssystem
+    "Inspection",
+    "InspectionStatus",
+    "InspectionInvitation",
+    "InspectionInvitationStatus",
+    "QuoteRevision",
+    "Appointment",
+    "AppointmentType",
+    "AppointmentStatus",
+    "AppointmentResponse",
 ]

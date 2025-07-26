@@ -343,28 +343,6 @@ async def reject_quote_endpoint(
     return rejected_quote
 
 
-@router.get("/milestone/{milestone_id}/check-user-quote")
-async def check_user_quote_for_milestone(
-    milestone_id: int,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Prüft, ob der aktuelle User bereits ein Angebot für dieses Gewerk abgegeben hat"""
-    user_id = getattr(current_user, 'id', 0)
-    
-    # Hole alle Angebote für das Gewerk
-    quotes = await get_quotes_for_milestone(db, milestone_id)
-    
-    # Prüfe, ob der aktuelle User bereits ein Angebot abgegeben hat
-    user_quote = next((quote for quote in quotes if quote.service_provider_id == user_id), None)
-    
-    return {
-        "has_quote": user_quote is not None,
-        "quote": user_quote if user_quote else None,
-        "total_quotes": len(quotes)
-    }
-
-
 @router.post("/{quote_id}/withdraw", status_code=status.HTTP_204_NO_CONTENT)
 async def withdraw_quote_endpoint(
     quote_id: int,
