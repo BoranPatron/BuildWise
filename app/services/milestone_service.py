@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 import logging
 import uuid
@@ -9,8 +9,65 @@ from ..models import Milestone, Project
 from ..schemas.milestone import MilestoneCreate, MilestoneUpdate
 
 
+def aggregate_category_specific_fields(
+    base_description: str,
+    category: str,
+    category_specific_fields: Dict[str, Any],
+    technical_specifications: str = "",
+    quality_requirements: str = "",
+    safety_requirements: str = "",
+    environmental_requirements: str = "",
+    notes: str = ""
+) -> str:
+    """
+    Aggregiert alle kategorie-spezifischen Felder und zusätzliche Informationen
+    in einen strukturierten Text für das description Feld.
+    """
+    sections = []
+    
+    # Basis-Beschreibung hinzufügen
+    if base_description.strip():
+        sections.append(f"📋 **Beschreibung:**\n{base_description.strip()}")
+    
+    # Kategorie-spezifische Felder hinzufügen
+    if category_specific_fields:
+        sections.append(f"\n🔧 **Kategorie-spezifische Details ({category.upper()}):**")
+        
+        for field_id, value in category_specific_fields.items():
+            if value is not None and value != "":
+                # Feld-ID in lesbaren Text umwandeln
+                field_label = field_id.replace('_', ' ').title()
+                if isinstance(value, bool):
+                    field_value = "Ja" if value else "Nein"
+                else:
+                    field_value = str(value)
+                sections.append(f"• {field_label}: {field_value}")
+    
+    # Technische Spezifikationen
+    if technical_specifications.strip():
+        sections.append(f"\n⚙️ **Technische Spezifikationen:**\n{technical_specifications.strip()}")
+    
+    # Qualitätsanforderungen
+    if quality_requirements.strip():
+        sections.append(f"\n🎯 **Qualitätsanforderungen:**\n{quality_requirements.strip()}")
+    
+    # Sicherheitsanforderungen
+    if safety_requirements.strip():
+        sections.append(f"\n🛡️ **Sicherheitsanforderungen:**\n{safety_requirements.strip()}")
+    
+    # Umweltanforderungen
+    if environmental_requirements.strip():
+        sections.append(f"\n🌱 **Umweltanforderungen:**\n{environmental_requirements.strip()}")
+    
+    # Notizen
+    if notes.strip():
+        sections.append(f"\n📝 **Notizen:**\n{notes.strip()}")
+    
+    return "\n".join(sections)
+
+
 async def create_milestone(db: AsyncSession, milestone_in: MilestoneCreate, created_by: int) -> Milestone:
-    """Erstellt ein neues Gewerk mit automatischer Bauphasen-Zuordnung"""
+    """Erstellt ein neues Gewerk mit automatischer Bauphasen-Zuordnung und aggregierten Beschreibungen"""
     from ..models import Project
     
     # Hole das Projekt, um die aktuelle Bauphase zu ermitteln
@@ -19,12 +76,24 @@ async def create_milestone(db: AsyncSession, milestone_in: MilestoneCreate, crea
     )
     project = project_result.scalar_one_or_none()
     
+    # Aggregiere alle Informationen in das description Feld
+    aggregated_description = aggregate_category_specific_fields(
+        base_description=milestone_in.description or "",
+        category=milestone_in.category or "",
+        category_specific_fields=getattr(milestone_in, 'category_specific_fields', {}),
+        technical_specifications=getattr(milestone_in, 'technical_specifications', ""),
+        quality_requirements=getattr(milestone_in, 'quality_requirements', ""),
+        safety_requirements=getattr(milestone_in, 'safety_requirements', ""),
+        environmental_requirements=getattr(milestone_in, 'environmental_requirements', ""),
+        notes=milestone_in.notes or ""
+    )
+    
     # Erstelle das Gewerk
     milestone_data = {
         'project_id': milestone_in.project_id,
         'created_by': created_by,
         'title': milestone_in.title,
-        'description': milestone_in.description,
+        'description': aggregated_description,  # Verwende die aggregierte Beschreibung
         'status': milestone_in.status,
         'priority': milestone_in.priority,
         'category': milestone_in.category,

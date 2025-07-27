@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Optional
+from typing import Optional, Dict, Any
 from pydantic import BaseModel
 # Enums wurden zu Strings geändert - keine Imports mehr nötig
 
@@ -27,6 +27,12 @@ class MilestoneBase(BaseModel):
 
 class MilestoneCreate(MilestoneBase):
     project_id: int
+    # Zusätzliche Felder für kategorie-spezifische Informationen
+    category_specific_fields: Optional[Dict[str, Any]] = None
+    technical_specifications: Optional[str] = None
+    quality_requirements: Optional[str] = None
+    safety_requirements: Optional[str] = None
+    environmental_requirements: Optional[str] = None
 
 
 class MilestoneUpdate(BaseModel):

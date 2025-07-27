@@ -1,8 +1,8 @@
 
 # AUFTRAGSBESTÄTIGUNG
 
-**Auftragsnummer:** AB-8-2-4-1753376746938  
-**Datum:** 24.7.2025  
+**Auftragsnummer:** AB-8-1-1-1753539971254  
+**Datum:** 26.7.2025  
 **Status:** Verbindlich angenommen
 
 ---
@@ -18,7 +18,7 @@
 
 ## 2. GEWERKSAUSSCHREIBUNG
 
-**Gewerk:** Pool UG  
+**Gewerk:** Fussbodenheizung Einbau  
 **Kategorie:** sanitaer  
 **Beschreibung:** undefined  
 **Geplantes Datum:** 1.8.2025  
@@ -43,24 +43,24 @@ Standard-Umweltanforderungen
 
 ## 3. KOSTENVORANSCHLAG
 
-**Angebotsnummer:** 4  
-**Angebotsdatum:** 24.7.2025  
+**Angebotsnummer:** 1  
+**Angebotsdatum:** 26.7.2025  
 **Gültig bis:** -  
 **Status:** draft
 
 ### Kostenaufschlüsselung:
-- **Gesamtbetrag:** 33.500,00 €
+- **Gesamtbetrag:** 21.000,00 €
 - **Arbeitskosten:** Nicht angegeben
 - **Materialkosten:** Nicht angegeben
 - **Gemeinkosten:** Nicht angegeben
 
 ### Zeitplan:
-- **Geschätzte Dauer:** 3 Tage
+- **Geschätzte Dauer:** 4 Tage
 - **Startdatum:** 31.7.2025
 - **Fertigstellungsdatum:** 7.8.2025
 
 ### Bedingungen:
-- **Zahlungsbedingungen:** immediate
+- **Zahlungsbedingungen:** Standard
 - **Garantie:** 12 Monate
 - **Gültig bis:** -
 
@@ -68,17 +68,17 @@ Standard-Umweltanforderungen
 
 ## 4. DIENSTLEISTER
 
-**Firma:** BaccoGMBH  
-**Ansprechpartner:** Hr Bacco  
+**Firma:** PietiboyAG  
+**Ansprechpartner:** Herr Piet  
 **Telefon:** Nicht angegeben  
-**E-Mail:** Bacco@Schabanak.de  
+**E-Mail:** PietiboyAG  
 **Website:** Nicht angegeben
 
 ---
 
 ## 5. VERBINDLICHE VEREINBARUNG
 
-**Annahmedatum:** 24.7.2025  
+**Annahmedatum:** 26.7.2025  
 **Angenommen von:**    
 **Benutzer-ID:** 4
 
@@ -116,9 +116,9 @@ Keine KI-Empfehlung verfügbar
 
 Diese Auftragsbestätigung stellt eine verbindliche Vereinbarung zwischen dem Bauträger und dem Dienstleister dar. Alle rechtlichen Bestimmungen des deutschen Bauvertragsrechts (VOB/B) gelten entsprechend.
 
-**Erstellt am:** 24.7.2025  
+**Erstellt am:** 26.7.2025  
 **Erstellt von:** BuildWise System  
-**Dokument-ID:** AB-8-2-4-1753376746938
+**Dokument-ID:** AB-8-1-1-1753539971254
 
 ---
 
