@@ -170,7 +170,7 @@ class User(Base):
     projects = relationship("Project", back_populates="owner")
     assigned_tasks = relationship("Task", foreign_keys="Task.assigned_to", back_populates="assigned_user")
     created_tasks = relationship("Task", foreign_keys="Task.created_by", back_populates="creator")
-    created_milestones = relationship("Milestone", back_populates="creator")
+    created_milestones = relationship("Milestone", foreign_keys="Milestone.created_by", back_populates="creator")
     uploaded_documents = relationship("Document", back_populates="uploader")
     sent_messages = relationship("Message", foreign_keys="Message.sender_id", back_populates="sender")
     received_messages = relationship("Message", foreign_keys="Message.recipient_id", back_populates="recipient")

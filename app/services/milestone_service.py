@@ -1,12 +1,25 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, func
+from sqlalchemy import select, update, func, and_, or_
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, date, timedelta
 import logging
 import uuid
+import json
 
 from ..models import Milestone, Project
-from ..schemas.milestone import MilestoneCreate, MilestoneUpdate
+from ..models.user import User
+from ..models.project import Project
+from ..schemas.milestone import (
+    MilestoneCreate,
+    MilestoneUpdate,
+    MilestoneCompletionRequest,
+    MilestoneInspectionUpdate,
+    MilestoneInvoiceRequest,
+    CompletionChecklist,
+    InspectionReport,
+    DefectItem,
+    InvoiceData
+)
 
 
 def aggregate_category_specific_fields(
@@ -220,8 +233,6 @@ async def get_milestone_statistics(db: AsyncSession, project_id: int) -> dict:
 
 async def get_upcoming_milestones(db: AsyncSession, project_id: Optional[int] = None, days: int = 30) -> List[Milestone]:
     """Holt anstehende Meilensteine in den nächsten X Tagen"""
-    from datetime import date, timedelta
-    
     start_date = date.today()
     end_date = start_date + timedelta(days=days)
     
@@ -240,8 +251,6 @@ async def get_upcoming_milestones(db: AsyncSession, project_id: Optional[int] = 
 
 async def get_overdue_milestones(db: AsyncSession, project_id: Optional[int] = None) -> List[Milestone]:
     """Holt überfällige Meilensteine"""
-    from datetime import date
-    
     query = select(Milestone).where(
         Milestone.planned_date < date.today(),
         Milestone.status.in_(["planned", "in_progress"])
@@ -415,3 +424,359 @@ async def get_milestone_statistics_by_phase(db: AsyncSession, project_id: int) -
         "avg_progress": round(float(total_stats.avg_progress or 0), 1),
         "total_budget_variance": float((total_stats.total_budget or 0) - (total_stats.total_costs or 0))
     } 
+
+# ==================== ABSCHLUSS-WORKFLOW FUNKTIONEN ====================
+
+async def request_milestone_completion(
+    db: AsyncSession, 
+    completion_request: MilestoneCompletionRequest,
+    service_provider_id: int
+) -> Milestone:
+    """
+    Dienstleister beantragt Abschluss eines Gewerkes
+    """
+    # Hole das Gewerk
+    result = await db.execute(
+        select(Milestone).where(Milestone.id == completion_request.milestone_id)
+    )
+    milestone = result.scalar_one_or_none()
+    
+    if not milestone:
+        raise ValueError("Gewerk nicht gefunden")
+    
+    # Prüfe, ob Dienstleister berechtigt ist
+    if milestone.created_by != service_provider_id:
+        raise ValueError("Keine Berechtigung für dieses Gewerk")
+    
+    # Update Milestone Status
+    milestone.completion_status = "completion_requested"
+    milestone.completion_requested_at = datetime.utcnow()
+    milestone.completion_checklist = completion_request.checklist.dict()
+    milestone.completion_photos = [photo.dict() for photo in completion_request.photos]
+    milestone.completion_documents = completion_request.documents
+    
+    await db.commit()
+    await db.refresh(milestone)
+    
+    # TODO: Benachrichtigung an Bauträger senden
+    # await send_completion_request_notification(milestone)
+    
+    return milestone
+
+async def conduct_milestone_inspection(
+    db: AsyncSession,
+    inspection_update: MilestoneInspectionUpdate,
+    inspector_id: int
+) -> Milestone:
+    """
+    Bauträger führt Abnahme durch
+    """
+    # Hole das Gewerk
+    result = await db.execute(
+        select(Milestone).where(Milestone.id == inspection_update.milestone_id)
+    )
+    milestone = result.scalar_one_or_none()
+    
+    if not milestone:
+        raise ValueError("Gewerk nicht gefunden")
+    
+    # Update Milestone mit Abnahme-Ergebnis
+    milestone.inspection_date = inspection_update.inspection_report.inspection_date
+    milestone.inspection_report = inspection_update.inspection_report.dict()
+    
+    # Setze Status basierend auf Abnahme-Ergebnis
+    assessment = inspection_update.inspection_report.overall_assessment
+    if assessment == "accepted":
+        milestone.completion_status = "completed"
+        milestone.acceptance_date = datetime.utcnow()
+        milestone.accepted_by = inspector_id
+    elif assessment == "accepted_with_conditions":
+        milestone.completion_status = "under_review"
+        milestone.defects_list = [defect.dict() for defect in inspection_update.inspection_report.defects]
+    else:  # rejected
+        milestone.completion_status = "in_progress"
+        milestone.defects_list = [defect.dict() for defect in inspection_update.inspection_report.defects]
+    
+    await db.commit()
+    await db.refresh(milestone)
+    
+    # TODO: Benachrichtigung an Dienstleister senden
+    # await send_inspection_result_notification(milestone)
+    
+    return milestone
+
+async def generate_milestone_invoice(
+    db: AsyncSession,
+    invoice_request: MilestoneInvoiceRequest,
+    service_provider_id: int
+) -> Milestone:
+    """
+    Dienstleister erstellt Rechnung für abgeschlossenes Gewerk
+    """
+    # Hole das Gewerk
+    result = await db.execute(
+        select(Milestone).where(Milestone.id == invoice_request.milestone_id)
+    )
+    milestone = result.scalar_one_or_none()
+    
+    if not milestone:
+        raise ValueError("Gewerk nicht gefunden")
+    
+    # Prüfe, ob Gewerk abgeschlossen ist
+    if milestone.completion_status != "completed":
+        raise ValueError("Gewerk muss erst abgeschlossen werden")
+    
+    # Prüfe Berechtigung
+    if milestone.created_by != service_provider_id:
+        raise ValueError("Keine Berechtigung für dieses Gewerk")
+    
+    # Update Milestone mit Rechnungsdaten
+    milestone.invoice_generated = True
+    
+    if invoice_request.use_custom_invoice:
+        milestone.custom_invoice_url = invoice_request.custom_invoice_url
+    else:
+        # Automatische Rechnungsgenerierung
+        invoice_data = await _generate_automatic_invoice(milestone)
+        milestone.invoice_data = invoice_data.dict()
+    
+    await db.commit()
+    await db.refresh(milestone)
+    
+    # TODO: Benachrichtigung an Bauträger senden
+    # await send_invoice_notification(milestone)
+    
+    return milestone
+
+async def approve_milestone_invoice(
+    db: AsyncSession,
+    milestone_id: int,
+    approver_id: int
+) -> Milestone:
+    """
+    Bauträger genehmigt Rechnung
+    """
+    # Hole das Gewerk
+    result = await db.execute(
+        select(Milestone).where(Milestone.id == milestone_id)
+    )
+    milestone = result.scalar_one_or_none()
+    
+    if not milestone:
+        raise ValueError("Gewerk nicht gefunden")
+    
+    # Prüfe, ob Rechnung vorhanden ist
+    if not milestone.invoice_generated:
+        raise ValueError("Keine Rechnung vorhanden")
+    
+    # Update Milestone
+    milestone.invoice_approved = True
+    milestone.invoice_approved_at = datetime.utcnow()
+    milestone.invoice_approved_by = approver_id
+    
+    await db.commit()
+    await db.refresh(milestone)
+    
+    # TODO: Benachrichtigung an Dienstleister senden
+    # await send_invoice_approval_notification(milestone)
+    
+    return milestone
+
+async def archive_milestone(
+    db: AsyncSession,
+    milestone_id: int,
+    user_id: int
+) -> Milestone:
+    """
+    Archiviert ein abgeschlossenes Gewerk
+    """
+    # Hole das Gewerk
+    result = await db.execute(
+        select(Milestone).where(Milestone.id == milestone_id)
+    )
+    milestone = result.scalar_one_or_none()
+    
+    if not milestone:
+        raise ValueError("Gewerk nicht gefunden")
+    
+    # Prüfe, ob Gewerk komplett abgeschlossen ist
+    if not (milestone.completion_status == "completed" and milestone.invoice_approved):
+        raise ValueError("Gewerk muss komplett abgeschlossen und Rechnung genehmigt sein")
+    
+    # Archiviere Gewerk
+    milestone.archived = True
+    milestone.archived_at = datetime.utcnow()
+    
+    await db.commit()
+    await db.refresh(milestone)
+    
+    return milestone
+
+async def get_archived_milestones(
+    db: AsyncSession,
+    user_id: int,
+    is_service_provider: bool = False,
+    search_query: Optional[str] = None,
+    category_filter: Optional[str] = None,
+    skip: int = 0,
+    limit: int = 100
+) -> List[Milestone]:
+    """
+    Holt archivierte Gewerke für einen Benutzer
+    """
+    query = select(Milestone).where(Milestone.archived == True)
+    
+    if is_service_provider:
+        query = query.where(Milestone.created_by == user_id)
+    else:
+        # Bauträger sieht alle archivierten Gewerke seiner Projekte
+        query = query.join(Project).where(Project.created_by == user_id)
+    
+    # Filter anwenden
+    if search_query:
+        query = query.where(
+            or_(
+                Milestone.title.ilike(f"%{search_query}%"),
+                Milestone.description.ilike(f"%{search_query}%")
+            )
+        )
+    
+    if category_filter:
+        query = query.where(Milestone.category == category_filter)
+    
+    # Sortierung und Paginierung
+    query = query.order_by(Milestone.archived_at.desc()).offset(skip).limit(limit)
+    
+    result = await db.execute(query)
+    return result.scalars().all()
+
+# ==================== HILFSFUNKTIONEN ====================
+
+async def _generate_automatic_invoice(milestone: Milestone) -> InvoiceData:
+    """
+    Generiert automatisch eine Rechnung basierend auf Gewerk-Daten
+    """
+    invoice_number = f"RE-{milestone.id}-{datetime.now().strftime('%Y%m%d')}"
+    
+    # Basis-Rechnungsdaten aus Gewerk extrahieren
+    items = []
+    total_amount = 0.0
+    
+    # Hauptleistung
+    if milestone.budget:
+        items.append({
+            "description": f"Gewerk: {milestone.title}",
+            "quantity": 1,
+            "unit_price": milestone.budget,
+            "total": milestone.budget
+        })
+        total_amount += milestone.budget
+    
+    # Zusatzleistungen aus Beschreibung extrahieren (falls vorhanden)
+    # TODO: Erweiterte Logik für Zusatzleistungen
+    
+    return InvoiceData(
+        invoice_number=invoice_number,
+        total_amount=total_amount,
+        items=items,
+        generated_at=datetime.utcnow()
+    )
+
+def get_completion_checklist_template(category: str) -> Dict[str, Any]:
+    """
+    Gibt kategorie-spezifische Abnahme-Checkliste zurück
+    """
+    templates = {
+        "elektro": {
+            "items": [
+                {"id": "safety_check", "label": "Sicherheitsprüfung durchgeführt", "required": True, "checked": False},
+                {"id": "function_test", "label": "Funktionstest aller Anschlüsse", "required": True, "checked": False},
+                {"id": "documentation", "label": "Installationsdokumentation vollständig", "required": True, "checked": False},
+                {"id": "cleanup", "label": "Arbeitsplatz gereinigt", "required": True, "checked": False},
+                {"id": "certificates", "label": "Prüfzertifikate vorhanden", "required": True, "checked": False}
+            ]
+        },
+        "sanitaer": {
+            "items": [
+                {"id": "pressure_test", "label": "Druckprüfung erfolgreich", "required": True, "checked": False},
+                {"id": "function_test", "label": "Funktionstest aller Armaturen", "required": True, "checked": False},
+                {"id": "sealing_check", "label": "Abdichtung geprüft", "required": True, "checked": False},
+                {"id": "cleanup", "label": "Arbeitsplatz gereinigt", "required": True, "checked": False},
+                {"id": "documentation", "label": "Installationsdokumentation vollständig", "required": True, "checked": False}
+            ]
+        },
+        "heizung": {
+            "items": [
+                {"id": "system_test", "label": "Anlagenprüfung durchgeführt", "required": True, "checked": False},
+                {"id": "efficiency_test", "label": "Effizienztest bestanden", "required": True, "checked": False},
+                {"id": "safety_devices", "label": "Sicherheitseinrichtungen funktionsfähig", "required": True, "checked": False},
+                {"id": "documentation", "label": "Wartungsdokumentation übergeben", "required": True, "checked": False},
+                {"id": "cleanup", "label": "Arbeitsplatz gereinigt", "required": True, "checked": False}
+            ]
+        },
+        "dach": {
+            "items": [
+                {"id": "waterproof_test", "label": "Dichtheitsprüfung erfolgreich", "required": True, "checked": False},
+                {"id": "material_check", "label": "Materialqualität geprüft", "required": True, "checked": False},
+                {"id": "safety_measures", "label": "Absturzsicherung installiert", "required": True, "checked": False},
+                {"id": "cleanup", "label": "Arbeitsplatz gereinigt", "required": True, "checked": False},
+                {"id": "warranty", "label": "Gewährleistungsunterlagen übergeben", "required": True, "checked": False}
+            ]
+        },
+        "fenster_tueren": {
+            "items": [
+                {"id": "function_test", "label": "Öffnungs-/Schließfunktion geprüft", "required": True, "checked": False},
+                {"id": "sealing_check", "label": "Abdichtung geprüft", "required": True, "checked": False},
+                {"id": "hardware_check", "label": "Beschläge justiert", "required": True, "checked": False},
+                {"id": "cleanup", "label": "Arbeitsplatz gereinigt", "required": True, "checked": False},
+                {"id": "keys_handed", "label": "Schlüssel übergeben", "required": True, "checked": False}
+            ]
+        },
+        "boden": {
+            "items": [
+                {"id": "surface_quality", "label": "Oberflächenqualität geprüft", "required": True, "checked": False},
+                {"id": "level_check", "label": "Ebenheit geprüft", "required": True, "checked": False},
+                {"id": "joint_check", "label": "Fugen ordnungsgemäß", "required": True, "checked": False},
+                {"id": "cleanup", "label": "Arbeitsplatz gereinigt", "required": True, "checked": False},
+                {"id": "care_instructions", "label": "Pflegeanleitung übergeben", "required": True, "checked": False}
+            ]
+        },
+        "wand": {
+            "items": [
+                {"id": "surface_quality", "label": "Oberflächenqualität geprüft", "required": True, "checked": False},
+                {"id": "straightness", "label": "Geradheit geprüft", "required": True, "checked": False},
+                {"id": "finish_quality", "label": "Oberflächenbehandlung vollständig", "required": True, "checked": False},
+                {"id": "cleanup", "label": "Arbeitsplatz gereinigt", "required": True, "checked": False},
+                {"id": "touch_up", "label": "Nachbesserungen durchgeführt", "required": False, "checked": False}
+            ]
+        },
+        "fundament": {
+            "items": [
+                {"id": "concrete_quality", "label": "Betonqualität geprüft", "required": True, "checked": False},
+                {"id": "dimension_check", "label": "Maße geprüft", "required": True, "checked": False},
+                {"id": "reinforcement", "label": "Bewehrung ordnungsgemäß", "required": True, "checked": False},
+                {"id": "waterproofing", "label": "Abdichtung vollständig", "required": True, "checked": False},
+                {"id": "cleanup", "label": "Arbeitsplatz gereinigt", "required": True, "checked": False}
+            ]
+        },
+        "garten": {
+            "items": [
+                {"id": "planting_complete", "label": "Bepflanzung vollständig", "required": True, "checked": False},
+                {"id": "irrigation_test", "label": "Bewässerung funktionsfähig", "required": True, "checked": False},
+                {"id": "soil_quality", "label": "Bodenqualität geprüft", "required": True, "checked": False},
+                {"id": "cleanup", "label": "Arbeitsplatz gereinigt", "required": True, "checked": False},
+                {"id": "care_instructions", "label": "Pflegeanleitung übergeben", "required": True, "checked": False}
+            ]
+        },
+        "eigene": {
+            "items": [
+                {"id": "quality_check", "label": "Qualitätsprüfung durchgeführt", "required": True, "checked": False},
+                {"id": "specification_met", "label": "Spezifikationen erfüllt", "required": True, "checked": False},
+                {"id": "function_test", "label": "Funktionstest durchgeführt", "required": True, "checked": False},
+                {"id": "cleanup", "label": "Arbeitsplatz gereinigt", "required": True, "checked": False},
+                {"id": "documentation", "label": "Dokumentation vollständig", "required": True, "checked": False}
+            ]
+        }
+    }
+    
+    return templates.get(category, templates["eigene"]) 

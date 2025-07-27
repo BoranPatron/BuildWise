@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Date, DateTime, ForeignKey, Enum, Boolean, Float
+from sqlalchemy import Column, Integer, String, Text, Float, Boolean, Date, DateTime, ForeignKey, JSON
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 import enum
@@ -67,6 +67,32 @@ class Milestone(Base):
     inspection_sent = Column(Boolean, default=False)      # Markiert ob Besichtigung versendet wurde
     inspection_sent_at = Column(DateTime(timezone=True), nullable=True)  # Zeitpunkt der Versendung
     
+    # Neue Felder für Abschluss-Workflow
+    completion_status = Column(String(50), default="in_progress")  # in_progress, completion_requested, under_review, completed, archived
+    completion_requested_at = Column(DateTime, nullable=True)
+    completion_checklist = Column(JSON, nullable=True)  # Abnahme-Checkliste Daten
+    completion_photos = Column(JSON, nullable=True)  # Array von Foto-URLs mit Metadaten
+    completion_documents = Column(JSON, nullable=True)  # Prüfprotokolle, Zertifikate etc.
+    
+    # Abnahme
+    inspection_date = Column(DateTime, nullable=True)
+    inspection_report = Column(JSON, nullable=True)  # Abnahme-Protokoll
+    defects_list = Column(JSON, nullable=True)  # Mängelliste
+    acceptance_date = Column(DateTime, nullable=True)
+    accepted_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    
+    # Rechnungsstellung
+    invoice_generated = Column(Boolean, default=False)
+    invoice_data = Column(JSON, nullable=True)  # Automatisch generierte Rechnung
+    custom_invoice_url = Column(String(500), nullable=True)  # Upload eigene Rechnung
+    invoice_approved = Column(Boolean, default=False)
+    invoice_approved_at = Column(DateTime, nullable=True)
+    invoice_approved_by = Column(Integer, ForeignKey("users.id"), nullable=True)
+    
+    # Archivierung
+    archived = Column(Boolean, default=False)
+    archived_at = Column(DateTime, nullable=True)
+    
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -74,5 +100,7 @@ class Milestone(Base):
     
     # Relationships
     project = relationship("Project", back_populates="milestones")
-    creator = relationship("User")
+    creator = relationship("User", foreign_keys=[created_by], back_populates="created_milestones")
     appointments = relationship("Appointment", back_populates="milestone", cascade="all, delete-orphan") 
+    accepted_by_user = relationship("User", foreign_keys=[accepted_by])
+    invoice_approved_by_user = relationship("User", foreign_keys=[invoice_approved_by]) 

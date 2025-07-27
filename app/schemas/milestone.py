@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Optional, Dict, Any
+from typing import Optional, Dict, Any, List
 from pydantic import BaseModel
 # Enums wurden zu Strings geändert - keine Imports mehr nötig
 
@@ -123,3 +123,105 @@ class MilestoneSummary(BaseModel):
             'requires_inspection': obj.requires_inspection
         }
         return cls(**data) 
+
+class CompletionPhoto(BaseModel):
+    """Schema für Abschluss-Fotos"""
+    url: str
+    caption: Optional[str] = None
+    category: str  # "before", "after", "detail", "overview"
+    timestamp: datetime
+    location: Optional[Dict[str, float]] = None  # lat, lng
+
+class DefectItem(BaseModel):
+    """Schema für Mängel"""
+    id: str
+    description: str
+    category: str  # "critical", "minor", "cosmetic"
+    location: Optional[str] = None
+    photo_urls: List[str] = []
+    deadline: Optional[date] = None
+    status: str = "open"  # "open", "in_progress", "resolved"
+
+class CompletionChecklist(BaseModel):
+    """Schema für Abnahme-Checkliste"""
+    category: str
+    items: List[Dict[str, Any]]  # Flexible Struktur je nach Kategorie
+    overall_rating: int  # 1-5 Sterne
+    notes: Optional[str] = None
+    completed_by: int
+    completed_at: datetime
+
+class InspectionReport(BaseModel):
+    """Schema für Abnahme-Protokoll"""
+    inspector_id: int
+    inspection_date: datetime
+    overall_assessment: str  # "accepted", "accepted_with_conditions", "rejected"
+    quality_rating: int  # 1-5 Sterne
+    notes: Optional[str] = None
+    defects: List[DefectItem] = []
+    photos: List[CompletionPhoto] = []
+
+class InvoiceData(BaseModel):
+    """Schema für automatisch generierte Rechnung"""
+    invoice_number: str
+    total_amount: float
+    items: List[Dict[str, Any]]
+    generated_at: datetime
+    pdf_url: Optional[str] = None
+
+class MilestoneCompletionRequest(BaseModel):
+    """Schema für Abschluss-Antrag"""
+    milestone_id: int
+    checklist: CompletionChecklist
+    photos: List[CompletionPhoto] = []
+    documents: List[str] = []  # URLs zu Dokumenten
+    notes: Optional[str] = None
+
+class MilestoneInspectionUpdate(BaseModel):
+    """Schema für Abnahme-Update"""
+    milestone_id: int
+    inspection_report: InspectionReport
+
+class MilestoneInvoiceRequest(BaseModel):
+    """Schema für Rechnungsstellung"""
+    milestone_id: int
+    use_custom_invoice: bool = False
+    custom_invoice_url: Optional[str] = None
+    invoice_data: Optional[InvoiceData] = None
+
+# Erweiterte Milestone Response Schemas
+class MilestoneResponse(MilestoneBase):
+    id: int
+    project_id: int
+    created_by: int
+    created_at: datetime
+    updated_at: datetime
+    
+    # Neue Felder für Abschluss-Workflow
+    completion_status: str
+    completion_requested_at: Optional[datetime] = None
+    completion_checklist: Optional[CompletionChecklist] = None
+    completion_photos: List[CompletionPhoto] = []
+    completion_documents: List[str] = []
+    
+    # Abnahme
+    inspection_date: Optional[datetime] = None
+    inspection_report: Optional[InspectionReport] = None
+    defects_list: List[DefectItem] = []
+    acceptance_date: Optional[datetime] = None
+    accepted_by: Optional[int] = None
+    
+    # Rechnungsstellung
+    invoice_generated: bool = False
+    invoice_data: Optional[InvoiceData] = None
+    custom_invoice_url: Optional[str] = None
+    invoice_approved: bool = False
+    invoice_approved_at: Optional[datetime] = None
+    invoice_approved_by: Optional[int] = None
+    
+    # Archivierung
+    archived: bool = False
+    archived_at: Optional[datetime] = None
+
+    class Config:
+        from_attributes = True 
