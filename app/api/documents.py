@@ -3,10 +3,13 @@ from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 import os
+import uuid
+from datetime import datetime
+import json
 
 from ..core.database import get_db
 from ..api.deps import get_current_user
-from ..models import User, DocumentType
+from ..models import User, DocumentType, Milestone, Project
 from ..schemas.document import DocumentRead, DocumentUpdate, DocumentSummary, DocumentUpload, DocumentCreate
 from ..services.document_service import (
     create_document, get_document_by_id, get_documents_for_project,
@@ -96,6 +99,93 @@ async def upload_document(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Fehler beim Hochladen des Dokuments"
         )
+
+
+@router.post("/upload-milestone-documents/{milestone_id}")
+async def upload_milestone_documents(
+    milestone_id: int,
+    files: List[UploadFile] = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Upload von Dokumenten für ein Milestone"""
+    
+    # Prüfe ob Milestone existiert und Nutzer berechtigt ist
+    milestone = await db.get(Milestone, milestone_id)
+    if not milestone:
+        raise HTTPException(status_code=404, detail="Milestone nicht gefunden")
+    
+    # Prüfe Berechtigung (nur Ersteller oder Projektinhaber)
+    project = await db.get(Project, milestone.project_id)
+    if not project or (project.owner_id != current_user.id and milestone.created_by != current_user.id):
+        raise HTTPException(status_code=403, detail="Keine Berechtigung")
+    
+    uploaded_documents = []
+    
+    for file in files:
+        # Validiere Dateityp
+        allowed_types = [
+            'application/pdf',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/vnd.ms-powerpoint',
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+        ]
+        
+        if file.content_type not in allowed_types:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Dateityp {file.content_type} nicht unterstützt"
+            )
+        
+        # Validiere Dateigröße (10MB)
+        content = await file.read()
+        if len(content) > 10 * 1024 * 1024:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Datei {file.filename} ist zu groß (max. 10MB)"
+            )
+        
+        # Erstelle Speicherpfad
+        upload_dir = f"storage/uploads/project_{project.id}"
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        # Generiere sicheren Dateinamen
+        file_extension = os.path.splitext(file.filename)[1]
+        safe_filename = f"milestone_{milestone_id}_{uuid.uuid4()}{file_extension}"
+        file_path = os.path.join(upload_dir, safe_filename)
+        
+        # Speichere Datei
+        with open(file_path, "wb") as buffer:
+            buffer.write(content)
+        
+        # Erstelle Dokument-Metadaten
+        document_data = {
+            "id": str(uuid.uuid4()),
+            "name": file.filename,
+            "url": f"/{file_path}",
+            "type": file.content_type,
+            "size": len(content),
+            "uploaded_at": datetime.now().isoformat()
+        }
+        
+        uploaded_documents.append(document_data)
+    
+    # Aktualisiere Milestone mit neuen Dokumenten
+    existing_docs = milestone.documents if milestone.documents else []
+    if isinstance(existing_docs, str):
+        existing_docs = json.loads(existing_docs)
+    
+    all_documents = existing_docs + uploaded_documents
+    milestone.documents = all_documents
+    
+    await db.commit()
+    await db.refresh(milestone)
+    
+    return {
+        "message": f"{len(uploaded_documents)} Dokumente erfolgreich hochgeladen",
+        "documents": uploaded_documents
+    }
 
 
 @router.get("/", response_model=List[DocumentSummary])

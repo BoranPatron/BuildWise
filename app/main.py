@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
+from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
 import time
 import os
@@ -90,6 +91,9 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # API Router einbinden
 app.include_router(api_router, prefix="/api/v1")
+
+# Static Files für hochgeladene Dokumente
+app.mount("/storage", StaticFiles(directory="storage"), name="storage")
 
 # Datenbank-Tabellen erstellen
 @app.on_event("startup")

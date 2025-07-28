@@ -6,6 +6,7 @@ Handhabt Adressvalidierung, Geocoding und Umkreissuche
 import asyncio
 import aiohttp
 import logging
+import json
 from typing import Optional, Dict, List, Tuple
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
@@ -453,6 +454,8 @@ class GeoService:
                             "contractor": milestone.contractor,
                             # Besichtigungssystem - Explizit übertragen
                             "requires_inspection": bool(getattr(milestone, 'requires_inspection', False)),
+                            # Dokumente - JSON wird automatisch von SQLAlchemy deserialisiert
+                            "documents": milestone.documents if milestone.documents else [],
                             # Projekt-Informationen
                             "project_id": project.id,
                             "project_name": project.name,

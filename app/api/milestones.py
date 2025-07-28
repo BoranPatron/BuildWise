@@ -1,5 +1,5 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, File, UploadFile, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from ..core.database import get_db
@@ -25,6 +25,44 @@ async def create_new_milestone(
 ):
     user_id = getattr(current_user, 'id')
     milestone = await create_milestone(db, milestone_in, user_id)
+    return milestone
+
+
+@router.post("/with-documents", response_model=MilestoneRead, status_code=status.HTTP_201_CREATED)
+async def create_milestone_with_documents(
+    title: str = Form(...),
+    description: str = Form(...),
+    category: str = Form(...),
+    priority: str = Form("medium"),
+    planned_date: str = Form(...),
+    notes: str = Form(""),
+    requires_inspection: bool = Form(False),
+    project_id: int = Form(...),
+    documents: List[UploadFile] = File(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Erstellt ein neues Milestone mit Dokumenten"""
+    from datetime import datetime
+    import json
+    
+    # Erstelle MilestoneCreate Objekt aus Form-Daten
+    milestone_data = {
+        "title": title,
+        "description": description,
+        "category": category,
+        "priority": priority,
+        "planned_date": datetime.fromisoformat(planned_date).date(),
+        "notes": notes,
+        "requires_inspection": requires_inspection,
+        "project_id": project_id
+    }
+    
+    milestone_in = MilestoneCreate(**milestone_data)
+    user_id = getattr(current_user, 'id')
+    
+    # Erstelle Milestone mit Dokumenten
+    milestone = await create_milestone(db, milestone_in, user_id, documents)
     return milestone
 
 

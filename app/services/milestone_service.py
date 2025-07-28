@@ -5,6 +5,8 @@ from datetime import datetime, date, timedelta
 import logging
 import uuid
 import json
+import os
+from fastapi import UploadFile
 
 from ..models import Milestone, Project
 from ..models.user import User
@@ -22,65 +24,8 @@ from ..schemas.milestone import (
 )
 
 
-def aggregate_category_specific_fields(
-    base_description: str,
-    category: str,
-    category_specific_fields: Dict[str, Any],
-    technical_specifications: str = "",
-    quality_requirements: str = "",
-    safety_requirements: str = "",
-    environmental_requirements: str = "",
-    notes: str = ""
-) -> str:
-    """
-    Aggregiert alle kategorie-spezifischen Felder und zusätzliche Informationen
-    in einen strukturierten Text für das description Feld.
-    """
-    sections = []
-    
-    # Basis-Beschreibung hinzufügen
-    if base_description.strip():
-        sections.append(f"📋 **Beschreibung:**\n{base_description.strip()}")
-    
-    # Kategorie-spezifische Felder hinzufügen
-    if category_specific_fields:
-        sections.append(f"\n🔧 **Kategorie-spezifische Details ({category.upper()}):**")
-        
-        for field_id, value in category_specific_fields.items():
-            if value is not None and value != "":
-                # Feld-ID in lesbaren Text umwandeln
-                field_label = field_id.replace('_', ' ').title()
-                if isinstance(value, bool):
-                    field_value = "Ja" if value else "Nein"
-                else:
-                    field_value = str(value)
-                sections.append(f"• {field_label}: {field_value}")
-    
-    # Technische Spezifikationen
-    if technical_specifications.strip():
-        sections.append(f"\n⚙️ **Technische Spezifikationen:**\n{technical_specifications.strip()}")
-    
-    # Qualitätsanforderungen
-    if quality_requirements.strip():
-        sections.append(f"\n🎯 **Qualitätsanforderungen:**\n{quality_requirements.strip()}")
-    
-    # Sicherheitsanforderungen
-    if safety_requirements.strip():
-        sections.append(f"\n🛡️ **Sicherheitsanforderungen:**\n{safety_requirements.strip()}")
-    
-    # Umweltanforderungen
-    if environmental_requirements.strip():
-        sections.append(f"\n🌱 **Umweltanforderungen:**\n{environmental_requirements.strip()}")
-    
-    # Notizen
-    if notes.strip():
-        sections.append(f"\n📝 **Notizen:**\n{notes.strip()}")
-    
-    return "\n".join(sections)
-
-
-async def create_milestone(db: AsyncSession, milestone_in: MilestoneCreate, created_by: int) -> Milestone:
-    """Erstellt ein neues Gewerk mit automatischer Bauphasen-Zuordnung und aggregierten Beschreibungen"""
+async def create_milestone(db: AsyncSession, milestone_in: MilestoneCreate, created_by: int, documents: List[UploadFile] = None) -> Milestone:
+    """Erstellt ein neues Gewerk mit automatischer Bauphasen-Zuordnung"""
     from ..models import Project
     
     # Hole das Projekt, um die aktuelle Bauphase zu ermitteln
@@ -89,24 +34,12 @@ async def create_milestone(db: AsyncSession, milestone_in: MilestoneCreate, crea
     )
     project = project_result.scalar_one_or_none()
     
-    # Aggregiere alle Informationen in das description Feld
-    aggregated_description = aggregate_category_specific_fields(
-        base_description=milestone_in.description or "",
-        category=milestone_in.category or "",
-        category_specific_fields=getattr(milestone_in, 'category_specific_fields', {}),
-        technical_specifications=getattr(milestone_in, 'technical_specifications', ""),
-        quality_requirements=getattr(milestone_in, 'quality_requirements', ""),
-        safety_requirements=getattr(milestone_in, 'safety_requirements', ""),
-        environmental_requirements=getattr(milestone_in, 'environmental_requirements', ""),
-        notes=milestone_in.notes or ""
-    )
-    
-    # Erstelle das Gewerk
+    # Erstelle das Gewerk mit den grundlegenden Daten
     milestone_data = {
         'project_id': milestone_in.project_id,
         'created_by': created_by,
         'title': milestone_in.title,
-        'description': aggregated_description,  # Verwende die aggregierte Beschreibung
+        'description': milestone_in.description or "",
         'status': milestone_in.status,
         'priority': milestone_in.priority,
         'category': milestone_in.category,
@@ -119,6 +52,7 @@ async def create_milestone(db: AsyncSession, milestone_in: MilestoneCreate, crea
         'is_critical': milestone_in.is_critical,
         'notify_on_completion': milestone_in.notify_on_completion,
         'notes': milestone_in.notes,
+        'documents': milestone_in.documents,
         # Besichtigungssystem
         'requires_inspection': milestone_in.requires_inspection
     }
@@ -132,9 +66,66 @@ async def create_milestone(db: AsyncSession, milestone_in: MilestoneCreate, crea
     
     milestone = Milestone(**milestone_data)
     db.add(milestone)
+    await db.flush()  # Flush um ID zu erhalten, aber noch nicht committen
+    
+    # Verarbeite hochgeladene Dokumente
+    if documents:
+        uploaded_documents = await process_milestone_documents(documents, project, milestone.id)
+        milestone.documents = uploaded_documents
+    
     await db.commit()
     await db.refresh(milestone)
     return milestone
+
+
+async def process_milestone_documents(documents: List[UploadFile], project, milestone_id: int) -> List[Dict]:
+    """Verarbeitet hochgeladene Dokumente für ein Milestone"""
+    uploaded_documents = []
+    
+    for file in documents:
+        # Validiere Dateityp
+        allowed_types = [
+            'application/pdf',
+            'application/msword',
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+            'application/vnd.ms-powerpoint',
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+        ]
+        
+        if file.content_type not in allowed_types:
+            continue  # Überspringe ungültige Dateitypen
+        
+        # Lese Dateiinhalt
+        content = await file.read()
+        if len(content) > 10 * 1024 * 1024:  # 10MB Limit
+            continue  # Überspringe zu große Dateien
+        
+        # Erstelle Speicherpfad
+        upload_dir = f"storage/uploads/project_{project.id}"
+        os.makedirs(upload_dir, exist_ok=True)
+        
+        # Generiere sicheren Dateinamen
+        file_extension = os.path.splitext(file.filename)[1]
+        safe_filename = f"milestone_{milestone_id}_{uuid.uuid4()}{file_extension}"
+        file_path = os.path.join(upload_dir, safe_filename)
+        
+        # Speichere Datei
+        with open(file_path, "wb") as buffer:
+            buffer.write(content)
+        
+        # Erstelle Dokument-Metadaten
+        document_data = {
+            "id": str(uuid.uuid4()),
+            "name": file.filename,
+            "url": f"/{file_path}",
+            "type": file.content_type,
+            "size": len(content),
+            "uploaded_at": datetime.now().isoformat()
+        }
+        
+        uploaded_documents.append(document_data)
+    
+    return uploaded_documents
 
 
 async def get_milestone_by_id(db: AsyncSession, milestone_id: int) -> Milestone | None:

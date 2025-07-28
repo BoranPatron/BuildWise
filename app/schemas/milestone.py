@@ -27,12 +27,7 @@ class MilestoneBase(BaseModel):
 
 class MilestoneCreate(MilestoneBase):
     project_id: int
-    # Zusätzliche Felder für kategorie-spezifische Informationen
-    category_specific_fields: Optional[Dict[str, Any]] = None
-    technical_specifications: Optional[str] = None
-    quality_requirements: Optional[str] = None
-    safety_requirements: Optional[str] = None
-    environmental_requirements: Optional[str] = None
+    documents: Optional[List[Dict[str, Any]]] = None
 
 
 class MilestoneUpdate(BaseModel):
@@ -64,6 +59,7 @@ class MilestoneRead(MilestoneBase):
     created_by: int
     actual_date: Optional[date] = None
     progress_percentage: int
+    documents: Optional[List[Dict[str, Any]]] = None
     created_at: datetime
     updated_at: datetime
     completed_at: Optional[datetime] = None
@@ -91,6 +87,7 @@ class MilestoneSummary(BaseModel):
     progress_percentage: int
     is_critical: bool
     project_id: Optional[int] = None  # Projekt-ID hinzufügen
+    documents: Optional[List[Dict[str, Any]]] = None
     # Bauphasen-Tracking
     construction_phase: Optional[str] = None
     # Besichtigungssystem
@@ -119,6 +116,7 @@ class MilestoneSummary(BaseModel):
             'progress_percentage': obj.progress_percentage,
             'is_critical': obj.is_critical,
             'project_id': obj.project_id,
+            'documents': obj.documents,
             'construction_phase': obj.construction_phase,
             'requires_inspection': obj.requires_inspection
         }

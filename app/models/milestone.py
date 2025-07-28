@@ -59,6 +59,9 @@ class Milestone(Base):
     # Notizen
     notes = Column(Text, nullable=True)
     
+    # Dokumente (Leistungsverzeichnisse, Bauinformationen etc.)
+    documents = Column(JSON, nullable=True)  # Array von Dokumenten mit Metadaten
+    
     # Bauphasen-Tracking
     construction_phase = Column(String, nullable=True)  # Aktuelle Bauphase beim Erstellen des Gewerks
     
