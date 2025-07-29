@@ -853,3 +853,98 @@ async def complete_onboarding(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Fehler beim Abschließen des Onboardings"
         )
+
+
+# Microsoft OAuth Endpunkte
+@router.get("/oauth/microsoft/url")
+async def get_microsoft_oauth_url(
+    state: Optional[str] = None,
+    db: AsyncSession = Depends(get_db)
+):
+    """Generiert Microsoft OAuth URL"""
+    try:
+        oauth_url = await OAuthService.get_oauth_url("microsoft", state)
+        return {"url": oauth_url}
+    except Exception as e:
+        print(f"❌ Fehler beim Generieren der Microsoft OAuth URL: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.post("/oauth/microsoft/callback")
+async def microsoft_oauth_callback(
+    callback_data: OAuthCallbackRequest,
+    request: Request,
+    db: AsyncSession = Depends(get_db)
+):
+    """Verarbeitet Microsoft OAuth Callback"""
+    if callback_data.error:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"OAuth Fehler: {callback_data.error}"
+        )
+    
+    try:
+        # Exchange code for tokens
+        token_data = await OAuthService.exchange_code("microsoft", callback_data.code)
+        user_info = await OAuthService.get_microsoft_user_info(token_data.get("access_token"))
+        
+        # Prüfe ob Benutzer bereits existiert
+        existing_user = await get_user_by_email(db, user_info["email"])
+        
+        if existing_user:
+            # Update OAuth-Daten
+            existing_user.auth_provider = AuthProvider.MICROSOFT
+            existing_user.oauth_id = user_info["id"]
+            await db.commit()
+            user = existing_user
+        else:
+            # Erstelle neuen Benutzer
+            user_create = UserCreate(
+                email=user_info["email"],
+                first_name=user_info.get("given_name", ""),
+                last_name=user_info.get("family_name", ""),
+                password="oauth_user_no_password",  # OAuth-Benutzer haben kein Passwort
+                user_type="bautraeger",
+                auth_provider=AuthProvider.MICROSOFT,
+                oauth_id=user_info["id"]
+            )
+            user = await create_user(db, user_create)
+        
+        # JWT Token erstellen
+        access_token = create_access_token(data={"sub": str(user.id)})
+        
+        # Audit-Log
+        ip_address = request.client.host if request else None
+        await SecurityService.create_audit_log(
+            db, user.id, AuditAction.USER_LOGIN,
+            f"Microsoft OAuth Login: {user.email}",
+            resource_type="user", resource_id=user.id,
+            ip_address=SecurityService.anonymize_ip_address(ip_address) if ip_address else None
+        )
+        
+        return {
+            "access_token": access_token,
+            "token_type": "bearer",
+            "user": {
+                "id": user.id,
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "user_type": user.user_type,
+                "user_role": user.user_role,
+                "subscription_plan": user.subscription_plan,
+                "subscription_status": user.subscription_status,
+                "onboarding_completed": user.onboarding_completed,
+                "role_selected": user.role_selected
+            }
+        }
+        
+    except Exception as e:
+        print(f"❌ Fehler beim Microsoft OAuth Callback: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"OAuth Fehler: {str(e)}"
+        )

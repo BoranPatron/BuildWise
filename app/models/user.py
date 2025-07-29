@@ -168,10 +168,18 @@ class User(Base):
     
     # Relationships
     projects = relationship("Project", back_populates="owner")
+    comments = relationship("Comment", back_populates="user")
     assigned_tasks = relationship("Task", foreign_keys="Task.assigned_to", back_populates="assigned_user")
     created_tasks = relationship("Task", foreign_keys="Task.created_by", back_populates="creator")
     created_milestones = relationship("Milestone", foreign_keys="Milestone.created_by", back_populates="creator")
-    uploaded_documents = relationship("Document", back_populates="uploader")
+    
+    # Document Relationships - Explizite Foreign Keys wegen mehrerer Referenzen
+    uploaded_documents = relationship("Document", foreign_keys="Document.uploaded_by", back_populates="uploaded_by_user")
+    locked_documents = relationship("Document", foreign_keys="Document.locked_by", back_populates="locked_by_user")
+    approved_documents = relationship("Document", foreign_keys="Document.approved_by", back_populates="approved_by_user")
+    rejected_documents = relationship("Document", foreign_keys="Document.rejected_by", back_populates="rejected_by_user")
+    last_accessed_documents = relationship("Document", foreign_keys="Document.last_accessed_by", back_populates="last_accessed_by_user")
+    
     sent_messages = relationship("Message", foreign_keys="Message.sender_id", back_populates="sender")
     received_messages = relationship("Message", foreign_keys="Message.recipient_id", back_populates="recipient")
     quotes = relationship("Quote", back_populates="service_provider")

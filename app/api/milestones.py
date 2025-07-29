@@ -38,6 +38,8 @@ async def create_milestone_with_documents(
     notes: str = Form(""),
     requires_inspection: bool = Form(False),
     project_id: int = Form(...),
+    document_ids: str = Form(None),  # JSON string mit IDs der hochgeladenen Dokumente
+    shared_document_ids: str = Form(None),  # JSON string mit IDs der geteilten Dokumente
     documents: List[UploadFile] = File(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -45,6 +47,22 @@ async def create_milestone_with_documents(
     """Erstellt ein neues Milestone mit Dokumenten"""
     from datetime import datetime
     import json
+    
+    # Parse JSON-Strings für Dokument-IDs
+    parsed_document_ids = []
+    parsed_shared_document_ids = []
+    
+    if document_ids:
+        try:
+            parsed_document_ids = json.loads(document_ids)
+        except json.JSONDecodeError:
+            pass
+    
+    if shared_document_ids:
+        try:
+            parsed_shared_document_ids = json.loads(shared_document_ids)
+        except json.JSONDecodeError:
+            pass
     
     # Erstelle MilestoneCreate Objekt aus Form-Daten
     milestone_data = {
@@ -61,8 +79,8 @@ async def create_milestone_with_documents(
     milestone_in = MilestoneCreate(**milestone_data)
     user_id = getattr(current_user, 'id')
     
-    # Erstelle Milestone mit Dokumenten
-    milestone = await create_milestone(db, milestone_in, user_id, documents)
+    # Erstelle Milestone mit Dokumenten und geteilten Dokument-IDs
+    milestone = await create_milestone(db, milestone_in, user_id, documents, parsed_shared_document_ids)
     return milestone
 
 
@@ -79,7 +97,49 @@ async def read_milestones(
         milestones = await get_milestones_for_project(db, project_id)
         print(f"🔧 [API] Found {len(milestones)} milestones for project {project_id}")
         
-        return milestones
+        # Konvertiere zu MilestoneSummary mit korrektem JSON-Parsing
+        import json
+        result = []
+        for milestone in milestones:
+            # Parse documents JSON string zu Liste
+            documents = []
+            if milestone.documents:
+                try:
+                    if isinstance(milestone.documents, str):
+                        documents = json.loads(milestone.documents)
+                    elif isinstance(milestone.documents, list):
+                        documents = milestone.documents
+                    else:
+                        documents = []
+                except (json.JSONDecodeError, TypeError):
+                    documents = []
+            
+            # Erstelle MilestoneSummary manuell
+            milestone_summary = MilestoneSummary(
+                id=milestone.id,
+                title=milestone.title,
+                status=milestone.status,
+                priority=milestone.priority,
+                category=milestone.category,
+                planned_date=milestone.planned_date,
+                actual_date=milestone.actual_date,
+                start_date=milestone.start_date,
+                end_date=milestone.end_date,
+                budget=milestone.budget,
+                actual_costs=milestone.actual_costs,
+                contractor=milestone.contractor,
+                progress_percentage=milestone.progress_percentage,
+                is_critical=milestone.is_critical,
+                project_id=milestone.project_id,
+                documents=documents,  # ✅ Echte Liste
+                construction_phase=milestone.construction_phase,
+                requires_inspection=milestone.requires_inspection
+            )
+            result.append(milestone_summary)
+        
+        print(f"✅ [API] Successfully converted {len(result)} milestones")
+        return result
+        
     except Exception as e:
         print(f"❌ [API] Error in read_milestones: {e}")
         import traceback

@@ -347,7 +347,9 @@ class GeoService:
         priority: Optional[str] = None,
         min_budget: Optional[float] = None,
         max_budget: Optional[float] = None,
-        limit: int = 100
+        limit: int = 100,
+        current_user = None,
+        is_service_provider: bool = True
     ) -> List[Dict]:
         """
         Sucht Gewerke (Trades) in einem bestimmten Radius - speziell für Dienstleister
@@ -371,11 +373,22 @@ class GeoService:
             query = select(Milestone, Project).join(
                 Project, Milestone.project_id == Project.id
             ).where(
-                Project.is_public == True,
-                Project.allow_quotes == True,
                 Project.address_latitude.isnot(None),
                 Project.address_longitude.isnot(None)
             )
+            
+            # Filterung basierend auf Benutzerrolle
+            if is_service_provider:
+                # Dienstleister sehen nur öffentliche Gewerke mit Angebotsoption
+                query = query.where(
+                    Project.is_public == True,
+                    Project.allow_quotes == True
+                )
+            elif current_user:
+                # Bauträger sehen nur ihre eigenen Gewerke
+                query = query.where(
+                    Project.owner_id == current_user.id
+                )
             
             # Filter anwenden
             if category:
@@ -452,10 +465,10 @@ class GeoService:
                             "end_date": milestone.end_date.isoformat() if milestone.end_date else None,
                             "progress_percentage": milestone.progress_percentage,
                             "contractor": milestone.contractor,
-                            # Besichtigungssystem - Explizit übertragen
-                            "requires_inspection": bool(getattr(milestone, 'requires_inspection', False)),
-                            # Dokumente - JSON wird automatisch von SQLAlchemy deserialisiert
-                            "documents": milestone.documents if milestone.documents else [],
+                                                    # Besichtigungssystem - Explizit übertragen
+                        "requires_inspection": bool(getattr(milestone, 'requires_inspection', False)),
+                        # Dokumente - Lade geteilte Dokumente für Dienstleister
+                        "documents": await self._load_shared_documents(db, milestone.id),
                             # Projekt-Informationen
                             "project_id": project.id,
                             "project_name": project.name,
@@ -481,6 +494,64 @@ class GeoService:
             
         except Exception as e:
             logger.error(f"Fehler bei der Gewerk-Umkreissuche: {str(e)}")
+            return []
+
+    async def _load_shared_documents(self, db: AsyncSession, milestone_id: int) -> List[Dict]:
+        """
+        Lädt geteilte Dokumente für ein Gewerk
+        
+        Args:
+            db: Datenbank-Session
+            milestone_id: ID des Gewerks
+            
+        Returns:
+            Liste der geteilten Dokumente mit URL und Metadaten
+        """
+        try:
+            from ..models.document import Document
+            from ..models.milestone import Milestone
+            
+            # Lade das Milestone mit den shared_document_ids
+            milestone_result = await db.execute(
+                select(Milestone).where(Milestone.id == milestone_id)
+            )
+            milestone = milestone_result.scalar_one_or_none()
+            
+            if not milestone or not milestone.shared_document_ids:
+                return []
+            
+            # Lade die geteilten Dokumente
+            document_ids = milestone.shared_document_ids
+            if isinstance(document_ids, str):
+                import json
+                document_ids = json.loads(document_ids)
+            
+            if not document_ids:
+                return []
+            
+            documents_result = await db.execute(
+                select(Document).where(Document.id.in_(document_ids))
+            )
+            documents = documents_result.scalars().all()
+            
+            # Konvertiere zu Frontend-Format
+            shared_documents = []
+            for doc in documents:
+                shared_documents.append({
+                    "id": str(doc.id),
+                    "name": doc.title or doc.file_name,
+                    "url": f"/api/v1/documents/{doc.id}/download",
+                    "type": doc.mime_type or "application/octet-stream",
+                    "size": doc.file_size or 0,
+                    "category": doc.category,
+                    "subcategory": doc.subcategory,
+                    "created_at": doc.created_at.isoformat() if doc.created_at else None
+                })
+            
+            return shared_documents
+            
+        except Exception as e:
+            logger.error(f"Fehler beim Laden der geteilten Dokumente für Milestone {milestone_id}: {str(e)}")
             return []
 
     async def search_service_providers_in_radius(

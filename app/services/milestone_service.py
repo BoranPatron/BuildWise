@@ -24,7 +24,7 @@ from ..schemas.milestone import (
 )
 
 
-async def create_milestone(db: AsyncSession, milestone_in: MilestoneCreate, created_by: int, documents: List[UploadFile] = None) -> Milestone:
+async def create_milestone(db: AsyncSession, milestone_in: MilestoneCreate, created_by: int, documents: List[UploadFile] = None, shared_document_ids: List[int] = None) -> Milestone:
     """Erstellt ein neues Gewerk mit automatischer Bauphasen-Zuordnung"""
     from ..models import Project
     
@@ -72,6 +72,12 @@ async def create_milestone(db: AsyncSession, milestone_in: MilestoneCreate, crea
     if documents:
         uploaded_documents = await process_milestone_documents(documents, project, milestone.id)
         milestone.documents = uploaded_documents
+    
+    # Speichere geteilte Dokument-IDs als JSON
+    if shared_document_ids:
+        import json
+        milestone.shared_document_ids = json.dumps(shared_document_ids)
+        print(f"📄 Geteilte Dokumente für Gewerk {milestone.id}: {shared_document_ids}")
     
     await db.commit()
     await db.refresh(milestone)

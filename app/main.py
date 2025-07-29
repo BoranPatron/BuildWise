@@ -32,8 +32,7 @@ else:
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:5174",
-        "http://127.0.0.1:5174",
-        "*"  # Temporär für Debugging
+        "http://127.0.0.1:5174"
     ]
 
 # Debug-Ausgabe für CORS-Konfiguration
@@ -42,7 +41,7 @@ print(f"🔧 CORS allowed origins: {allowed_origins}")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_credentials=False,  # Ändern zu False für "*" Origin
+    allow_credentials=True,  # Aktiviert für OAuth-Flows
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["*"],

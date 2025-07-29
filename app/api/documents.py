@@ -2,6 +2,7 @@ from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File, Form
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import text, func, and_, or_
 import os
 import uuid
 from datetime import datetime
@@ -9,32 +10,56 @@ import json
 
 from ..core.database import get_db
 from ..api.deps import get_current_user
-from ..models import User, DocumentType, Milestone, Project
-from ..schemas.document import DocumentRead, DocumentUpdate, DocumentSummary, DocumentUpload, DocumentCreate
+from ..models import User, Milestone, Project, Document
+from ..schemas.document import (
+    Document, DocumentUpdate, DocumentSummary, DocumentUploadResponse, DocumentCreate,
+    DocumentTypeEnum, DocumentCategoryEnum, DocumentStatusEnum
+)
 from ..services.document_service import (
     create_document, get_document_by_id, get_documents_for_project,
     update_document, delete_document, search_documents, get_document_statistics,
     save_uploaded_file
 )
 
+from app.schemas.comment import Comment as CommentSchema, CommentCreate, CommentUpdate, CommentBase
+from sqlalchemy import select
+from sqlalchemy.orm import selectinload
+from app.models import Comment
+from pathlib import Path
+import mimetypes
+from fastapi import Response
+import logging
+
+logger = logging.getLogger(__name__)
+
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
-@router.post("/upload", response_model=DocumentRead, status_code=status.HTTP_201_CREATED)
+@router.post("/upload", response_model=DocumentUploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_document(
     project_id: int = Form(...),
     title: str = Form(...),
     description: str = Form(None),
-    document_type: DocumentType = Form(DocumentType.OTHER),
+    document_type: str = Form("other"),  # String statt Enum
+    category: str = Form("documentation"),  # String statt Enum
+    subcategory: str = Form(None),
     tags: str = Form(None),
-    category: str = Form(None),
     is_public: bool = Form(False),
     file: UploadFile = File(...),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Lädt ein neues Dokument hoch"""
+    """Lädt ein neues Dokument mit erweiterten DMS-Features hoch"""
     try:
+        # Debug-Logging
+        logger.info(f"📤 Upload-Request erhalten:")
+        logger.info(f"   - project_id: {project_id}")
+        logger.info(f"   - title: {title}")
+        logger.info(f"   - document_type: {document_type} (type: {type(document_type)})")
+        logger.info(f"   - category: {category} (type: {type(category)})")
+        logger.info(f"   - subcategory: {subcategory}")
+        logger.info(f"   - file: {file.filename if file else 'None'}")
+        
         # Validiere Eingabedaten
         if not title or not title.strip():
             raise HTTPException(
@@ -54,11 +79,11 @@ async def upload_document(
                 detail="Datei ist erforderlich"
             )
         
-        # Prüfe Dateigröße (10MB Limit)
-        if file.size and file.size > 10 * 1024 * 1024:
+        # Prüfe Dateigröße (50MB Limit für DMS)
+        if file.size and file.size > 50 * 1024 * 1024:
             raise HTTPException(
                 status_code=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
-                detail="Datei ist zu groß. Maximale Größe: 10MB"
+                detail="Datei ist zu groß. Maximale Größe: 50MB"
             )
         
         # Speichere Datei
@@ -66,30 +91,51 @@ async def upload_document(
         filename = file.filename or "unnamed_file"
         file_path, file_size = await save_uploaded_file(file_content, filename, project_id)
         
-        # Erstelle Dokument-Eintrag
-        document_in = DocumentUpload(
-            title=title.strip(),
-            description=description.strip() if description else None,
-            document_type=document_type,
-            tags=tags.strip() if tags else None,
-            category=category.strip() if category else None,
-            is_public=is_public
-        )
-        
-        document = await create_document(
-            db,
-            DocumentCreate(
+        # Erstelle Dokument-Eintrag - Validierung erfolgt im Schema
+        logger.info("🔧 Erstelle DocumentCreate Schema...")
+        try:
+            document_in = DocumentCreate(
+                title=title.strip(),
+                description=description.strip() if description else None,
+                document_type=document_type,  # Schema normalisiert automatisch
+                category=category,  # Schema normalisiert automatisch
+                subcategory=subcategory.strip() if subcategory else None,
                 project_id=project_id,
+                tags=tags.strip() if tags else None,
+                is_public=is_public,
+                # Datei-Informationen hinzufügen
                 file_name=filename,
                 file_path=file_path,
                 file_size=file_size,
-                mime_type=file.content_type or "application/octet-stream",
-                **document_in.dict()
-            ),
+                mime_type=file.content_type or "application/octet-stream"
+            )
+        except Exception as e:
+            logger.error(f"Fehler beim Erstellen des DocumentCreate Schemas: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Fehler beim Validieren des Dokument-Eintrags"
+            )
+        
+        document = await create_document(
+            db,
+            document_in,
             getattr(current_user, 'id', 0)
         )
         
-        return document
+        # Erstelle korrekte Upload-Response
+        upload_response = DocumentUploadResponse(
+            id=document.id,
+            title=document.title,
+            file_name=document.file_name or filename,
+            file_size=document.file_size or file_size,
+            version_number=document.version_number or "1.0.0",
+            document_status=document.document_status or "DRAFT",
+            workflow_stage=document.workflow_stage or "UPLOADED",
+            upload_success=True,
+            message="Dokument erfolgreich hochgeladen"
+        )
+        
+        return upload_response
         
     except HTTPException:
         raise
@@ -129,7 +175,9 @@ async def upload_milestone_documents(
             'application/msword',
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
             'application/vnd.ms-powerpoint',
-            'application/vnd.openxmlformats-officedocument.presentationml.presentation'
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            'image/jpeg', 'image/png', 'image/gif',  # Bilder für DMS
+            'video/mp4', 'video/avi'  # Videos für DMS
         ]
         
         if file.content_type not in allowed_types:
@@ -138,12 +186,12 @@ async def upload_milestone_documents(
                 detail=f"Dateityp {file.content_type} nicht unterstützt"
             )
         
-        # Validiere Dateigröße (10MB)
+        # Validiere Dateigröße (50MB für DMS)
         content = await file.read()
-        if len(content) > 10 * 1024 * 1024:
+        if len(content) > 50 * 1024 * 1024:
             raise HTTPException(
                 status_code=400,
-                detail=f"Datei {file.filename} ist zu groß (max. 10MB)"
+                detail=f"Datei {file.filename} ist zu groß (max. 50MB)"
             )
         
         # Erstelle Speicherpfad
@@ -191,11 +239,296 @@ async def upload_milestone_documents(
 @router.get("/", response_model=List[DocumentSummary])
 async def read_documents(
     project_id: int,
+    category: Optional[DocumentCategoryEnum] = None,
+    subcategory: Optional[str] = None,
+    document_type: Optional[DocumentTypeEnum] = None,
+    status_filter: Optional[DocumentStatusEnum] = None,
+    is_favorite: Optional[bool] = None,
+    search: Optional[str] = None,
+    sort_by: str = Query("created_at", regex="^(title|created_at|file_size|accessed_at)$"),
+    sort_order: str = Query("desc", regex="^(asc|desc)$"),
+    limit: int = Query(100, ge=1, le=1000),
+    offset: int = Query(0, ge=0),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """Erweiterte Dokumentensuche mit Filtern und Sortierung"""
+    
+    # Für jetzt verwenden wir die bestehende Funktion und filtern nachträglich
     documents = await get_documents_for_project(db, project_id)
+    
+    # Filter anwenden
+    if category:
+        def category_matches(doc_category):
+            if doc_category is None:
+                return False
+            # Vergleiche sowohl Enum-Wert als auch String-Repräsentation
+            return (doc_category == category or 
+                    doc_category == category.value or
+                    str(doc_category) == str(category) or
+                    str(doc_category) == category.value)
+        
+        documents = [doc for doc in documents if category_matches(getattr(doc, 'category', None))]
+    
+    if subcategory:
+        documents = [doc for doc in documents if getattr(doc, 'subcategory', None) == subcategory]
+    
+    if document_type:
+        documents = [doc for doc in documents if doc.document_type == document_type]
+    
+    if status_filter:
+        def status_matches(doc_status):
+            if doc_status is None:
+                doc_status = 'draft'
+            # Vergleiche sowohl Enum-Wert als auch String-Repräsentation
+            return (doc_status == status_filter or 
+                    doc_status == status_filter.value or
+                    str(doc_status) == str(status_filter) or
+                    str(doc_status) == status_filter.value)
+        
+        documents = [doc for doc in documents if status_matches(getattr(doc, 'status', 'draft'))]
+    
+    if is_favorite is not None:
+        documents = [doc for doc in documents if getattr(doc, 'is_favorite', False) == is_favorite]
+    
+    # Volltextsuche
+    if search:
+        search_term = search.lower()
+        documents = [doc for doc in documents if 
+                    search_term in doc.title.lower() or
+                    search_term in (doc.description or '').lower() or
+                    search_term in (doc.tags or '').lower() or
+                    search_term in doc.file_name.lower()]
+    
+    # Sortierung
+    if sort_by == 'title':
+        documents = sorted(documents, key=lambda x: x.title, reverse=(sort_order == 'desc'))
+    elif sort_by == 'file_size':
+        documents = sorted(documents, key=lambda x: x.file_size, reverse=(sort_order == 'desc'))
+    elif sort_by == 'accessed_at':
+        documents = sorted(documents, key=lambda x: getattr(x, 'accessed_at', None) or x.created_at, reverse=(sort_order == 'desc'))
+    else:  # created_at
+        documents = sorted(documents, key=lambda x: x.created_at, reverse=(sort_order == 'desc'))
+    
+    # Paginierung
+    documents = documents[offset:offset + limit]
     return documents
+
+
+@router.get("/search/fulltext", response_model=List[DocumentSummary])
+async def fulltext_search(
+    q: str = Query(..., min_length=2, description="Suchbegriff für Volltextsuche"),
+    project_id: Optional[int] = None,
+    category: Optional[DocumentCategoryEnum] = None,
+    limit: int = Query(50, ge=1, le=200),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Erweiterte Volltextsuche mit PostgreSQL Full-Text Search"""
+    
+    # PostgreSQL Volltextsuche Query
+    search_query = """
+    SELECT d.*, ts_rank(
+        to_tsvector('german', d.title || ' ' || COALESCE(d.description, '') || ' ' || COALESCE(d.tags, '')),
+        plainto_tsquery('german', :search_term)
+    ) as rank
+    FROM documents d
+    WHERE to_tsvector('german', d.title || ' ' || COALESCE(d.description, '') || ' ' || COALESCE(d.tags, ''))
+          @@ plainto_tsquery('german', :search_term)
+    """
+    
+    # Filter hinzufügen
+    if project_id:
+        search_query += " AND d.project_id = :project_id"
+    
+    if category:
+        search_query += " AND d.category = :category"
+    
+    search_query += " ORDER BY rank DESC, d.created_at DESC LIMIT :limit"
+    
+    # Parameter vorbereiten
+    params = {"search_term": q, "limit": limit}
+    if project_id:
+        params["project_id"] = project_id
+    if category:
+        params["category"] = category.value
+    
+    # Query ausführen
+    result = await db.execute(text(search_query), params)
+    documents = result.fetchall()
+    
+    return [DocumentSummary.from_orm(doc) for doc in documents]
+
+
+@router.post("/{document_id}/favorite")
+async def toggle_favorite(
+    document_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Togglet den Favoriten-Status eines Dokuments"""
+    
+    document = await get_document_by_id(db, document_id)
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dokument nicht gefunden"
+        )
+    
+    # Toggle Favoriten-Status
+    document.is_favorite = not document.is_favorite
+    await db.commit()
+    await db.refresh(document)
+    
+    return {
+        "document_id": document_id,
+        "is_favorite": document.is_favorite,
+        "message": "Zu Favoriten hinzugefügt" if document.is_favorite else "Aus Favoriten entfernt"
+    }
+
+
+@router.put("/{document_id}/status")
+async def update_document_status(
+    document_id: int,
+    new_status: DocumentStatusEnum,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Aktualisiert den Status eines Dokuments"""
+    
+    document = await get_document_by_id(db, document_id)
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dokument nicht gefunden"
+        )
+    
+    old_status = document.status
+    document.status = new_status
+    await db.commit()
+    await db.refresh(document)
+    
+    return {
+        "document_id": document_id,
+        "old_status": old_status,
+        "new_status": new_status,
+        "message": f"Status von {old_status.value} zu {new_status.value} geändert"
+    }
+
+
+@router.get("/categories/stats")
+async def get_category_statistics(
+    project_id: Optional[int] = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Holt Statistiken für Dokumentenkategorien"""
+    
+    # Basis-Query für Kategorien-Statistiken
+    query = """
+    SELECT 
+        category,
+        subcategory,
+        COUNT(*) as document_count,
+        SUM(file_size) as total_size,
+        AVG(file_size) as avg_size,
+        COUNT(CASE WHEN is_favorite = true THEN 1 END) as favorite_count
+    FROM documents
+    """
+    
+    params = {}
+    if project_id:
+        query += " WHERE project_id = :project_id"
+        params["project_id"] = project_id
+    
+    query += " GROUP BY category, subcategory ORDER BY category, subcategory"
+    
+    result = await db.execute(text(query), params)
+    stats = result.fetchall()
+    
+    # Strukturiere die Ergebnisse
+    category_stats = {}
+    for row in stats:
+        category = row.category
+        if category not in category_stats:
+            category_stats[category] = {
+                "total_documents": 0,
+                "total_size": 0,
+                "favorite_count": 0,
+                "subcategories": {}
+            }
+        
+        category_stats[category]["total_documents"] += row.document_count
+        category_stats[category]["total_size"] += row.total_size or 0
+        category_stats[category]["favorite_count"] += row.favorite_count or 0
+        
+        if row.subcategory:
+            category_stats[category]["subcategories"][row.subcategory] = {
+                "document_count": row.document_count,
+                "total_size": row.total_size or 0,
+                "avg_size": row.avg_size or 0,
+                "favorite_count": row.favorite_count or 0
+            }
+    
+    return category_stats
+
+
+@router.get("/{document_id}/access")
+async def track_document_access(
+    document_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Trackt den Zugriff auf ein Dokument"""
+    
+    document = await get_document_by_id(db, document_id)
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dokument nicht gefunden"
+        )
+    
+    # Aktualisiere accessed_at Timestamp
+    document.accessed_at = datetime.utcnow()
+    await db.commit()
+    
+    return {
+        "document_id": document_id,
+        "accessed_at": document.accessed_at,
+        "message": "Zugriff erfolgreich getrackt"
+    }
+
+
+@router.get("/recent")
+async def get_recent_documents(
+    project_id: Optional[int] = None,
+    limit: int = Query(10, ge=1, le=50),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Holt die zuletzt aufgerufenen Dokumente"""
+    
+    # Für SQLite verwenden wir eine einfachere Implementierung
+    try:
+        if project_id:
+            documents = await get_documents_for_project(db, project_id)
+        else:
+            # Alle Dokumente laden (nur für Demo)
+            documents = []
+        
+        # Filter nur Dokumente mit accessed_at
+        recent_docs = [doc for doc in documents if getattr(doc, 'accessed_at', None) is not None]
+        
+        # Sortieren nach accessed_at
+        recent_docs = sorted(recent_docs, key=lambda x: getattr(x, 'accessed_at'), reverse=True)
+        
+        # Limit anwenden
+        recent_docs = recent_docs[:limit]
+        
+        return [DocumentSummary.from_orm(doc) for doc in recent_docs]
+    except Exception as e:
+        print(f"Error in get_recent_documents: {e}")
+        return []
 
 
 @router.get("/{document_id}/download", response_class=FileResponse)
@@ -204,13 +537,17 @@ async def download_document(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Lädt ein Dokument herunter"""
+    """Lädt ein Dokument herunter und trackt den Zugriff"""
     document = await get_document_by_id(db, document_id)
     if not document:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Dokument nicht gefunden"
         )
+    
+    # Tracke Zugriff
+    document.accessed_at = datetime.utcnow()
+    await db.commit()
     
     # Prüfe ob die Datei existiert
     file_path = str(document.file_path)
@@ -313,7 +650,7 @@ async def view_document(
         )
 
 
-@router.get("/{document_id}", response_model=DocumentRead)
+@router.get("/{document_id}", response_model=Document)
 async def read_document(
     document_id: int,
     current_user: User = Depends(get_current_user),
@@ -328,7 +665,7 @@ async def read_document(
     return document
 
 
-@router.put("/{document_id}", response_model=DocumentRead)
+@router.put("/{document_id}", response_model=Document)
 async def update_document_endpoint(
     document_id: int,
     document_update: DocumentUpdate,
@@ -384,7 +721,7 @@ async def get_project_document_statistics(
 async def search_documents_endpoint(
     q: str = Query(..., min_length=2, description="Suchbegriff"),
     project_id: Optional[int] = None,
-    document_type: Optional[DocumentType] = None,
+    document_type: Optional[DocumentTypeEnum] = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -393,63 +730,170 @@ async def search_documents_endpoint(
     return documents
 
 
+@router.get("/{document_id}/comments", response_model=List[CommentSchema])
+async def get_document_comments(
+    document_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Lade alle Kommentare für ein Dokument"""
+    try:
+        # Prüfe ob Dokument existiert und User Zugriff hat
+        document = await get_document_by_id(db, document_id)
+        if not document:
+            raise HTTPException(status_code=404, detail="Dokument nicht gefunden")
+        
+        # Lade Kommentare mit User-Informationen
+        result = await db.execute(
+            select(Comment, User.first_name, User.last_name)
+            .join(User, Comment.user_id == User.id)
+            .where(Comment.document_id == document_id)
+            .order_by(Comment.created_at.asc())
+        )
+        
+        comments = []
+        for comment, first_name, last_name in result.all():
+            comment_dict = {
+                "id": comment.id,
+                "document_id": comment.document_id,
+                "user_id": comment.user_id,
+                "user_name": f"{first_name} {last_name}".strip(),
+                "content": comment.content,
+                "page_number": comment.page_number,
+                "position_x": comment.position_x,
+                "position_y": comment.position_y,
+                "created_at": comment.created_at,
+                "updated_at": comment.updated_at
+            }
+            comments.append(CommentSchema(**comment_dict))
+        
+        return comments
+        
+    except Exception as e:
+        logger.error(f"Fehler beim Laden der Kommentare für Dokument {document_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Fehler beim Laden der Kommentare")
+
+@router.post("/{document_id}/comments", response_model=CommentSchema)
+async def create_comment(
+    document_id: int,
+    comment_data: CommentBase,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Erstelle einen neuen Kommentar für ein Dokument"""
+    try:
+        # Prüfe ob Dokument existiert und User Zugriff hat
+        document = await get_document_by_id(db, document_id)
+        if not document:
+            raise HTTPException(status_code=404, detail="Dokument nicht gefunden")
+        
+        # Erstelle neuen Kommentar
+        comment = Comment(
+            document_id=document_id,
+            user_id=current_user.id,
+            content=comment_data.content,
+            page_number=comment_data.page_number,
+            position_x=comment_data.position_x,
+            position_y=comment_data.position_y
+        )
+        
+        db.add(comment)
+        await db.commit()
+        await db.refresh(comment)
+        
+        # Lade User-Informationen für Response
+        user_name = f"{current_user.first_name} {current_user.last_name}".strip()
+        
+        comment_dict = {
+            "id": comment.id,
+            "document_id": comment.document_id,
+            "user_id": comment.user_id,
+            "user_name": user_name,
+            "content": comment.content,
+            "page_number": comment.page_number,
+            "position_x": comment.position_x,
+            "position_y": comment.position_y,
+            "created_at": comment.created_at,
+            "updated_at": comment.updated_at
+        }
+        
+        return CommentSchema(**comment_dict)
+        
+    except Exception as e:
+        logger.error(f"Fehler beim Erstellen des Kommentars: {str(e)}")
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Fehler beim Erstellen des Kommentars")
+
+@router.delete("/comments/{comment_id}")
+async def delete_comment(
+    comment_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Lösche einen Kommentar"""
+    try:
+        # Lade Kommentar
+        result = await db.execute(
+            select(Comment).where(Comment.id == comment_id)
+        )
+        comment = result.scalar_one_or_none()
+        
+        if not comment:
+            raise HTTPException(status_code=404, detail="Kommentar nicht gefunden")
+        
+        # Prüfe Berechtigung (nur eigene Kommentare löschen)
+        if comment.user_id != current_user.id:
+            raise HTTPException(status_code=403, detail="Keine Berechtigung zum Löschen dieses Kommentars")
+        
+        # Lösche Kommentar
+        await db.delete(comment)
+        await db.commit()
+        
+        return {"detail": "Kommentar erfolgreich gelöscht"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Fehler beim Löschen des Kommentars {comment_id}: {str(e)}")
+        await db.rollback()
+        raise HTTPException(status_code=500, detail="Fehler beim Löschen des Kommentars")
+
 @router.get("/{document_id}/content")
 async def get_document_content(
     document_id: int,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
 ):
-    """Gibt den Inhalt eines Dokuments als JSON zurück"""
-    document = await get_document_by_id(db, document_id)
-    if not document:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Dokument nicht gefunden"
-        )
-    
-    # Prüfe ob die Datei existiert
-    file_path = str(document.file_path)
-    if not os.path.exists(file_path):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Datei nicht gefunden"
-        )
-    
+    """Lade Dokument-Inhalt für Inline-Anzeige"""
     try:
-        # Lade den Dateiinhalt
-        with open(file_path, 'rb') as f:
-            content = f.read()
+        # Prüfe ob Dokument existiert und User Zugriff hat
+        document = await get_document_by_id(db, document_id)
+        if not document:
+            raise HTTPException(status_code=404, detail="Dokument nicht gefunden")
         
-        # Für Textdateien: Konvertiere zu String
-        mime_type = str(document.mime_type)
-        if mime_type.startswith('text/') or mime_type in ['application/json', 'application/xml']:
-            try:
-                text_content = content.decode('utf-8')
-                return {
-                    "content": text_content,
-                    "mime_type": mime_type,
-                    "encoding": "utf-8"
-                }
-            except UnicodeDecodeError:
-                # Fallback für andere Encodings
-                text_content = content.decode('latin-1')
-                return {
-                    "content": text_content,
-                    "mime_type": mime_type,
-                    "encoding": "latin-1"
-                }
-        else:
-            # Für Binärdateien: Base64-kodiert
-            import base64
-            encoded_content = base64.b64encode(content).decode('utf-8')
-            return {
-                "content": encoded_content,
-                "mime_type": mime_type,
-                "encoding": "base64"
+        # Lade Datei-Inhalt
+        file_path = Path(document.file_path)
+        if not file_path.exists():
+            raise HTTPException(status_code=404, detail="Datei nicht gefunden")
+        
+        # Bestimme MIME-Type
+        mime_type = mimetypes.guess_type(str(file_path))[0] or 'application/octet-stream'
+        
+        # Lade und return Datei-Inhalt
+        with open(file_path, 'rb') as file:
+            content = file.read()
+        
+        return Response(
+            content=content,
+            media_type=mime_type,
+            headers={
+                "Content-Disposition": f"inline; filename={document.file_name}",
+                "Cache-Control": "private, max-age=3600"
             }
-            
+        )
+        
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Fehler beim Lesen der Datei: {str(e)}"
-        ) 
+        logger.error(f"Fehler beim Laden des Dokument-Inhalts {document_id}: {str(e)}")
+        raise HTTPException(status_code=500, detail="Fehler beim Laden des Dokument-Inhalts") 

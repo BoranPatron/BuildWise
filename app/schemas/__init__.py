@@ -10,8 +10,10 @@ from .task import (
     TaskBase, TaskCreate, TaskRead, TaskUpdate, TaskSummary
 )
 from .document import (
-    DocumentBase, DocumentCreate, DocumentRead, DocumentUpdate, 
-    DocumentSummary, DocumentUpload
+    DocumentBase, DocumentCreate, DocumentUpdate, Document, DocumentSummary, 
+    DocumentWithVersions, DocumentShareRequest, DocumentBulkOperation, 
+    DocumentUploadResponse, DocumentVersion, DocumentStatusHistory, 
+    DocumentShare, DocumentAccessLog, VersionNumberValidator
 )
 from .milestone import (
     MilestoneBase, MilestoneCreate, MilestoneRead, MilestoneUpdate, 
@@ -43,9 +45,12 @@ __all__ = [
     "ProjectSummary", "ProjectDashboard",
     # Task schemas
     "TaskBase", "TaskCreate", "TaskRead", "TaskUpdate", "TaskSummary",
-    # Document schemas
-    "DocumentBase", "DocumentCreate", "DocumentRead", "DocumentUpdate",
-    "DocumentSummary", "DocumentUpload",
+    # Document schemas - Updated for new DMS system
+    "DocumentBase", "DocumentCreate", "DocumentUpdate", "Document", 
+    "DocumentSummary", "DocumentWithVersions", "DocumentShareRequest", 
+    "DocumentBulkOperation", "DocumentUploadResponse", "DocumentVersion", 
+    "DocumentStatusHistory", "DocumentShare", "DocumentAccessLog", 
+    "VersionNumberValidator",
     # Milestone schemas
     "MilestoneBase", "MilestoneCreate", "MilestoneRead", "MilestoneUpdate",
     "MilestoneSummary",

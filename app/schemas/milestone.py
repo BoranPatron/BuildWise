@@ -27,7 +27,7 @@ class MilestoneBase(BaseModel):
 
 class MilestoneCreate(MilestoneBase):
     project_id: int
-    documents: Optional[List[Dict[str, Any]]] = None
+    documents: List[Dict[str, Any]] = []
 
 
 class MilestoneUpdate(BaseModel):
@@ -59,7 +59,7 @@ class MilestoneRead(MilestoneBase):
     created_by: int
     actual_date: Optional[date] = None
     progress_percentage: int
-    documents: Optional[List[Dict[str, Any]]] = None
+    documents: List[Dict[str, Any]] = []  # Immer Liste, nie None
     created_at: datetime
     updated_at: datetime
     completed_at: Optional[datetime] = None
@@ -69,6 +69,52 @@ class MilestoneRead(MilestoneBase):
     class Config:
         from_attributes = True
         use_enum_values = True  # Enum als String serialisieren
+        
+    @classmethod
+    def from_orm(cls, obj):
+        import json
+        
+        # Parse documents JSON string zu Liste
+        documents = []
+        if obj.documents:
+            try:
+                if isinstance(obj.documents, str):
+                    documents = json.loads(obj.documents)
+                elif isinstance(obj.documents, list):
+                    documents = obj.documents
+                else:
+                    documents = []
+            except (json.JSONDecodeError, TypeError):
+                documents = []
+        
+        data = {
+            'id': obj.id,
+            'title': obj.title,
+            'description': obj.description,
+            'status': obj.status,
+            'priority': obj.priority,
+            'category': obj.category,
+            'planned_date': obj.planned_date,
+            'actual_date': obj.actual_date,
+            'start_date': obj.start_date,
+            'end_date': obj.end_date,
+            'budget': obj.budget,
+            'actual_costs': obj.actual_costs,
+            'contractor': obj.contractor,
+            'progress_percentage': obj.progress_percentage,
+            'is_critical': obj.is_critical,
+            'notify_on_completion': obj.notify_on_completion,
+            'notes': obj.notes,
+            'project_id': obj.project_id,
+            'created_by': obj.created_by,
+            'documents': documents,  # Jetzt echte Liste
+            'created_at': obj.created_at,
+            'updated_at': obj.updated_at,
+            'completed_at': obj.completed_at,
+            'construction_phase': obj.construction_phase,
+            'requires_inspection': obj.requires_inspection
+        }
+        return cls(**data)
 
 
 class MilestoneSummary(BaseModel):
@@ -87,7 +133,7 @@ class MilestoneSummary(BaseModel):
     progress_percentage: int
     is_critical: bool
     project_id: Optional[int] = None  # Projekt-ID hinzufügen
-    documents: Optional[List[Dict[str, Any]]] = None
+    documents: List[Dict[str, Any]] = []
     # Bauphasen-Tracking
     construction_phase: Optional[str] = None
     # Besichtigungssystem
@@ -99,6 +145,21 @@ class MilestoneSummary(BaseModel):
         
     @classmethod
     def from_orm(cls, obj):
+        import json
+        
+        # Parse documents JSON string zu Liste
+        documents = []
+        if obj.documents:
+            try:
+                if isinstance(obj.documents, str):
+                    documents = json.loads(obj.documents)
+                elif isinstance(obj.documents, list):
+                    documents = obj.documents
+                else:
+                    documents = []
+            except (json.JSONDecodeError, TypeError):
+                documents = []
+        
         # Status und Priority sind bereits Strings
         data = {
             'id': obj.id,
@@ -116,7 +177,7 @@ class MilestoneSummary(BaseModel):
             'progress_percentage': obj.progress_percentage,
             'is_critical': obj.is_critical,
             'project_id': obj.project_id,
-            'documents': obj.documents,
+            'documents': documents,  # Jetzt echte Liste
             'construction_phase': obj.construction_phase,
             'requires_inspection': obj.requires_inspection
         }

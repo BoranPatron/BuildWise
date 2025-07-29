@@ -96,6 +96,10 @@ class Milestone(Base):
     archived = Column(Boolean, default=False)
     archived_at = Column(DateTime, nullable=True)
     
+    # Dokumente
+    documents = Column(Text, nullable=True)  # Allgemeine Dokumente
+    shared_document_ids = Column(Text, nullable=True)  # IDs der für Ausschreibung geteilten Dokumente (JSON Array)
+    
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

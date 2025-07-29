@@ -284,17 +284,23 @@ async def search_trades_in_radius(
         Liste der gefundenen Gewerke mit Entfernung und Projekt-Informationen
     """
     try:
-        # Prüfe ob User ein Dienstleister ist (erweiterte Prüfung)
+        # Prüfe Benutzerrolle (Dienstleister oder Bauträger)
         is_service_provider = (
             current_user.user_type.value == "service_provider" or
             (hasattr(current_user, 'user_role') and current_user.user_role and current_user.user_role.value == "DIENSTLEISTER") or
             (current_user.email and "dienstleister" in current_user.email.lower())
         )
         
-        if not is_service_provider:
+        is_bautraeger = (
+            current_user.user_type.value == "private" or
+            (hasattr(current_user, 'user_role') and current_user.user_role and current_user.user_role.value == "BAUTRAEGER") or
+            (current_user.email and "bautraeger" in current_user.email.lower())
+        )
+        
+        if not is_service_provider and not is_bautraeger:
             raise HTTPException(
                 status_code=403,
-                detail=f"Nur Dienstleister können nach Gewerken suchen. User-Type: {current_user.user_type.value}, User-Role: {getattr(current_user, 'user_role', 'N/A')}, Email: {current_user.email}"
+                detail=f"Nur Dienstleister und Bauträger können nach Gewerken suchen. User-Type: {current_user.user_type.value}, User-Role: {getattr(current_user, 'user_role', 'N/A')}, Email: {current_user.email}"
             )
         
         results = await geo_service.search_trades_in_radius(
@@ -307,7 +313,9 @@ async def search_trades_in_radius(
             priority=search_request.priority,
             min_budget=search_request.min_budget,
             max_budget=search_request.max_budget,
-            limit=search_request.limit
+            limit=search_request.limit,
+            current_user=current_user,  # User für Filterung übergeben
+            is_service_provider=is_service_provider
         )
         
         return [TradeSearchResult(**result) for result in results]

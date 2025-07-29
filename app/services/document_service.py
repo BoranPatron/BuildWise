@@ -1,13 +1,13 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, func
+from sqlalchemy import select, update, func, text
 from typing import List, Optional
 from datetime import datetime
 import os
 import aiofiles
 from pathlib import Path
 
-from ..models import Document, DocumentType
-from ..schemas.document import DocumentCreate, DocumentUpdate
+from ..models import Document
+from ..schemas.document import DocumentCreate, DocumentUpdate, DocumentTypeEnum
 from ..models.user import User
 
 
@@ -17,14 +17,26 @@ async def create_document(db: AsyncSession, document_in: DocumentCreate, uploade
         uploaded_by=uploaded_by,
         title=document_in.title,
         description=document_in.description,
-        document_type=document_in.document_type,
+        document_type=document_in.document_type.value,  # Enum-Wert verwenden
         file_name=document_in.file_name,
         file_path=document_in.file_path,
         file_size=document_in.file_size,
         mime_type=document_in.mime_type,
         tags=document_in.tags,
-        category=document_in.category,
-        is_public=document_in.is_public
+        category=document_in.category.value if document_in.category else None,  # Enum-Wert verwenden
+        subcategory=document_in.subcategory,
+        is_public=document_in.is_public,
+        # Neue DMS-Felder mit Standardwerten
+        version_number=document_in.version_number or "1.0.0",
+        version_major=1,
+        version_minor=0,
+        version_patch=0,
+        is_latest_version=True,
+        document_status="DRAFT",
+        workflow_stage="UPLOADED",
+        approval_status="PENDING",
+        review_status="NOT_REVIEWED",
+        access_level="INTERNAL"
     )
     db.add(document)
     await db.commit()
@@ -71,7 +83,7 @@ async def get_document_by_id(db: AsyncSession, document_id: int) -> Document | N
 async def get_documents_for_project(db: AsyncSession, project_id: int) -> List[Document]:
     result = await db.execute(
         select(Document)
-        .where(Document.project_id == project_id, Document.is_latest == True)
+        .where(Document.project_id == project_id)
         .order_by(Document.created_at.desc())
     )
     return list(result.scalars().all())
@@ -107,9 +119,48 @@ async def delete_document(db: AsyncSession, document_id: int) -> bool:
     except Exception:
         pass  # Ignoriere Fehler beim Löschen der Datei
     
-    await db.delete(document)
-    await db.commit()
-    return True
+    # Lösche abhängige Einträge manuell (da nicht alle Cascades definiert sind)
+    try:
+        # Lösche document_versions
+        await db.execute(
+            text("DELETE FROM document_versions WHERE document_id = :doc_id"),
+            {"doc_id": document_id}
+        )
+        
+        # Lösche document_status_history
+        await db.execute(
+            text("DELETE FROM document_status_history WHERE document_id = :doc_id"),
+            {"doc_id": document_id}
+        )
+        
+        # Lösche document_shares
+        await db.execute(
+            text("DELETE FROM document_shares WHERE document_id = :doc_id"),
+            {"doc_id": document_id}
+        )
+        
+        # Lösche document_access_log
+        await db.execute(
+            text("DELETE FROM document_access_log WHERE document_id = :doc_id"),
+            {"doc_id": document_id}
+        )
+        
+        # Lösche comments (sollte durch cascade funktionieren, aber sicherheitshalber)
+        await db.execute(
+            text("DELETE FROM comments WHERE document_id = :doc_id"),
+            {"doc_id": document_id}
+        )
+        
+        # Jetzt das Hauptdokument löschen
+        await db.delete(document)
+        await db.commit()
+        
+        return True
+        
+    except Exception as e:
+        await db.rollback()
+        print(f"Error deleting document {document_id}: {e}")
+        return False
 
 
 async def create_document_version(db: AsyncSession, document_id: int, new_file_path: str, new_file_size: int, uploaded_by: int) -> Document | None:
@@ -118,12 +169,16 @@ async def create_document_version(db: AsyncSession, document_id: int, new_file_p
     if not original_document:
         return None
     
-    # Markiere alle vorherigen Versionen als nicht-latest
-    await db.execute(
-        update(Document)
-        .where(Document.parent_document_id == document_id)
-        .values(is_latest=False)
-    )
+    # Markiere alle vorherigen Versionen als nicht-latest (falls is_latest Spalte existiert)
+    try:
+        await db.execute(
+            update(Document)
+            .where(Document.parent_document_id == document_id)
+            .values(is_latest=False)
+        )
+    except Exception:
+        # Ignoriere Fehler falls is_latest Spalte nicht existiert
+        pass
     
     # Erstelle neue Version
     new_version = Document(
@@ -137,7 +192,6 @@ async def create_document_version(db: AsyncSession, document_id: int, new_file_p
         file_size=new_file_size,
         mime_type=original_document.mime_type,
         version=original_document.version + 1,
-        is_latest=True,
         parent_document_id=document_id,
         tags=original_document.tags,
         category=original_document.category,
@@ -150,14 +204,14 @@ async def create_document_version(db: AsyncSession, document_id: int, new_file_p
     return new_version
 
 
-async def search_documents(db: AsyncSession, search_term: str, project_id: Optional[int] = None, document_type: Optional[DocumentType] = None) -> List[Document]:
-    query = select(Document).where(Document.is_latest == True)
+async def search_documents(db: AsyncSession, search_term: str, project_id: Optional[int] = None, document_type: Optional[DocumentTypeEnum] = None) -> List[Document]:
+    query = select(Document)
     
     if project_id:
         query = query.where(Document.project_id == project_id)
     
     if document_type:
-        query = query.where(Document.document_type == document_type)
+        query = query.where(Document.document_type == document_type.value) # Enum-Wert verwenden
     
     # Suche in Titel, Beschreibung und Tags
     search_filter = (
@@ -177,12 +231,12 @@ async def get_document_statistics(db: AsyncSession, project_id: int) -> dict:
         select(
             func.count(Document.id).label('total'),
             func.sum(Document.file_size).label('total_size'),
-            func.count(Document.id).filter(Document.document_type == DocumentType.PLAN).label('plans'),
-            func.count(Document.id).filter(Document.document_type == DocumentType.PERMIT).label('permits'),
-            func.count(Document.id).filter(Document.document_type == DocumentType.QUOTE).label('quotes'),
-            func.count(Document.id).filter(Document.document_type == DocumentType.INVOICE).label('invoices'),
-            func.count(Document.id).filter(Document.document_type == DocumentType.CONTRACT).label('contracts')
-        ).where(Document.project_id == project_id, Document.is_latest == True)
+            func.count(Document.id).filter(Document.document_type == DocumentTypeEnum.PLAN).label('plans'),
+            func.count(Document.id).filter(Document.document_type == DocumentTypeEnum.PERMIT).label('permits'),
+            func.count(Document.id).filter(Document.document_type == DocumentTypeEnum.QUOTE).label('quotes'),
+            func.count(Document.id).filter(Document.document_type == DocumentTypeEnum.INVOICE).label('invoices'),
+            func.count(Document.id).filter(Document.document_type == DocumentTypeEnum.CONTRACT).label('contracts')
+        ).where(Document.project_id == project_id)
     )
     
     stats = result.first()

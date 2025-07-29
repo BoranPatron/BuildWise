@@ -2,7 +2,12 @@ from .base import Base
 from .user import User, UserType, UserStatus
 from .project import Project, ProjectType, ProjectStatus
 from .task import Task, TaskStatus, TaskPriority
-from .document import Document, DocumentType
+from .document import (
+    Document, DocumentType, DocumentCategory, DocumentStatus, WorkflowStage, 
+    ApprovalStatus, ReviewStatus, ShareType, AccessLevel, ChangeType,
+    DocumentVersion, DocumentStatusHistory, DocumentShare, DocumentAccessLog
+)
+from .comment import Comment
 from .milestone import Milestone, MilestoneStatus, MilestonePriority
 from .quote import Quote, QuoteStatus
 from .message import Message, MessageType
@@ -30,8 +35,22 @@ __all__ = [
     "Task",
     "TaskStatus",
     "TaskPriority",
+    # Document Management System - Extended
     "Document",
     "DocumentType",
+    "DocumentCategory",
+    "DocumentStatus",
+    "WorkflowStage",
+    "ApprovalStatus",
+    "ReviewStatus",
+    "ShareType",
+    "AccessLevel",
+    "ChangeType",
+    "DocumentVersion",
+    "DocumentStatusHistory",
+    "DocumentShare",
+    "DocumentAccessLog",
+    "Comment",
     "Milestone",
     "MilestoneStatus",
     "MilestonePriority",
