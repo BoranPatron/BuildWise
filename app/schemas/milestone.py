@@ -69,23 +69,41 @@ class MilestoneRead(MilestoneBase):
     class Config:
         from_attributes = True
         use_enum_values = True  # Enum als String serialisieren
+    
+    def __init__(self, **data):
+        # Sichere JSON-Deserialisierung für documents falls direkt aus DB-Objekt erstellt
+        if 'documents' in data and isinstance(data['documents'], str):
+            import json
+            try:
+                parsed = json.loads(data['documents'])
+                data['documents'] = parsed if isinstance(parsed, list) else []
+            except (json.JSONDecodeError, TypeError):
+                data['documents'] = []
+        super().__init__(**data)
         
     @classmethod
     def from_orm(cls, obj):
         import json
         
-        # Parse documents JSON string zu Liste
+        # Sichere JSON-Deserialisierung für documents
         documents = []
-        if obj.documents:
+        if hasattr(obj, 'documents') and obj.documents:
             try:
                 if isinstance(obj.documents, str):
-                    documents = json.loads(obj.documents)
+                    # JSON-String parsen
+                    parsed = json.loads(obj.documents)
+                    documents = parsed if isinstance(parsed, list) else []
                 elif isinstance(obj.documents, list):
+                    # Bereits eine Liste
                     documents = obj.documents
                 else:
+                    # Fallback für andere Typen
                     documents = []
-            except (json.JSONDecodeError, TypeError):
+            except (json.JSONDecodeError, TypeError, AttributeError) as e:
+                print(f"⚠️ [SCHEMA] Fehler beim Parsen von documents: {e}")
                 documents = []
+        
+        print(f"🔧 [SCHEMA] Documents parsed: {documents} (type: {type(documents)})")
         
         data = {
             'id': obj.id,
@@ -107,7 +125,7 @@ class MilestoneRead(MilestoneBase):
             'notes': obj.notes,
             'project_id': obj.project_id,
             'created_by': obj.created_by,
-            'documents': documents,  # Jetzt echte Liste
+            'documents': documents,  # Sichere Liste-Konvertierung
             'created_at': obj.created_at,
             'updated_at': obj.updated_at,
             'completed_at': obj.completed_at,

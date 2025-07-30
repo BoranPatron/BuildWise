@@ -96,8 +96,7 @@ class Milestone(Base):
     archived = Column(Boolean, default=False)
     archived_at = Column(DateTime, nullable=True)
     
-    # Dokumente
-    documents = Column(Text, nullable=True)  # Allgemeine Dokumente
+    # Geteilte Dokumente für Ausschreibung
     shared_document_ids = Column(Text, nullable=True)  # IDs der für Ausschreibung geteilten Dokumente (JSON Array)
     
     # Timestamps

@@ -23,9 +23,22 @@ async def create_new_milestone(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    user_id = getattr(current_user, 'id')
-    milestone = await create_milestone(db, milestone_in, user_id)
-    return milestone
+    """Erstellt ein neues Milestone ohne Dokumente"""
+    try:
+        user_id = getattr(current_user, 'id')
+        print(f"🔧 [API] create_new_milestone called for user {user_id}")
+        
+        milestone = await create_milestone(db, milestone_in, user_id)
+        print(f"✅ [API] Milestone erfolgreich erstellt: {milestone.id}")
+        
+        # 🎯 KRITISCH: Explizite Schema-Konvertierung für konsistente Response
+        milestone_read = MilestoneRead.from_orm(milestone)
+        print(f"🔧 [API] Schema-Konvertierung abgeschlossen, documents type: {type(milestone_read.documents)}")
+        return milestone_read
+        
+    except Exception as e:
+        print(f"❌ [API] Fehler beim Erstellen des Milestones: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Fehler beim Erstellen des Gewerks: {str(e)}")
 
 
 @router.post("/with-documents", response_model=MilestoneRead, status_code=status.HTTP_201_CREATED)
@@ -48,40 +61,73 @@ async def create_milestone_with_documents(
     from datetime import datetime
     import json
     
-    # Parse JSON-Strings für Dokument-IDs
-    parsed_document_ids = []
-    parsed_shared_document_ids = []
-    
-    if document_ids:
-        try:
-            parsed_document_ids = json.loads(document_ids)
-        except json.JSONDecodeError:
-            pass
-    
-    if shared_document_ids:
-        try:
-            parsed_shared_document_ids = json.loads(shared_document_ids)
-        except json.JSONDecodeError:
-            pass
-    
-    # Erstelle MilestoneCreate Objekt aus Form-Daten
-    milestone_data = {
-        "title": title,
-        "description": description,
-        "category": category,
-        "priority": priority,
-        "planned_date": datetime.fromisoformat(planned_date).date(),
-        "notes": notes,
-        "requires_inspection": requires_inspection,
-        "project_id": project_id
-    }
-    
-    milestone_in = MilestoneCreate(**milestone_data)
-    user_id = getattr(current_user, 'id')
-    
-    # Erstelle Milestone mit Dokumenten und geteilten Dokument-IDs
-    milestone = await create_milestone(db, milestone_in, user_id, documents, parsed_shared_document_ids)
-    return milestone
+    try:
+        print(f"🔧 [API] create_milestone_with_documents called")
+        print(f"🔧 [API] title: {title}, category: {category}, project_id: {project_id}")
+        print(f"🔧 [API] documents: {len(documents) if documents else 0} files")
+        print(f"🔧 [API] shared_document_ids: {shared_document_ids}")
+        
+        # Parse JSON-Strings für Dokument-IDs
+        parsed_document_ids = []
+        parsed_shared_document_ids = []
+        
+        if document_ids:
+            try:
+                parsed_document_ids = json.loads(document_ids)
+                print(f"🔧 [API] parsed_document_ids: {parsed_document_ids}")
+            except json.JSONDecodeError as e:
+                print(f"⚠️ [API] JSON decode error for document_ids: {e}")
+                pass
+        
+        if shared_document_ids:
+            try:
+                parsed_shared_document_ids = json.loads(shared_document_ids)
+                print(f"🔧 [API] parsed_shared_document_ids: {parsed_shared_document_ids}")
+            except json.JSONDecodeError as e:
+                print(f"⚠️ [API] JSON decode error for shared_document_ids: {e}")
+                pass
+        
+        # Validiere Eingabedaten
+        if not title or not title.strip():
+            raise HTTPException(status_code=400, detail="Titel ist erforderlich")
+        if not category or not category.strip():
+            raise HTTPException(status_code=400, detail="Kategorie ist erforderlich")
+        if not planned_date:
+            raise HTTPException(status_code=400, detail="Geplantes Datum ist erforderlich")
+        
+        # Erstelle MilestoneCreate Objekt aus Form-Daten
+        milestone_data = {
+            "title": title.strip(),
+            "description": description.strip() if description else "",
+            "category": category.strip(),
+            "priority": priority,
+            "planned_date": datetime.fromisoformat(planned_date).date(),
+            "notes": notes.strip() if notes else "",
+            "requires_inspection": requires_inspection,
+            "project_id": project_id,
+            "status": "planned",  # Explizit setzen
+            "documents": []  # Explizit als leere Liste initialisieren
+        }
+        
+        print(f"🔧 [API] Validierte Milestone-Daten: {milestone_data}")
+        
+        milestone_in = MilestoneCreate(**milestone_data)
+        user_id = getattr(current_user, 'id')
+        
+        # Erstelle Milestone mit Dokumenten und geteilten Dokument-IDs
+        milestone = await create_milestone(db, milestone_in, user_id, documents, parsed_shared_document_ids)
+        print(f"✅ [API] Milestone erfolgreich erstellt: {milestone.id}")
+        
+        # Explizite Konvertierung über Schema um JSON-String zu Liste zu konvertieren
+        milestone_read = MilestoneRead.from_orm(milestone)
+        print(f"🔧 [API] Schema-Konvertierung abgeschlossen, documents type: {type(milestone_read.documents)}")
+        return milestone_read
+        
+    except Exception as e:
+        print(f"❌ [API] Fehler beim Erstellen des Milestones: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Fehler beim Erstellen des Gewerks: {str(e)}")
 
 
 @router.get("/", response_model=List[MilestoneSummary])

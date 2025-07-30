@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func, and_, or_
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Union
 from datetime import datetime, date, timedelta
 import logging
 import uuid
@@ -22,6 +22,55 @@ from ..schemas.milestone import (
     DefectItem,
     InvoiceData
 )
+
+
+def safe_json_serialize(data: Union[List, Dict, str, None]) -> str:
+    """
+    Sichere JSON-Serialisierung für SQLite-Kompatibilität
+    
+    Args:
+        data: Daten zum Serialisieren (Liste, Dict, String oder None)
+        
+    Returns:
+        str: JSON-String oder leerer String für None
+    """
+    if data is None:
+        return json.dumps([])
+    
+    if isinstance(data, str):
+        try:
+            # Prüfen ob bereits JSON-String
+            json.loads(data)
+            return data
+        except (json.JSONDecodeError, TypeError):
+            # Wenn kein gültiger JSON, als String behandeln
+            return json.dumps([data])
+    
+    try:
+        return json.dumps(data, ensure_ascii=False)
+    except (TypeError, ValueError) as e:
+        print(f"⚠️ JSON-Serialisierungsfehler: {e}, Fallback zu leerem Array")
+        return json.dumps([])
+
+
+def safe_json_deserialize(json_str: str) -> Union[List, Dict]:
+    """
+    Sichere JSON-Deserialisierung mit Fallback
+    
+    Args:
+        json_str: JSON-String zum Deserialisieren
+        
+    Returns:
+        Union[List, Dict]: Deserialisierte Daten oder leere Liste bei Fehler
+    """
+    if not json_str:
+        return []
+    
+    try:
+        return json.loads(json_str)
+    except (json.JSONDecodeError, TypeError) as e:
+        print(f"⚠️ JSON-Deserialisierungsfehler: {e}, Fallback zu leerem Array")
+        return []
 
 
 async def create_milestone(db: AsyncSession, milestone_in: MilestoneCreate, created_by: int, documents: List[UploadFile] = None, shared_document_ids: List[int] = None) -> Milestone:
@@ -52,10 +101,13 @@ async def create_milestone(db: AsyncSession, milestone_in: MilestoneCreate, crea
         'is_critical': milestone_in.is_critical,
         'notify_on_completion': milestone_in.notify_on_completion,
         'notes': milestone_in.notes,
-        'documents': milestone_in.documents,
+        'documents': safe_json_serialize(milestone_in.documents),
         # Besichtigungssystem
         'requires_inspection': milestone_in.requires_inspection
     }
+    
+    print(f"🔧 [SERVICE] Milestone-Daten vorbereitet: {milestone_data.get('title')}")
+    print(f"🔧 [SERVICE] Documents serialisiert: {milestone_data.get('documents')}")
     
     # Setze automatisch die aktuelle Bauphase des Projekts
     if project and project.construction_phase:
@@ -69,67 +121,92 @@ async def create_milestone(db: AsyncSession, milestone_in: MilestoneCreate, crea
     await db.flush()  # Flush um ID zu erhalten, aber noch nicht committen
     
     # Verarbeite hochgeladene Dokumente
-    if documents:
-        uploaded_documents = await process_milestone_documents(documents, project, milestone.id)
-        milestone.documents = uploaded_documents
-    
-    # Speichere geteilte Dokument-IDs als JSON
-    if shared_document_ids:
-        import json
-        milestone.shared_document_ids = json.dumps(shared_document_ids)
-        print(f"📄 Geteilte Dokumente für Gewerk {milestone.id}: {shared_document_ids}")
-    
-    await db.commit()
-    await db.refresh(milestone)
-    return milestone
+    try:
+        if documents:
+            uploaded_documents = await process_milestone_documents(documents, project, milestone.id)
+            milestone.documents = safe_json_serialize(uploaded_documents)
+            print(f"📄 {len(uploaded_documents)} Dokumente für Gewerk {milestone.id} verarbeitet")
+        
+        # Speichere geteilte Dokument-IDs als JSON
+        if shared_document_ids:
+            milestone.shared_document_ids = safe_json_serialize(shared_document_ids)
+            print(f"📄 Geteilte Dokumente für Gewerk {milestone.id}: {shared_document_ids}")
+        
+        await db.commit()
+        await db.refresh(milestone)
+        print(f"✅ Gewerk {milestone.id} erfolgreich erstellt")
+        return milestone
+        
+    except Exception as e:
+        await db.rollback()
+        print(f"❌ Fehler beim Erstellen des Gewerks: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise e
 
 
 async def process_milestone_documents(documents: List[UploadFile], project, milestone_id: int) -> List[Dict]:
     """Verarbeitet hochgeladene Dokumente für ein Milestone"""
     uploaded_documents = []
     
-    for file in documents:
-        # Validiere Dateityp
-        allowed_types = [
-            'application/pdf',
-            'application/msword',
-            'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-            'application/vnd.ms-powerpoint',
-            'application/vnd.openxmlformats-officedocument.presentationml.presentation'
-        ]
+    try:
+        for file in documents:
+            try:
+                # Validiere Dateityp
+                allowed_types = [
+                    'application/pdf',
+                    'application/msword',
+                    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    'application/vnd.ms-powerpoint',
+                    'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                    'image/jpeg',
+                    'image/png',
+                    'image/gif',
+                    'image/bmp'
+                ]
+                
+                if file.content_type not in allowed_types:
+                    print(f"⚠️ Ungültiger Dateityp: {file.content_type} für {file.filename}")
+                    continue  # Überspringe ungültige Dateitypen
+                
+                # Lese Dateiinhalt
+                content = await file.read()
+                if len(content) > 10 * 1024 * 1024:  # 10MB Limit
+                    print(f"⚠️ Datei zu groß: {file.filename} ({len(content)} bytes)")
+                    continue  # Überspringe zu große Dateien
+                
+                # Erstelle Speicherpfad
+                upload_dir = f"storage/uploads/project_{project.id}"
+                os.makedirs(upload_dir, exist_ok=True)
+                
+                # Generiere sicheren Dateinamen
+                file_extension = os.path.splitext(file.filename)[1]
+                safe_filename = f"milestone_{milestone_id}_{uuid.uuid4()}{file_extension}"
+                file_path = os.path.join(upload_dir, safe_filename)
+                
+                # Speichere Datei
+                with open(file_path, "wb") as buffer:
+                    buffer.write(content)
+                
+                # Erstelle Dokument-Metadaten
+                document_data = {
+                    "id": str(uuid.uuid4()),
+                    "name": file.filename,
+                    "url": f"/{file_path}",
+                    "type": file.content_type,
+                    "size": len(content),
+                    "uploaded_at": datetime.utcnow().isoformat()
+                }
+                
+                uploaded_documents.append(document_data)
+                print(f"✅ Dokument erfolgreich verarbeitet: {file.filename}")
+                
+            except Exception as e:
+                print(f"❌ Fehler beim Verarbeiten von {file.filename}: {str(e)}")
+                continue
         
-        if file.content_type not in allowed_types:
-            continue  # Überspringe ungültige Dateitypen
-        
-        # Lese Dateiinhalt
-        content = await file.read()
-        if len(content) > 10 * 1024 * 1024:  # 10MB Limit
-            continue  # Überspringe zu große Dateien
-        
-        # Erstelle Speicherpfad
-        upload_dir = f"storage/uploads/project_{project.id}"
-        os.makedirs(upload_dir, exist_ok=True)
-        
-        # Generiere sicheren Dateinamen
-        file_extension = os.path.splitext(file.filename)[1]
-        safe_filename = f"milestone_{milestone_id}_{uuid.uuid4()}{file_extension}"
-        file_path = os.path.join(upload_dir, safe_filename)
-        
-        # Speichere Datei
-        with open(file_path, "wb") as buffer:
-            buffer.write(content)
-        
-        # Erstelle Dokument-Metadaten
-        document_data = {
-            "id": str(uuid.uuid4()),
-            "name": file.filename,
-            "url": f"/{file_path}",
-            "type": file.content_type,
-            "size": len(content),
-            "uploaded_at": datetime.now().isoformat()
-        }
-        
-        uploaded_documents.append(document_data)
+    except Exception as e:
+        print(f"❌ Allgemeiner Fehler in process_milestone_documents: {str(e)}")
     
     return uploaded_documents
 
