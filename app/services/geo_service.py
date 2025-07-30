@@ -465,10 +465,10 @@ class GeoService:
                             "end_date": milestone.end_date.isoformat() if milestone.end_date else None,
                             "progress_percentage": milestone.progress_percentage,
                             "contractor": milestone.contractor,
-                                                    # Besichtigungssystem - Explizit übertragen
-                        "requires_inspection": bool(getattr(milestone, 'requires_inspection', False)),
-                        # Dokumente - Lade geteilte Dokumente für Dienstleister
-                        "documents": await self._load_shared_documents(db, milestone.id),
+                            # Besichtigungssystem - Explizit übertragen
+                            "requires_inspection": bool(getattr(milestone, 'requires_inspection', False)),
+                            # Dokumente - Lade geteilte Dokumente für Dienstleister
+                            "documents": await self._load_shared_documents(db, milestone.id),
                             # Projekt-Informationen
                             "project_id": project.id,
                             "project_name": project.name,

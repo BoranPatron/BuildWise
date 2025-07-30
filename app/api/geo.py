@@ -5,7 +5,7 @@ Handhabt Umkreissuche, Geocoding und Adressvalidierung
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 from pydantic import BaseModel, Field
 
 from ..core.database import get_db
@@ -106,6 +106,8 @@ class TradeSearchResult(BaseModel):
     contractor: Optional[str]
     # Besichtigungssystem
     requires_inspection: bool = False
+    # Dokumente - Geteilte Dokumente für Dienstleister
+    documents: Optional[List[Dict[str, Any]]] = []
     # Projekt-Informationen
     project_id: int
     project_name: str
