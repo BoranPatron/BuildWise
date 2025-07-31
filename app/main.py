@@ -91,7 +91,96 @@ async def global_exception_handler(request: Request, exc: Exception):
 # API Router einbinden
 app.include_router(api_router, prefix="/api/v1")
 
-# Static Files für hochgeladene Dokumente
+# Authentifizierte Datei-Serving Route
+from fastapi import Depends, HTTPException, status, Query
+from fastapi.responses import FileResponse
+from .api.deps import get_current_user
+from .models import User
+from .core.database import get_db
+from sqlalchemy.ext.asyncio import AsyncSession
+import os
+
+@app.get("/api/v1/files/serve/{file_path:path}")
+async def serve_authenticated_file(
+    file_path: str,
+    token: str = Query(..., description="JWT Token für Authentifizierung"),
+    db: AsyncSession = Depends(get_db)
+):
+    """Stellt Dateien mit Token-Authentifizierung bereit"""
+    try:
+        print(f"🔍 serve_authenticated_file: Token erhalten: {token[:50]}..." if token else "🔍 serve_authenticated_file: Kein Token")
+        
+        # Token validieren
+        from ..core.security import decode_access_token
+        payload = decode_access_token(token)
+        
+        if not payload:
+            print(f"❌ serve_authenticated_file: Token konnte nicht decodiert werden")
+            raise HTTPException(status_code=401, detail="Ungültiger Token")
+        
+        print(f"🔍 serve_authenticated_file: Token payload: {payload}")
+        
+        # Benutzer-ID aus Token extrahieren
+        user_id = payload.get("sub")
+        if not user_id:
+            print(f"❌ serve_authenticated_file: Keine user_id im Token gefunden")
+            raise HTTPException(status_code=401, detail="Ungültiger Token - keine Benutzer-ID")
+        
+        # Benutzer aus Datenbank laden
+        from sqlalchemy import select
+        from ..models import User
+        
+        # Versuche zuerst mit E-Mail
+        result = await db.execute(select(User).where(User.email == user_id))
+        user = result.scalar_one_or_none()
+        
+        # Falls nicht gefunden, versuche mit ID
+        if not user and user_id.isdigit():
+            result = await db.execute(select(User).where(User.id == int(user_id)))
+            user = result.scalar_one_or_none()
+        
+        if not user:
+            print(f"❌ serve_authenticated_file: Benutzer nicht gefunden für ID/E-Mail: {user_id}")
+            raise HTTPException(status_code=401, detail="Benutzer nicht gefunden")
+        
+        print(f"✅ serve_authenticated_file: Benutzer authentifiziert: {user.id}, {user.email}")
+        
+        # Vollständiger Pfad zur Datei
+        full_path = os.path.join("storage", file_path)
+        
+        # Sicherheitsprüfung: Stelle sicher, dass der Pfad innerhalb des storage-Verzeichnisses liegt
+        if not os.path.abspath(full_path).startswith(os.path.abspath("storage")):
+            print(f"❌ serve_authenticated_file: Zugriff verweigert für Pfad: {full_path}")
+            raise HTTPException(status_code=403, detail="Zugriff verweigert")
+        
+        # Prüfe ob die Datei existiert
+        if not os.path.exists(full_path):
+            print(f"❌ serve_authenticated_file: Datei nicht gefunden: {full_path}")
+            raise HTTPException(status_code=404, detail="Datei nicht gefunden")
+        
+        # Bestimme den MIME-Type
+        import mimetypes
+        mime_type, _ = mimetypes.guess_type(full_path)
+        if mime_type is None:
+            mime_type = "application/octet-stream"
+        
+        print(f"✅ serve_authenticated_file: Datei erfolgreich bereitgestellt: {full_path}")
+        
+        return FileResponse(
+            path=full_path,
+            media_type=mime_type,
+            filename=os.path.basename(full_path)
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ serve_authenticated_file: Unerwarteter Fehler: {str(e)}")
+        import traceback
+        print(f"❌ serve_authenticated_file: Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=401, detail="Authentifizierung fehlgeschlagen")
+
+# Static Files für hochgeladene Dokumente (nur für Entwicklung)
 app.mount("/storage", StaticFiles(directory="storage"), name="storage")
 
 # Datenbank-Tabellen erstellen
