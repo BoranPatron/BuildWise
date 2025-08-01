@@ -400,6 +400,19 @@ async def get_all_active_milestones(db: AsyncSession) -> list:
         pending_quotes = len([q for q in quotes if q.status in [QuoteStatus.SUBMITTED, QuoteStatus.UNDER_REVIEW]])
         rejected_quotes = len([q for q in quotes if q.status == QuoteStatus.REJECTED])
         
+        # Parse documents JSON string zu Liste
+        documents = []
+        if milestone.documents:
+            try:
+                if isinstance(milestone.documents, str):
+                    documents = safe_json_deserialize(milestone.documents)
+                elif isinstance(milestone.documents, list):
+                    documents = milestone.documents
+                else:
+                    documents = []
+            except (json.JSONDecodeError, TypeError):
+                documents = []
+        
         # Erstelle ein Dictionary mit Milestone-Daten und Quote-Stats
         milestone_dict = {
             "id": milestone.id,
@@ -418,6 +431,7 @@ async def get_all_active_milestones(db: AsyncSession) -> list:
             "project_id": milestone.project_id,
             "created_at": milestone.created_at.isoformat() if milestone.created_at else None,
             "updated_at": milestone.updated_at.isoformat() if milestone.updated_at else None,
+            "documents": documents,  # ✅ Dokumente hinzufügen
             # Quote-Statistiken hinzufügen
             "quote_stats": {
                 "total_quotes": total_quotes,

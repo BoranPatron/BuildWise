@@ -1,108 +1,95 @@
 #!/usr/bin/env python3
 """
-Prüft Milestone-Dokumente in der Datenbank und erstellt Testdaten
+Debug-Script um zu überprüfen, ob Dokumente für Milestones in der Datenbank vorhanden sind
 """
 
-import sqlite3
+import asyncio
 import json
-from datetime import datetime
+import sys
+import os
 
-def check_milestone_documents():
-    """Prüft vorhandene Dokumente in Milestones"""
-    conn = sqlite3.connect('buildwise.db')
-    cursor = conn.cursor()
+# Füge das app-Verzeichnis zum Python-Pfad hinzu
+sys.path.append(os.path.join(os.path.dirname(__file__), 'app'))
+
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from sqlalchemy import select
+from app.core.database import get_db
+from app.models.milestone import Milestone
+from app.models.project import Project
+
+async def check_milestone_documents():
+    """Überprüft die Dokumente für alle Milestones"""
     
-    try:
-        print("🔍 Prüfe Milestone-Dokumente...")
-        
-        # Prüfe ob documents Spalte existiert
-        cursor.execute("PRAGMA table_info(milestones)")
-        columns = [column[1] for column in cursor.fetchall()]
-        
-        if 'documents' not in columns:
-            print("❌ documents Spalte existiert nicht in milestones Tabelle!")
-            return
-        
-        print("✅ documents Spalte existiert")
-        
-        # Prüfe alle Milestones
-        cursor.execute("SELECT id, title, documents FROM milestones")
-        milestones = cursor.fetchall()
-        
-        print(f"📊 Gefunden: {len(milestones)} Milestones")
-        
-        milestones_with_docs = 0
-        for milestone_id, title, documents in milestones:
-            if documents and documents != 'null' and documents != '[]':
-                milestones_with_docs += 1
-                print(f"📄 Milestone {milestone_id} ({title}): {documents}")
-        
-        print(f"📄 Milestones mit Dokumenten: {milestones_with_docs}")
-        
-        if milestones_with_docs == 0:
-            print("🔧 Erstelle Testdokumente für erstes Milestone...")
-            create_test_documents(cursor, conn)
+    # Erstelle eine Datenbankverbindung
+    engine = create_async_engine("sqlite+aiosqlite:///buildwise.db")
+    
+    async with engine.begin() as conn:
+        async with AsyncSession(conn) as session:
+            print("🔍 Überprüfe alle Milestones und ihre Dokumente...")
             
-    except Exception as e:
-        print(f"❌ Fehler: {e}")
-    finally:
-        conn.close()
-
-def create_test_documents(cursor, conn):
-    """Erstellt Testdokumente für das erste Milestone"""
-    try:
-        # Hole das erste Milestone
-        cursor.execute("SELECT id, title FROM milestones LIMIT 1")
-        result = cursor.fetchone()
-        
-        if not result:
-            print("❌ Keine Milestones gefunden!")
-            return
+            # Hole alle Milestones
+            result = await session.execute(select(Milestone))
+            milestones = result.scalars().all()
             
-        milestone_id, title = result
-        
-        # Erstelle Testdokumente
-        test_documents = [
-            {
-                "id": "doc_1",
-                "name": "Leistungsverzeichnis_Elektro.pdf",
-                "url": "/storage/uploads/project_1/Leistungsverzeichnis_Elektro.pdf",
-                "type": "application/pdf",
-                "size": 2048576,  # 2MB
-                "uploaded_at": datetime.now().isoformat()
-            },
-            {
-                "id": "doc_2", 
-                "name": "Bauinformationen_Projekt.docx",
-                "url": "/storage/uploads/project_1/Bauinformationen_Projekt.docx",
-                "type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                "size": 1024000,  # 1MB
-                "uploaded_at": datetime.now().isoformat()
-            },
-            {
-                "id": "doc_3",
-                "name": "Technische_Spezifikation.pptx", 
-                "url": "/storage/uploads/project_1/Technische_Spezifikation.pptx",
-                "type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
-                "size": 3072000,  # 3MB
-                "uploaded_at": datetime.now().isoformat()
-            }
-        ]
-        
-        # Aktualisiere das Milestone mit Testdokumenten
-        cursor.execute(
-            "UPDATE milestones SET documents = ? WHERE id = ?",
-            (json.dumps(test_documents), milestone_id)
-        )
-        
-        conn.commit()
-        
-        print(f"✅ Testdokumente für Milestone {milestone_id} ({title}) erstellt:")
-        for doc in test_documents:
-            print(f"   📄 {doc['name']} ({doc['type']})")
+            print(f"📊 Gefundene Milestones: {len(milestones)}")
             
-    except Exception as e:
-        print(f"❌ Fehler beim Erstellen der Testdokumente: {e}")
+            for milestone in milestones:
+                print(f"\n📋 Milestone ID {milestone.id}: {milestone.title}")
+                print(f"   Projekt ID: {milestone.project_id}")
+                print(f"   Status: {milestone.status}")
+                print(f"   Documents Feld Typ: {type(milestone.documents)}")
+                print(f"   Documents Feld Wert: {milestone.documents}")
+                
+                if milestone.documents:
+                    try:
+                        if isinstance(milestone.documents, str):
+                            parsed_docs = json.loads(milestone.documents)
+                            print(f"   ✅ Parsed Documents: {parsed_docs}")
+                            print(f"   📄 Anzahl Dokumente: {len(parsed_docs) if isinstance(parsed_docs, list) else 'N/A'}")
+                        elif isinstance(milestone.documents, list):
+                            print(f"   ✅ Documents ist bereits Liste: {milestone.documents}")
+                            print(f"   📄 Anzahl Dokumente: {len(milestone.documents)}")
+                        else:
+                            print(f"   ⚠️ Unbekannter Documents Typ: {type(milestone.documents)}")
+                    except json.JSONDecodeError as e:
+                        print(f"   ❌ JSON Parse Error: {e}")
+                else:
+                    print(f"   ❌ Keine Dokumente vorhanden")
+            
+            # Spezifische Überprüfung für Milestone ID 2
+            print(f"\n🎯 Spezielle Überprüfung für Milestone ID 2:")
+            milestone_2_result = await session.execute(select(Milestone).where(Milestone.id == 2))
+            milestone_2 = milestone_2_result.scalar_one_or_none()
+            
+            if milestone_2:
+                print(f"   📋 Milestone 2 gefunden: {milestone_2.title}")
+                print(f"   📄 Documents: {milestone_2.documents}")
+                print(f"   📄 Documents Typ: {type(milestone_2.documents)}")
+                
+                if milestone_2.documents:
+                    try:
+                        if isinstance(milestone_2.documents, str):
+                            parsed_docs = json.loads(milestone_2.documents)
+                            print(f"   ✅ Parsed Documents: {parsed_docs}")
+                        elif isinstance(milestone_2.documents, list):
+                            print(f"   ✅ Documents ist Liste: {milestone_2.documents}")
+                        else:
+                            print(f"   ⚠️ Unbekannter Typ: {type(milestone_2.documents)}")
+                    except json.JSONDecodeError as e:
+                        print(f"   ❌ JSON Parse Error: {e}")
+                else:
+                    print(f"   ❌ Keine Dokumente für Milestone 2")
+            else:
+                print(f"   ❌ Milestone mit ID 2 nicht gefunden")
+            
+            # Überprüfe auch die Projekte
+            print(f"\n🏗️ Überprüfe Projekte:")
+            projects_result = await session.execute(select(Project))
+            projects = projects_result.scalars().all()
+            
+            for project in projects:
+                print(f"   📋 Projekt ID {project.id}: {project.name}")
+                print(f"   👤 Owner ID: {project.owner_id}")
 
 if __name__ == "__main__":
-    check_milestone_documents() 
+    asyncio.run(check_milestone_documents()) 
