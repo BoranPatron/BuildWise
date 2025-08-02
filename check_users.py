@@ -3,30 +3,40 @@
 Skript um verfügbare Benutzer in der Datenbank zu prüfen
 """
 
-import sys
-import os
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
+import asyncio
+import aiosqlite
 
-from app.database import get_db
-from app.models.user import User
-
-def check_users():
-    try:
-        db = next(get_db())
-        users = db.query(User).all()
+async def check_users():
+    """Überprüft die existierenden Benutzer in der Datenbank"""
+    
+    async with aiosqlite.connect('buildwise.db') as db:
+        print("🔧 Verbunden zur SQLite-Datenbank")
         
-        print("=== Verfügbare Benutzer ===")
-        if not users:
-            print("❌ Keine Benutzer in der Datenbank gefunden!")
+        # Prüfe ob die users Tabelle existiert
+        cursor = await db.execute("""
+            SELECT name FROM sqlite_master 
+            WHERE type='table' AND name='users'
+        """)
+        table_exists = await cursor.fetchone()
+        
+        if not table_exists:
+            print("❌ users Tabelle existiert nicht!")
             return
         
-        for user in users:
-            print(f"✅ {user.email} (ID: {user.id}, Role: {user.role})")
-            
-        print(f"\n=== Gesamt: {len(users)} Benutzer ===")
+        print("✅ users Tabelle existiert")
         
-    except Exception as e:
-        print(f"❌ Fehler beim Prüfen der Benutzer: {e}")
+        # Zeige alle Benutzer
+        cursor = await db.execute("""
+            SELECT id, email, first_name, last_name, user_type, is_active, created_at 
+            FROM users 
+            ORDER BY created_at DESC
+        """)
+        users = await cursor.fetchall()
+        
+        print(f"📊 Anzahl Benutzer: {len(users)}")
+        print("📋 Alle Benutzer:")
+        for user in users:
+            print(f"  - ID: {user[0]}, Email: {user[1]}, Name: {user[2]} {user[3]}, Type: {user[4]}, Active: {user[5]}, Created: {user[6]}")
 
 if __name__ == "__main__":
-    check_users() 
+    asyncio.run(check_users()) 

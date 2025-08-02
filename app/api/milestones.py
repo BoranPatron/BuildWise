@@ -143,43 +143,29 @@ async def read_milestones(
         milestones = await get_milestones_for_project(db, project_id)
         print(f"🔧 [API] Found {len(milestones)} milestones for project {project_id}")
         
-        # Konvertiere zu MilestoneSummary mit korrektem JSON-Parsing
-        import json
+        # Konvertiere Dictionary-Format zu MilestoneSummary
         result = []
-        for milestone in milestones:
-            # Parse documents JSON string zu Liste
-            documents = []
-            if milestone.documents:
-                try:
-                    if isinstance(milestone.documents, str):
-                        documents = json.loads(milestone.documents)
-                    elif isinstance(milestone.documents, list):
-                        documents = milestone.documents
-                    else:
-                        documents = []
-                except (json.JSONDecodeError, TypeError):
-                    documents = []
-            
-            # Erstelle MilestoneSummary manuell
+        for milestone_dict in milestones:
+            # Erstelle MilestoneSummary aus Dictionary
             milestone_summary = MilestoneSummary(
-                id=milestone.id,
-                title=milestone.title,
-                status=milestone.status,
-                priority=milestone.priority,
-                category=milestone.category,
-                planned_date=milestone.planned_date,
-                actual_date=milestone.actual_date,
-                start_date=milestone.start_date,
-                end_date=milestone.end_date,
-                budget=milestone.budget,
-                actual_costs=milestone.actual_costs,
-                contractor=milestone.contractor,
-                progress_percentage=milestone.progress_percentage,
-                is_critical=milestone.is_critical,
-                project_id=milestone.project_id,
-                documents=documents,  # ✅ Echte Liste
-                construction_phase=milestone.construction_phase,
-                requires_inspection=milestone.requires_inspection
+                id=milestone_dict["id"],
+                title=milestone_dict["title"],
+                status=milestone_dict["status"],
+                priority=milestone_dict["priority"],
+                category=milestone_dict["category"],
+                planned_date=milestone_dict["planned_date"],
+                actual_date=None,  # Nicht im Dictionary enthalten
+                start_date=milestone_dict["start_date"],
+                end_date=milestone_dict["end_date"],
+                budget=milestone_dict["budget"],
+                actual_costs=None,  # Nicht im Dictionary enthalten
+                contractor=milestone_dict["contractor"],
+                progress_percentage=milestone_dict["progress_percentage"],
+                is_critical=False,  # Nicht im Dictionary enthalten
+                project_id=milestone_dict["project_id"],
+                documents=milestone_dict["documents"],  # ✅ Bereits Liste
+                construction_phase=None,  # Nicht im Dictionary enthalten
+                requires_inspection=milestone_dict["requires_inspection"]
             )
             result.append(milestone_summary)
         
@@ -228,13 +214,30 @@ async def read_milestone(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    milestone = await get_milestone_by_id(db, milestone_id)
-    if not milestone:
+    try:
+        milestone = await get_milestone_by_id(db, milestone_id)
+        if not milestone:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Meilenstein nicht gefunden"
+            )
+        
+        # Konvertiere zu MilestoneRead Schema für korrekte JSON-Deserialisierung
+        milestone_read = MilestoneRead.from_orm(milestone)
+        print(f"🔍 read_milestone: Milestone {milestone_id} geladen")
+        print(f"🔍 read_milestone: Documents type: {type(milestone_read.documents)}")
+        print(f"🔍 read_milestone: Documents: {milestone_read.documents}")
+        
+        return milestone_read
+        
+    except Exception as e:
+        print(f"❌ Fehler in read_milestone: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Meilenstein nicht gefunden"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Laden des Meilensteins: {str(e)}"
         )
-    return milestone
 
 
 @router.put("/{milestone_id}", response_model=MilestoneRead)

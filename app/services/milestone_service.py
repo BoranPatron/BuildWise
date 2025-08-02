@@ -35,22 +35,22 @@ def safe_json_serialize(data: Union[List, Dict, str, None]) -> str:
         str: JSON-String oder leerer String für None
     """
     if data is None:
-        return json.dumps([])
+        return "[]"
     
     if isinstance(data, str):
         try:
             # Prüfen ob bereits JSON-String
-            json.loads(data)
-            return data
+            parsed = json.loads(data)
+            return json.dumps(parsed, ensure_ascii=False)
         except (json.JSONDecodeError, TypeError):
             # Wenn kein gültiger JSON, als String behandeln
-            return json.dumps([data])
+            return json.dumps([data], ensure_ascii=False)
     
     try:
         return json.dumps(data, ensure_ascii=False)
     except (TypeError, ValueError) as e:
         print(f"⚠️ JSON-Serialisierungsfehler: {e}, Fallback zu leerem Array")
-        return json.dumps([])
+        return "[]"
 
 
 def safe_json_deserialize(json_str: str) -> Union[List, Dict]:
@@ -101,7 +101,7 @@ async def create_milestone(db: AsyncSession, milestone_in: MilestoneCreate, crea
         'is_critical': milestone_in.is_critical,
         'notify_on_completion': milestone_in.notify_on_completion,
         'notes': milestone_in.notes,
-        'documents': safe_json_serialize(milestone_in.documents),
+        'documents': "[]",  # Initialisiere mit leerem Array
         # Besichtigungssystem
         'requires_inspection': milestone_in.requires_inspection
     }
@@ -126,14 +126,21 @@ async def create_milestone(db: AsyncSession, milestone_in: MilestoneCreate, crea
             uploaded_documents = await process_milestone_documents(documents, project, milestone.id)
             milestone.documents = safe_json_serialize(uploaded_documents)
             print(f"📄 {len(uploaded_documents)} Dokumente für Gewerk {milestone.id} verarbeitet")
+            print(f"📄 Dokumente JSON: {milestone.documents}")
         
         # Speichere geteilte Dokument-IDs als JSON
         if shared_document_ids:
             milestone.shared_document_ids = safe_json_serialize(shared_document_ids)
             print(f"📄 Geteilte Dokumente für Gewerk {milestone.id}: {shared_document_ids}")
         
+        # Explizit commit und refresh
         await db.commit()
         await db.refresh(milestone)
+        
+        # Debug: Prüfe ob Dokumente korrekt gespeichert wurden
+        print(f"🔍 Nach Commit - Milestone {milestone.id} documents: {milestone.documents}")
+        print(f"🔍 Nach Commit - Milestone {milestone.id} documents type: {type(milestone.documents)}")
+        
         print(f"✅ Gewerk {milestone.id} erfolgreich erstellt")
         return milestone
         
@@ -162,11 +169,15 @@ async def process_milestone_documents(documents: List[UploadFile], project, mile
                     'image/jpeg',
                     'image/png',
                     'image/gif',
-                    'image/bmp'
+                    'image/bmp',
+                    'text/plain',  # Für .txt Dateien
+                    'text/html',   # Für .html Dateien
+                    'application/octet-stream'  # Fallback für unbekannte Typen
                 ]
                 
                 if file.content_type not in allowed_types:
                     print(f"⚠️ Ungültiger Dateityp: {file.content_type} für {file.filename}")
+                    print(f"⚠️ Erlaubte Typen: {allowed_types}")
                     continue  # Überspringe ungültige Dateitypen
                 
                 # Lese Dateiinhalt
@@ -191,15 +202,21 @@ async def process_milestone_documents(documents: List[UploadFile], project, mile
                 # Erstelle Dokument-Metadaten
                 document_data = {
                     "id": str(uuid.uuid4()),
+                    "title": file.filename,
                     "name": file.filename,
+                    "file_name": file.filename,
                     "url": f"/{file_path}",
+                    "file_path": f"/{file_path}",
                     "type": file.content_type,
+                    "mime_type": file.content_type,
                     "size": len(content),
+                    "file_size": len(content),
                     "uploaded_at": datetime.utcnow().isoformat()
                 }
                 
                 uploaded_documents.append(document_data)
                 print(f"✅ Dokument erfolgreich verarbeitet: {file.filename}")
+                print(f"📄 Dokument-Metadaten: {document_data}")
                 
             except Exception as e:
                 print(f"❌ Fehler beim Verarbeiten von {file.filename}: {str(e)}")
@@ -213,20 +230,135 @@ async def process_milestone_documents(documents: List[UploadFile], project, mile
 
 async def get_milestone_by_id(db: AsyncSession, milestone_id: int) -> Milestone | None:
     result = await db.execute(select(Milestone).where(Milestone.id == milestone_id))
-    return result.scalars().first()
+    milestone = result.scalars().first()
+    
+    if milestone:
+        # Lade geteilte Dokumente, wenn documents leer sind
+        if not milestone.documents or milestone.documents == "[]":
+            if milestone.shared_document_ids:
+                try:
+                    import json
+                    if isinstance(milestone.shared_document_ids, str):
+                        shared_ids = json.loads(milestone.shared_document_ids)
+                    elif isinstance(milestone.shared_document_ids, list):
+                        shared_ids = milestone.shared_document_ids
+                    else:
+                        shared_ids = []
+                    
+                    if shared_ids:
+                        # Lade die geteilten Dokumente aus der Datenbank
+                        from ..models.document import Document
+                        docs_result = await db.execute(
+                            select(Document).where(Document.id.in_(shared_ids))
+                        )
+                        docs = docs_result.scalars().all()
+                        
+                        # Erstelle Dokument-Objekte für das Milestone
+                        documents = []
+                        for doc in docs:
+                            documents.append({
+                                "id": str(doc.id),
+                                "name": doc.title or doc.file_name,
+                                "title": doc.title,
+                                "file_name": doc.file_name,
+                                "url": f"/api/v1/documents/{doc.id}/download",
+                                "file_path": f"/api/v1/documents/{doc.id}/download",
+                                "type": doc.mime_type or "application/octet-stream",
+                                "mime_type": doc.mime_type,
+                                "size": doc.file_size or 0,
+                                "file_size": doc.file_size,
+                                "category": doc.category,
+                                "subcategory": doc.subcategory,
+                                "created_at": doc.created_at.isoformat() if doc.created_at else None
+                            })
+                        
+                        # Setze die Dokumente im Milestone
+                        milestone.documents = json.dumps(documents)
+                        print(f"🔧 [SERVICE] Geteilte Dokumente für Milestone {milestone_id} geladen: {len(documents)}")
+                except Exception as e:
+                    print(f"⚠️ [SERVICE] Fehler beim Laden der geteilten Dokumente: {e}")
+    
+    return milestone
 
 
-async def get_milestones_for_project(db: AsyncSession, project_id: int) -> List[Milestone]:
+async def get_milestones_for_project(db: AsyncSession, project_id: int) -> list:
+    """Holt alle Gewerke für ein Projekt mit Dokumenten"""
+    from ..models import Quote, QuoteStatus
+    
     result = await db.execute(
         select(Milestone)
         .where(Milestone.project_id == project_id)
         .order_by(Milestone.planned_date)
     )
-    return list(result.scalars().all())
+    milestones = list(result.scalars().all())
+    
+    # Konvertiere zu Dictionary-Format mit Dokumenten
+    milestones_with_docs = []
+    for milestone in milestones:
+        # Lade alle Quotes für dieses Milestone
+        quote_result = await db.execute(
+            select(Quote).where(Quote.milestone_id == milestone.id)
+        )
+        quotes = list(quote_result.scalars().all())
+        
+        # Berechne Quote-Statistiken
+        total_quotes = len(quotes)
+        accepted_quotes = len([q for q in quotes if q.status == QuoteStatus.ACCEPTED])
+        pending_quotes = len([q for q in quotes if q.status in [QuoteStatus.SUBMITTED, QuoteStatus.UNDER_REVIEW]])
+        rejected_quotes = len([q for q in quotes if q.status == QuoteStatus.REJECTED])
+        
+        # Parse documents JSON string zu Liste
+        documents = []
+        if milestone.documents:
+            try:
+                if isinstance(milestone.documents, str):
+                    documents = safe_json_deserialize(milestone.documents)
+                elif isinstance(milestone.documents, list):
+                    documents = milestone.documents
+                else:
+                    documents = []
+            except (json.JSONDecodeError, TypeError):
+                documents = []
+        
+        # Erstelle ein Dictionary mit Milestone-Daten und Quote-Stats
+        milestone_dict = {
+            "id": milestone.id,
+            "title": milestone.title,
+            "description": milestone.description,
+            "category": milestone.category,
+            "status": milestone.status,
+            "priority": milestone.priority,
+            "budget": milestone.budget,
+            "planned_date": milestone.planned_date.isoformat() if milestone.planned_date else None,
+            "start_date": milestone.start_date.isoformat() if milestone.start_date else None,
+            "end_date": milestone.end_date.isoformat() if milestone.end_date else None,
+            "progress_percentage": milestone.progress_percentage,
+            "contractor": milestone.contractor,
+            "requires_inspection": getattr(milestone, 'requires_inspection', False),
+            "project_id": milestone.project_id,
+            "created_at": milestone.created_at.isoformat() if milestone.created_at else None,
+            "updated_at": milestone.updated_at.isoformat() if milestone.updated_at else None,
+            "documents": documents,  # ✅ Dokumente hinzufügen
+            # Quote-Statistiken hinzufügen
+            "quote_stats": {
+                "total_quotes": total_quotes,
+                "accepted_quotes": accepted_quotes,
+                "pending_quotes": pending_quotes,
+                "rejected_quotes": rejected_quotes,
+                "has_accepted_quote": accepted_quotes > 0,
+                "has_pending_quotes": pending_quotes > 0,
+                "has_rejected_quotes": rejected_quotes > 0
+            }
+        }
+        milestones_with_docs.append(milestone_dict)
+    
+    return milestones_with_docs
 
 
-async def get_all_milestones_for_user(db: AsyncSession, user_id: int) -> List[Milestone]:
-    """Holt alle Gewerke für alle Projekte des Benutzers"""
+async def get_all_milestones_for_user(db: AsyncSession, user_id: int) -> list:
+    """Holt alle Gewerke für alle Projekte des Benutzers mit Dokumenten"""
+    from ..models import Quote, QuoteStatus
+    
     # Hole alle Projekte des Benutzers
     projects_result = await db.execute(
         select(Project.id).where(Project.owner_id == user_id)
@@ -242,7 +374,69 @@ async def get_all_milestones_for_user(db: AsyncSession, user_id: int) -> List[Mi
         .where(Milestone.project_id.in_(project_ids))
         .order_by(Milestone.planned_date)
     )
-    return list(result.scalars().all())
+    milestones = list(result.scalars().all())
+    
+    # Konvertiere zu Dictionary-Format mit Dokumenten (wie get_all_active_milestones)
+    milestones_with_docs = []
+    for milestone in milestones:
+        # Lade alle Quotes für dieses Milestone
+        quote_result = await db.execute(
+            select(Quote).where(Quote.milestone_id == milestone.id)
+        )
+        quotes = list(quote_result.scalars().all())
+        
+        # Berechne Quote-Statistiken
+        total_quotes = len(quotes)
+        accepted_quotes = len([q for q in quotes if q.status == QuoteStatus.ACCEPTED])
+        pending_quotes = len([q for q in quotes if q.status in [QuoteStatus.SUBMITTED, QuoteStatus.UNDER_REVIEW]])
+        rejected_quotes = len([q for q in quotes if q.status == QuoteStatus.REJECTED])
+        
+        # Parse documents JSON string zu Liste
+        documents = []
+        if milestone.documents:
+            try:
+                if isinstance(milestone.documents, str):
+                    documents = safe_json_deserialize(milestone.documents)
+                elif isinstance(milestone.documents, list):
+                    documents = milestone.documents
+                else:
+                    documents = []
+            except (json.JSONDecodeError, TypeError):
+                documents = []
+        
+        # Erstelle ein Dictionary mit Milestone-Daten und Quote-Stats
+        milestone_dict = {
+            "id": milestone.id,
+            "title": milestone.title,
+            "description": milestone.description,
+            "category": milestone.category,
+            "status": milestone.status,
+            "priority": milestone.priority,
+            "budget": milestone.budget,
+            "planned_date": milestone.planned_date.isoformat() if milestone.planned_date else None,
+            "start_date": milestone.start_date.isoformat() if milestone.start_date else None,
+            "end_date": milestone.end_date.isoformat() if milestone.end_date else None,
+            "progress_percentage": milestone.progress_percentage,
+            "contractor": milestone.contractor,
+            "requires_inspection": getattr(milestone, 'requires_inspection', False),
+            "project_id": milestone.project_id,
+            "created_at": milestone.created_at.isoformat() if milestone.created_at else None,
+            "updated_at": milestone.updated_at.isoformat() if milestone.updated_at else None,
+            "documents": documents,  # ✅ Dokumente hinzufügen
+            # Quote-Statistiken hinzufügen
+            "quote_stats": {
+                "total_quotes": total_quotes,
+                "accepted_quotes": accepted_quotes,
+                "pending_quotes": pending_quotes,
+                "rejected_quotes": rejected_quotes,
+                "has_accepted_quote": accepted_quotes > 0,
+                "has_pending_quotes": pending_quotes > 0,
+                "has_rejected_quotes": rejected_quotes > 0
+            }
+        }
+        milestones_with_docs.append(milestone_dict)
+    
+    return milestones_with_docs
 
 
 async def update_milestone(db: AsyncSession, milestone_id: int, milestone_update: MilestoneUpdate) -> Milestone | None:

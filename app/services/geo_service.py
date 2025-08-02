@@ -468,7 +468,7 @@ class GeoService:
                             # Besichtigungssystem - Explizit übertragen
                             "requires_inspection": bool(getattr(milestone, 'requires_inspection', False)),
                             # Dokumente - Lade geteilte Dokumente für Dienstleister
-                            "documents": await self._load_shared_documents(db, milestone.id),
+                            "documents": await self._load_shared_documents(db, milestone.id, is_service_provider),
                             # Projekt-Informationen
                             "project_id": project.id,
                             "project_name": project.name,
@@ -496,62 +496,119 @@ class GeoService:
             logger.error(f"Fehler bei der Gewerk-Umkreissuche: {str(e)}")
             return []
 
-    async def _load_shared_documents(self, db: AsyncSession, milestone_id: int) -> List[Dict]:
+    async def _load_shared_documents(self, db: AsyncSession, milestone_id: int, is_service_provider: bool = True) -> List[Dict]:
         """
-        Lädt geteilte Dokumente für ein Gewerk
+        Lädt Dokumente für ein Gewerk basierend auf der Benutzerrolle
         
         Args:
             db: Datenbank-Session
             milestone_id: ID des Gewerks
+            is_service_provider: True für Dienstleister (sieht geteilte Dokumente), False für Bauträger (sieht alle Dokumente)
             
         Returns:
-            Liste der geteilten Dokumente mit URL und Metadaten
+            Liste der Dokumente mit URL und Metadaten
         """
         try:
             from ..models.document import Document
             from ..models.milestone import Milestone
             
-            # Lade das Milestone mit den shared_document_ids
+            # Lade das Milestone mit allen Dokumenten
             milestone_result = await db.execute(
                 select(Milestone).where(Milestone.id == milestone_id)
             )
             milestone = milestone_result.scalar_one_or_none()
             
-            if not milestone or not milestone.shared_document_ids:
+            if not milestone:
                 return []
             
-            # Lade die geteilten Dokumente
-            document_ids = milestone.shared_document_ids
-            if isinstance(document_ids, str):
-                import json
-                document_ids = json.loads(document_ids)
+            documents = []
             
-            if not document_ids:
-                return []
+            if is_service_provider:
+                # Dienstleister sehen nur geteilte Dokumente
+                if milestone.shared_document_ids:
+                    document_ids = milestone.shared_document_ids
+                    if isinstance(document_ids, str):
+                        import json
+                        document_ids = json.loads(document_ids)
+                    
+                    if document_ids:
+                        documents_result = await db.execute(
+                            select(Document).where(Document.id.in_(document_ids))
+                        )
+                        docs = documents_result.scalars().all()
+                        
+                        for doc in docs:
+                            documents.append({
+                                "id": str(doc.id),
+                                "name": doc.title or doc.file_name,
+                                "title": doc.title,
+                                "file_name": doc.file_name,
+                                "url": f"/api/v1/documents/{doc.id}/download",
+                                "file_path": f"/api/v1/documents/{doc.id}/download",
+                                "type": doc.mime_type or "application/octet-stream",
+                                "mime_type": doc.mime_type,
+                                "size": doc.file_size or 0,
+                                "file_size": doc.file_size,
+                                "category": doc.category,
+                                "subcategory": doc.subcategory,
+                                "created_at": doc.created_at.isoformat() if doc.created_at else None
+                            })
+            else:
+                # Bauträger sehen alle Dokumente (ursprüngliche + geteilte)
+                all_documents = []
+                
+                # 1. Lade ursprüngliche Dokumente (beim Erstellen hochgeladen)
+                if milestone.documents:
+                    if isinstance(milestone.documents, str):
+                        import json
+                        try:
+                            original_docs = json.loads(milestone.documents)
+                            if isinstance(original_docs, list):
+                                all_documents.extend(original_docs)
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                    elif isinstance(milestone.documents, list):
+                        all_documents.extend(milestone.documents)
+                
+                # 2. Lade geteilte Dokumente (auch für Bauträger, wenn ursprüngliche leer sind)
+                if milestone.shared_document_ids:
+                    document_ids = milestone.shared_document_ids
+                    if isinstance(document_ids, str):
+                        import json
+                        try:
+                            document_ids = json.loads(document_ids)
+                        except (json.JSONDecodeError, TypeError):
+                            document_ids = []
+                    
+                    if document_ids:
+                        documents_result = await db.execute(
+                            select(Document).where(Document.id.in_(document_ids))
+                        )
+                        docs = documents_result.scalars().all()
+                        
+                        for doc in docs:
+                            all_documents.append({
+                                "id": str(doc.id),
+                                "name": doc.title or doc.file_name,
+                                "title": doc.title,
+                                "file_name": doc.file_name,
+                                "url": f"/api/v1/documents/{doc.id}/download",
+                                "file_path": f"/api/v1/documents/{doc.id}/download",
+                                "type": doc.mime_type or "application/octet-stream",
+                                "mime_type": doc.mime_type,
+                                "size": doc.file_size or 0,
+                                "file_size": doc.file_size,
+                                "category": doc.category,
+                                "subcategory": doc.subcategory,
+                                "created_at": doc.created_at.isoformat() if doc.created_at else None
+                            })
+                
+                documents = all_documents
             
-            documents_result = await db.execute(
-                select(Document).where(Document.id.in_(document_ids))
-            )
-            documents = documents_result.scalars().all()
-            
-            # Konvertiere zu Frontend-Format
-            shared_documents = []
-            for doc in documents:
-                shared_documents.append({
-                    "id": str(doc.id),
-                    "name": doc.title or doc.file_name,
-                    "url": f"/api/v1/documents/{doc.id}/download",
-                    "type": doc.mime_type or "application/octet-stream",
-                    "size": doc.file_size or 0,
-                    "category": doc.category,
-                    "subcategory": doc.subcategory,
-                    "created_at": doc.created_at.isoformat() if doc.created_at else None
-                })
-            
-            return shared_documents
+            return documents
             
         except Exception as e:
-            logger.error(f"Fehler beim Laden der geteilten Dokumente für Milestone {milestone_id}: {str(e)}")
+            logger.error(f"Fehler beim Laden der Dokumente für Milestone {milestone_id}: {str(e)}")
             return []
 
     async def search_service_providers_in_radius(

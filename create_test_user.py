@@ -4,63 +4,77 @@ Skript zur Erstellung eines Test-Benutzers für API-Tests
 """
 
 import asyncio
-import sys
-import os
+import aiosqlite
 from datetime import datetime
+from passlib.context import CryptContext
 
-# Füge das Projektverzeichnis zum Python-Pfad hinzu
-sys.path.append(os.path.dirname(os.path.abspath(__file__)))
-
-from app.core.database import get_db
-from app.models.user import User, UserType
-from app.core.security import get_password_hash
-from sqlalchemy import select
+# Passwort-Hashing
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 async def create_test_user():
-    """Erstellt einen Test-Benutzer für API-Tests."""
+    """Erstellt einen Test-Benutzer mit bekanntem Passwort"""
     
-    print("🔧 Erstelle Test-Benutzer...")
-    
-    try:
-        async for db in get_db():
-            # Prüfe, ob Test-Benutzer bereits existiert
-            result = await db.execute(
-                select(User).where(User.email == "test@buildwise.de")
-            )
-            existing_user = result.scalar_one_or_none()
+    async with aiosqlite.connect('buildwise.db') as db:
+        print("🔧 Verbunden zur SQLite-Datenbank")
+        
+        # Prüfe ob der Test-Benutzer bereits existiert
+        cursor = await db.execute("""
+            SELECT id, email FROM users WHERE email = ?
+        """, ("test@buildwise.de",))
+        existing_user = await cursor.fetchone()
+        
+        if existing_user:
+            print(f"⚠️ Test-Benutzer existiert bereits: ID={existing_user[0]}, Email={existing_user[1]}")
             
-            if existing_user:
-                print(f"✅ Test-Benutzer bereits vorhanden: {existing_user.email}")
-                return existing_user
-            
-            # Erstelle neuen Test-Benutzer
-            test_user = User(
-                email="test@buildwise.de",
-                hashed_password=get_password_hash("test123"),
-                first_name="Test",
-                last_name="User",
-                user_type=UserType.PRIVATE,  # Verwende PRIVATE statt SERVICE_PROVIDER
-                is_active=True,
-                data_processing_consent=True,
-                privacy_policy_accepted=True,
-                terms_accepted=True
-            )
-            
-            db.add(test_user)
+            # Ändere das Passwort
+            hashed_password = pwd_context.hash("test123")
+            await db.execute("""
+                UPDATE users SET hashed_password = ? WHERE email = ?
+            """, (hashed_password, "test@buildwise.de"))
             await db.commit()
-            await db.refresh(test_user)
+            print("✅ Passwort für existierenden Test-Benutzer aktualisiert")
+            return
+        
+        # Erstelle neuen Test-Benutzer
+        hashed_password = pwd_context.hash("test123")
+        
+        test_user = {
+            'email': 'test@buildwise.de',
+            'first_name': 'Test',
+            'last_name': 'Bautraeger',
+            'password_hash': hashed_password,
+            'user_type': 'PRIVATE',
+            'is_active': True,
+            'data_processing_consent': True,
+            'created_at': datetime.now().isoformat(),
+            'updated_at': datetime.now().isoformat()
+        }
+        
+        try:
+            cursor = await db.execute("""
+                INSERT INTO users (
+                    email, first_name, last_name, hashed_password, user_type, 
+                    is_active, data_processing_consent, created_at, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """, (
+                test_user['email'],
+                test_user['first_name'],
+                test_user['last_name'],
+                test_user['password_hash'],
+                test_user['user_type'],
+                test_user['is_active'],
+                test_user['data_processing_consent'],
+                test_user['created_at'],
+                test_user['updated_at']
+            ))
             
-            print(f"✅ Test-Benutzer erstellt: {test_user.email}")
-            print(f"   - ID: {test_user.id}")
-            print(f"   - Name: {test_user.first_name} {test_user.last_name}")
-            print(f"   - Type: {test_user.user_type}")
-            print(f"   - Password: test123")
-            
-            return test_user
+            await db.commit()
+            print("✅ Test-Benutzer erfolgreich erstellt!")
+            print(f"📋 Email: {test_user['email']}")
+            print(f"📋 Passwort: test123")
             
         except Exception as e:
-        print(f"❌ Fehler beim Erstellen des Test-Benutzers: {e}")
-            return None
+            print(f"❌ Fehler beim Erstellen des Test-Benutzers: {e}")
 
 if __name__ == "__main__":
     asyncio.run(create_test_user()) 
