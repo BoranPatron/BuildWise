@@ -156,7 +156,7 @@ async def update_progress(
     return progress_update
 
 
-@router.post("/{progress_id}/attachments", response_model=MilestoneProgressResponse)
+@router.post("/{progress_id}/attachments/", response_model=MilestoneProgressResponse)
 async def upload_attachment(
     milestone_id: int,
     progress_id: int,
@@ -165,6 +165,11 @@ async def upload_attachment(
     current_user: User = Depends(get_current_user)
 ) -> MilestoneProgressResponse:
     """Lädt einen Anhang zu einem Progress Update hoch"""
+    
+    print(f"🔍 [ATTACHMENT] Milestone ID: {milestone_id}")
+    print(f"🔍 [ATTACHMENT] Progress ID: {progress_id}")
+    print(f"🔍 [ATTACHMENT] User ID: {current_user.id}")
+    print(f"🔍 [ATTACHMENT] File: {file.filename}, Type: {file.content_type}")
     
     # Validiere Dateityp
     allowed_types = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf']
@@ -210,7 +215,7 @@ async def request_completion(
 ) -> MilestoneProgressResponse:
     """Meldet Gewerk als fertiggestellt (nur Dienstleister)"""
     
-    if current_user.user_type != UserType.DIENSTLEISTER:
+    if current_user.user_type != UserType.SERVICE_PROVIDER:
         raise HTTPException(
             status_code=403,
             detail="Nur Dienstleister können Fertigstellung melden"

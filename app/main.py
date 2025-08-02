@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request, Body, Depends
+from fastapi import FastAPI, Request, Body, Depends, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -115,7 +115,7 @@ async def serve_authenticated_file(
         print(f"🔍 serve_authenticated_file: Token erhalten: {token[:50]}..." if token else "🔍 serve_authenticated_file: Kein Token")
         
         # Token validieren
-        from ..core.security import decode_access_token
+        from .core.security import decode_access_token
         payload = decode_access_token(token)
         
         if not payload:
@@ -132,7 +132,7 @@ async def serve_authenticated_file(
         
         # Benutzer aus Datenbank laden
         from sqlalchemy import select
-        from ..models import User
+        from .models import User
         
         # Versuche zuerst mit E-Mail
         result = await db.execute(select(User).where(User.email == user_id))
@@ -170,11 +170,23 @@ async def serve_authenticated_file(
         
         print(f"✅ serve_authenticated_file: Datei erfolgreich bereitgestellt: {full_path}")
         
-        return FileResponse(
-            path=full_path,
-            media_type=mime_type,
-            filename=os.path.basename(full_path)
-        )
+        # Für Bilder: Inline-Anzeige im Browser statt Download
+        is_image = mime_type and mime_type.startswith('image/')
+        
+        if is_image:
+            # Bilder inline anzeigen
+            return FileResponse(
+                path=full_path,
+                media_type=mime_type,
+                headers={"Content-Disposition": "inline"}
+            )
+        else:
+            # Andere Dateien als Download
+            return FileResponse(
+                path=full_path,
+                media_type=mime_type,
+                filename=os.path.basename(full_path)
+            )
         
     except HTTPException:
         raise
@@ -235,6 +247,46 @@ async def debug_progress_simple(data: dict = Body(...)):
     print(f"🎯 [MAIN DEBUG] Endpoint erreicht!")
     print(f"🎯 [MAIN DEBUG] Received Data: {data}")
     return {"status": "received", "data": data}
+
+# Debug Endpoint für Attachments
+@app.post("/api/v1/debug/attachment")
+async def debug_attachment_simple(file: UploadFile = File(..., alias="file")):
+    """Einfacher Debug-Endpoint für Attachments"""
+    print(f"🎯 [MAIN DEBUG ATTACHMENT] Endpoint erreicht!")
+    print(f"🎯 [MAIN DEBUG ATTACHMENT] File: {file.filename}")
+    print(f"🎯 [MAIN DEBUG ATTACHMENT] Content-Type: {file.content_type}")
+    print(f"🎯 [MAIN DEBUG ATTACHMENT] Size: {file.size}")
+    
+    # Lese den Inhalt für Debug-Zwecke
+    content = await file.read()
+    print(f"🎯 [MAIN DEBUG ATTACHMENT] Content length: {len(content)} bytes")
+    print(f"🎯 [MAIN DEBUG ATTACHMENT] First 100 bytes: {content[:100]}")
+    
+    return {"status": "received", "filename": file.filename, "content_type": file.content_type, "size": len(content)}
+
+# Debug Endpoint für Request-Details
+@app.post("/api/v1/debug/request")
+async def debug_request_simple(request: Request):
+    """Debug-Endpoint für Request-Details"""
+    print(f"🎯 [MAIN DEBUG REQUEST] Endpoint erreicht!")
+    print(f"🎯 [MAIN DEBUG REQUEST] Method: {request.method}")
+    print(f"🎯 [MAIN DEBUG REQUEST] URL: {request.url}")
+    print(f"🎯 [MAIN DEBUG REQUEST] Content-Type: {request.headers.get('content-type', 'NOT SET')}")
+    print(f"🎯 [MAIN DEBUG REQUEST] Headers: {dict(request.headers)}")
+    
+    # Lese den Body
+    body = await request.body()
+    print(f"🎯 [MAIN DEBUG REQUEST] Body length: {len(body)} bytes")
+    print(f"🎯 [MAIN DEBUG REQUEST] Body preview: {body[:200]}")
+    
+    # Prüfe ob es Multipart-FormData ist
+    content_type = request.headers.get('content-type', '')
+    if 'multipart/form-data' in content_type:
+        print(f"🎯 [MAIN DEBUG REQUEST] ✅ Multipart-FormData erkannt!")
+    else:
+        print(f"🎯 [MAIN DEBUG REQUEST] ❌ Kein Multipart-FormData: {content_type}")
+    
+    return {"status": "received", "method": request.method, "body_length": len(body), "content_type": content_type}
 
 # Root Endpoint
 @app.get("/")

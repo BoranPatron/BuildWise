@@ -151,11 +151,16 @@ class MilestoneProgressService:
             attachments = json.loads(progress_update.attachments)
         
         # Füge neuen Anhang hinzu
+        # Konvertiere absoluten Pfad zu relativer URL mit Forward-Slashes
+        relative_path = file_path.replace("storage/", "").replace("\\", "/")
         attachments.append({
-            "url": file_path,
+            "url": f"/api/v1/files/serve/{relative_path}",
             "uploaded_at": datetime.utcnow().isoformat(),
             "filename": os.path.basename(file_path)
         })
+        
+        print(f"🔍 [ATTACHMENT] Added attachment: {os.path.basename(file_path)}")
+        print(f"🔍 [ATTACHMENT] URL: /api/v1/files/serve/{relative_path}")
         
         progress_update.attachments = json.dumps(attachments)
         

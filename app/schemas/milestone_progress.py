@@ -1,9 +1,10 @@
 """
 Schemas für Baufortschrittsdokumentation
 """
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Optional, List
 from datetime import datetime
+import json
 
 
 class MilestoneProgressBase(BaseModel):
@@ -63,6 +64,21 @@ class MilestoneProgressResponse(MilestoneProgressBase):
     created_at: datetime
     updated_at: datetime
     replies: List['MilestoneProgressResponse'] = []
+    
+    @field_validator('attachments', mode='before')
+    @classmethod
+    def parse_attachments(cls, v):
+        """Konvertiert JSON-String zu Liste"""
+        if v is None:
+            return None
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except (json.JSONDecodeError, TypeError):
+                return []
+        if isinstance(v, list):
+            return v
+        return []
     
     class Config:
         from_attributes = True
