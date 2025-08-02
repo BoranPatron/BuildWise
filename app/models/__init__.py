@@ -23,6 +23,8 @@ from .credit_purchase import CreditPurchase, PurchaseStatus, CreditPackage
 from .inspection import Inspection, InspectionStatus, InspectionInvitation, InspectionInvitationStatus, QuoteRevision
 from .appointment import Appointment, AppointmentType, AppointmentStatus
 from .appointment_response import AppointmentResponse
+from .milestone_progress import MilestoneProgress, ProgressUpdateType
+from .service_provider_rating import ServiceProviderRating
 
 __all__ = [
     "Base",
@@ -84,4 +86,8 @@ __all__ = [
     "AppointmentType",
     "AppointmentStatus",
     "AppointmentResponse",
+    # Baufortschritt und Bewertungen
+    "MilestoneProgress",
+    "ProgressUpdateType",
+    "ServiceProviderRating",
 ]

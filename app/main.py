@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Body, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -32,7 +32,11 @@ else:
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:5174",
-        "http://127.0.0.1:5174"
+        "http://127.0.0.1:5174",
+        # Netzwerk-Zugriff für mobile Geräte
+        "http://192.168.1.65:5173",
+        "http://192.168.1.65:3000",
+        "http://192.168.1.65:5174"
     ]
 
 # Debug-Ausgabe für CORS-Konfiguration
@@ -223,6 +227,14 @@ async def health_check():
         "service": "BuildWise API",
         "version": "1.0.0"
     }
+
+# Debug Endpoint für Progress Updates
+@app.post("/api/v1/debug/progress")
+async def debug_progress_simple(data: dict = Body(...)):
+    """Einfacher Debug-Endpoint ohne Dependencies"""
+    print(f"🎯 [MAIN DEBUG] Endpoint erreicht!")
+    print(f"🎯 [MAIN DEBUG] Received Data: {data}")
+    return {"status": "received", "data": data}
 
 # Root Endpoint
 @app.get("/")

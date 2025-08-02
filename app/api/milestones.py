@@ -345,4 +345,124 @@ async def debug_delete_all_milestones_and_quotes(
     # Milestones löschen
     await db.execute(Milestone.__table__.delete())
     await db.commit()
-    return {"message": "Alle Gewerke, Angebote und zugehörige Kostenpositionen wurden gelöscht."} 
+    return {"message": "Alle Gewerke, Angebote und zugehörige Kostenpositionen wurden gelöscht."}
+
+
+@router.post("/{milestone_id}/invoice", status_code=status.HTTP_201_CREATED)
+async def upload_invoice(
+    milestone_id: int,
+    amount: float = Form(...),
+    due_date: str = Form(...),
+    invoice_file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lädt eine Rechnung für ein abgeschlossenes Gewerk hoch (nur Dienstleister)"""
+    from datetime import datetime
+    from ..models import UserType
+    
+    # Prüfe Berechtigung
+    if current_user.user_type != UserType.DIENSTLEISTER:
+        raise HTTPException(
+            status_code=403,
+            detail="Nur Dienstleister können Rechnungen hochladen"
+        )
+    
+    # Hole Milestone
+    milestone = await db.get(Milestone, milestone_id)
+    if not milestone:
+        raise HTTPException(status_code=404, detail="Gewerk nicht gefunden")
+    
+    # Prüfe ob Gewerk abgenommen wurde
+    if milestone.completion_status != "completed":
+        raise HTTPException(
+            status_code=400,
+            detail="Rechnung kann nur für abgenommene Gewerke hochgeladen werden"
+        )
+    
+    # Prüfe ob bereits eine Rechnung existiert
+    if milestone.invoice_generated:
+        raise HTTPException(
+            status_code=400,
+            detail="Für dieses Gewerk wurde bereits eine Rechnung hochgeladen"
+        )
+    
+    # Validiere Dateityp
+    if invoice_file.content_type != 'application/pdf':
+        raise HTTPException(
+            status_code=400,
+            detail="Nur PDF-Dateien sind für Rechnungen erlaubt"
+        )
+    
+    # Erstelle Upload-Verzeichnis
+    upload_dir = f"storage/invoices/project_{milestone.project_id}"
+    os.makedirs(upload_dir, exist_ok=True)
+    
+    # Speichere Datei
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    filename = f"invoice_{milestone_id}_{timestamp}.pdf"
+    file_path = os.path.join(upload_dir, filename)
+    
+    content = await invoice_file.read()
+    with open(file_path, "wb") as f:
+        f.write(content)
+    
+    # Update Milestone
+    milestone.invoice_generated = True
+    milestone.invoice_amount = amount
+    milestone.invoice_due_date = datetime.fromisoformat(due_date).date()
+    milestone.invoice_pdf_url = file_path
+    
+    await db.commit()
+    await db.refresh(milestone)
+    
+    return {
+        "message": "Rechnung erfolgreich hochgeladen",
+        "invoice_url": file_path,
+        "amount": amount,
+        "due_date": due_date
+    }
+
+
+@router.get("/{milestone_id}/invoice", response_model=dict)
+async def get_invoice(
+    milestone_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Holt Rechnungsinformationen für ein Gewerk"""
+    from ..models import UserType
+    
+    # Hole Milestone
+    milestone = await db.get(Milestone, milestone_id)
+    if not milestone:
+        raise HTTPException(status_code=404, detail="Gewerk nicht gefunden")
+    
+    # Prüfe ob Rechnung existiert
+    if not milestone.invoice_generated:
+        raise HTTPException(status_code=404, detail="Keine Rechnung vorhanden")
+    
+    # Für Bauträger: Prüfe ob Bewertung abgegeben wurde
+    # Bauträger sind PRIVATE oder PROFESSIONAL User (nicht SERVICE_PROVIDER)
+    if current_user.user_type != UserType.SERVICE_PROVIDER:
+        from ..services.rating_service import rating_service
+        
+        can_view = await rating_service.check_invoice_viewable(
+            db=db,
+            milestone_id=milestone_id,
+            bautraeger_id=current_user.id
+        )
+        
+        if not can_view:
+            raise HTTPException(
+                status_code=403,
+                detail="Bitte bewerten Sie zuerst den Dienstleister, um die Rechnung einzusehen"
+            )
+    
+    return {
+        "invoice_url": milestone.invoice_pdf_url,
+        "amount": milestone.invoice_amount,
+        "due_date": milestone.invoice_due_date.isoformat() if milestone.invoice_due_date else None,
+        "approved": milestone.invoice_approved,
+        "approved_at": milestone.invoice_approved_at.isoformat() if milestone.invoice_approved_at else None
+    } 

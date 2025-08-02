@@ -35,6 +35,14 @@ from .appointment import (
     AppointmentResponseRequest, CalendarEventData, NotificationRequest,
     AppointmentType, AppointmentStatus
 )
+from .milestone_progress import (
+    MilestoneProgressBase, MilestoneProgressCreate, MilestoneProgressUpdate, 
+    MilestoneProgressResponse, CompletionRequestCreate, CompletionResponseCreate
+)
+from .rating import (
+    ServiceProviderRatingBase, ServiceProviderRatingCreate, ServiceProviderRatingResponse,
+    ServiceProviderRatingSummary, RatingCheckResponse
+)
 
 __all__ = [
     # User schemas
@@ -66,4 +74,10 @@ __all__ = [
     "ServiceProviderInvite", "ServiceProviderResponse", "InspectionDecisionRequest",
     "AppointmentResponseRequest", "CalendarEventData", "NotificationRequest",
     "AppointmentType", "AppointmentStatus",
+    # Milestone Progress schemas
+    "MilestoneProgressBase", "MilestoneProgressCreate", "MilestoneProgressUpdate", 
+    "MilestoneProgressResponse", "CompletionRequestCreate", "CompletionResponseCreate",
+    # Rating schemas
+    "ServiceProviderRatingBase", "ServiceProviderRatingCreate", "ServiceProviderRatingResponse",
+    "ServiceProviderRatingSummary", "RatingCheckResponse",
 ]

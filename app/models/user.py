@@ -188,6 +188,9 @@ class User(Base):
     # Credit-System Relationship (nur für Bauträger)
     user_credits = relationship("UserCredits", back_populates="user", uselist=False, cascade="all, delete-orphan")
     
+    # Bewertungen (als Dienstleister empfangen)
+    received_ratings = relationship("ServiceProviderRating", foreign_keys="ServiceProviderRating.service_provider_id", back_populates="service_provider")
+    
     # Constraints für Social-Login
     __table_args__ = (
         # Mindestens ein Login-Verfahren muss vorhanden sein
