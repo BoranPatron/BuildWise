@@ -172,6 +172,7 @@ class User(Base):
     assigned_tasks = relationship("Task", foreign_keys="Task.assigned_to", back_populates="assigned_user")
     created_tasks = relationship("Task", foreign_keys="Task.created_by", back_populates="creator")
     created_milestones = relationship("Milestone", foreign_keys="Milestone.created_by", back_populates="creator")
+    created_invoices = relationship("Invoice", foreign_keys="Invoice.service_provider_id", back_populates="service_provider")
     
     # Document Relationships - Explizite Foreign Keys wegen mehrerer Referenzen
     uploaded_documents = relationship("Document", foreign_keys="Document.uploaded_by", back_populates="uploaded_by_user")

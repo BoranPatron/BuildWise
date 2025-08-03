@@ -49,6 +49,10 @@ from .acceptance import (
     AcceptanceScheduleRequest, AcceptanceScheduleResponse, AcceptanceStartRequest,
     AcceptanceCompleteRequest, AcceptanceSummary, AcceptanceListItem
 )
+from .invoice import (
+    InvoiceBase, InvoiceCreate, InvoiceUpdate, InvoiceRead, InvoiceSummary,
+    InvoiceUpload, InvoicePayment, InvoiceRating, InvoiceStats
+)
 
 __all__ = [
     # User schemas
@@ -91,4 +95,7 @@ __all__ = [
     "AcceptanceDefectCreate", "AcceptanceDefectUpdate", "AcceptanceDefectResponse",
     "AcceptanceScheduleRequest", "AcceptanceScheduleResponse", "AcceptanceStartRequest",
     "AcceptanceCompleteRequest", "AcceptanceSummary", "AcceptanceListItem",
+    # Invoice schemas
+    "InvoiceBase", "InvoiceCreate", "InvoiceUpdate", "InvoiceRead", "InvoiceSummary",
+    "InvoiceUpload", "InvoicePayment", "InvoiceRating", "InvoiceStats",
 ]

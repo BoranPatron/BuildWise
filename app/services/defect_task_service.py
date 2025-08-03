@@ -174,7 +174,7 @@ async def create_review_task_for_bautraeger(
 💡 **Tipp:** Überprüfen Sie die zugehörigen Mangel-Tasks um den aktuellen Bearbeitungsstand zu sehen.
 """
 
-    # Erstelle Task
+    # Erstelle Task - Review-Task soll in "Überprüfung" Spalte stehen
     task = Task(
         project_id=acceptance.project_id,
         milestone_id=acceptance.milestone_id,
@@ -182,7 +182,7 @@ async def create_review_task_for_bautraeger(
         created_by=created_by_user_id,
         title=task_title,
         description=task_description,
-        status=TaskStatus.TODO,
+        status=TaskStatus.REVIEW,  # Review-Task direkt in Überprüfung-Spalte
         priority=TaskPriority.MEDIUM,
         due_date=acceptance.review_date,
         is_milestone=False

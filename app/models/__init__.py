@@ -1,5 +1,5 @@
 from .base import Base
-from .user import User, UserType, UserStatus
+from .user import User, UserType, UserStatus, UserRole
 from .project import Project, ProjectType, ProjectStatus
 from .task import Task, TaskStatus, TaskPriority
 from .document import (
@@ -24,6 +24,7 @@ from .inspection import Inspection, InspectionStatus, InspectionInvitation, Insp
 from .appointment import Appointment, AppointmentType, AppointmentStatus
 from .appointment_response import AppointmentResponse
 from .acceptance import Acceptance, AcceptanceDefect, AcceptanceStatus, AcceptanceType, DefectSeverity
+from .invoice import Invoice, InvoiceStatus, InvoiceType
 from .milestone_progress import MilestoneProgress, ProgressUpdateType
 from .service_provider_rating import ServiceProviderRating
 
@@ -32,6 +33,7 @@ __all__ = [
     "User",
     "UserType",
     "UserStatus",
+    "UserRole",
     "Project",
     "ProjectType",
     "ProjectStatus",
@@ -96,4 +98,7 @@ __all__ = [
     "AcceptanceStatus", 
     "AcceptanceType", 
     "DefectSeverity",
+    "Invoice",
+    "InvoiceStatus", 
+    "InvoiceType",
 ]

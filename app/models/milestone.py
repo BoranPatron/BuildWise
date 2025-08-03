@@ -112,4 +112,5 @@ class Milestone(Base):
     invoice_approved_by_user = relationship("User", foreign_keys=[invoice_approved_by])
     progress_updates = relationship("MilestoneProgress", back_populates="milestone", cascade="all, delete-orphan", order_by="MilestoneProgress.created_at")
     acceptances = relationship("Acceptance", back_populates="milestone", cascade="all, delete-orphan")
-    tasks = relationship("Task", back_populates="milestone", cascade="all, delete-orphan") 
+    tasks = relationship("Task", back_populates="milestone", cascade="all, delete-orphan")
+    invoices = relationship("Invoice", back_populates="milestone", cascade="all, delete-orphan") 
