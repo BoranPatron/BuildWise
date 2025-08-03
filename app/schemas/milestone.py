@@ -8,6 +8,7 @@ class MilestoneBase(BaseModel):
     title: str
     description: Optional[str] = None
     status: str = "planned"
+    completion_status: Optional[str] = None  # ✅ WICHTIG: completion_status hinzufügen
     priority: str = "medium"
     category: Optional[str] = None
     planned_date: date

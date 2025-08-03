@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, func, or_
+from sqlalchemy import select, update, func, or_, and_
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from ..models import Task, TaskStatus, TaskPriority
 from ..schemas.task import TaskCreate, TaskUpdate
@@ -18,7 +18,8 @@ async def create_task(db: AsyncSession, task_in: TaskCreate, created_by: int) ->
         priority=task_in.priority,
         due_date=task_in.due_date,
         estimated_hours=task_in.estimated_hours,
-        is_milestone=task_in.is_milestone
+        is_milestone=task_in.is_milestone,
+        milestone_id=task_in.milestone_id
     )
     db.add(task)
     await db.commit()
@@ -32,18 +33,60 @@ async def get_task_by_id(db: AsyncSession, task_id: int) -> Task | None:
 
 
 async def get_tasks_for_project(db: AsyncSession, project_id: int) -> List[Task]:
-    result = await db.execute(select(Task).where(Task.project_id == project_id))
+    from sqlalchemy.orm import selectinload
+    
+    result = await db.execute(
+        select(Task)
+        .options(
+            selectinload(Task.assigned_user),
+            selectinload(Task.milestone)
+        )
+        .where(Task.project_id == project_id)
+    )
     return list(result.scalars().all())
 
 
 async def get_tasks_for_user(db: AsyncSession, user_id: int) -> List[Task]:
     # Hole alle Aufgaben, die der Benutzer erstellt hat ODER denen er zugewiesen ist
+    from sqlalchemy.orm import selectinload
+    
     result = await db.execute(
-        select(Task).where(
+        select(Task)
+        .options(
+            selectinload(Task.assigned_user),
+            selectinload(Task.milestone)
+        )
+        .where(
             or_(Task.created_by == user_id, Task.assigned_to == user_id)
         )
     )
     return list(result.scalars().all())
+
+
+async def get_tasks_assigned_to_user(db: AsyncSession, user_id: int) -> List[Task]:
+    """Hole nur Tasks, die einem bestimmten Benutzer zugewiesen sind"""
+    try:
+        print(f"🔍 [TASK-SERVICE] get_tasks_assigned_to_user called for user_id={user_id}")
+        from sqlalchemy.orm import selectinload
+        from ..models import User, Milestone
+        
+        result = await db.execute(
+            select(Task)
+            .options(
+                selectinload(Task.assigned_user),
+                selectinload(Task.milestone)
+            )
+            .where(Task.assigned_to == user_id)
+        )
+        tasks = list(result.scalars().all())
+        print(f"✅ [TASK-SERVICE] Found {len(tasks)} tasks assigned to user {user_id}")
+        return tasks
+        
+    except Exception as e:
+        print(f"❌ [TASK-SERVICE] Error in get_tasks_assigned_to_user: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
 
 
 async def update_task(db: AsyncSession, task_id: int, task_update: TaskUpdate) -> Task | None:
@@ -130,6 +173,14 @@ async def search_tasks(db: AsyncSession, search_term: str, project_id: Optional[
     return list(result.scalars().all())
 
 
+async def get_tasks_by_milestone(db: AsyncSession, milestone_id: int) -> List[Task]:
+    """Hole alle Tasks die einem Gewerk zugeordnet sind"""
+    result = await db.execute(
+        select(Task).where(Task.milestone_id == milestone_id)
+    )
+    return list(result.scalars().all())
+
+
 async def get_overdue_tasks(db: AsyncSession, user_id: Optional[int] = None) -> List[Task]:
     """Holt überfällige Tasks"""
     from datetime import date
@@ -143,6 +194,14 @@ async def get_overdue_tasks(db: AsyncSession, user_id: Optional[int] = None) -> 
         query = query.where(Task.assigned_to == user_id)
     
     result = await db.execute(query)
+    return list(result.scalars().all())
+
+
+async def get_tasks_by_milestone(db: AsyncSession, milestone_id: int) -> List[Task]:
+    """Hole alle Tasks die einem Gewerk zugeordnet sind"""
+    result = await db.execute(
+        select(Task).where(Task.milestone_id == milestone_id)
+    )
     return list(result.scalars().all())
 
 
@@ -163,4 +222,12 @@ async def get_upcoming_tasks(db: AsyncSession, user_id: Optional[int] = None, da
         query = query.where(Task.assigned_to == user_id)
     
     result = await db.execute(query)
+    return list(result.scalars().all())
+
+
+async def get_tasks_by_milestone(db: AsyncSession, milestone_id: int) -> List[Task]:
+    """Hole alle Tasks die einem Gewerk zugeordnet sind"""
+    result = await db.execute(
+        select(Task).where(Task.milestone_id == milestone_id)
+    )
     return list(result.scalars().all()) 

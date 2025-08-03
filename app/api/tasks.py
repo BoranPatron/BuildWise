@@ -8,8 +8,11 @@ from ..models import User, TaskStatus, TaskPriority
 from ..schemas.task import TaskCreate, TaskRead, TaskUpdate, TaskSummary
 from ..services.task_service import (
     create_task, get_task_by_id, get_tasks_for_project, get_tasks_for_user,
-    update_task, delete_task, get_task_statistics, search_tasks,
-    get_overdue_tasks, get_upcoming_tasks
+    get_tasks_assigned_to_user, update_task, delete_task, get_task_statistics, 
+    search_tasks, get_overdue_tasks, get_upcoming_tasks
+)
+from ..services.task_archiving_service import (
+    archive_completed_tasks, get_archived_tasks, restore_task_from_archive
 )
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -21,21 +24,47 @@ async def create_new_task(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    print(f"🔍 Backend: Empfange Task-Daten: {task_in}")
+    print(f"🔍 Backend: Task-Priorität: {task_in.priority} (Type: {type(task_in.priority)})")
+    print(f"🔍 Backend: Task-Beschreibung: {task_in.description}")
+    print(f"🔍 Backend: Task-Fälligkeitsdatum: {task_in.due_date}")
+    print(f"🔍 Backend: Task-Geschätzte Stunden: {task_in.estimated_hours}")
+    print(f"🔍 Backend: Task-Milestone ID: {task_in.milestone_id}")
+    
     task = await create_task(db, task_in, current_user.id)
+    print(f"✅ Backend: Task erstellt mit ID: {task.id}")
     return task
 
 
 @router.get("/", response_model=List[TaskSummary])
 async def read_tasks(
     project_id: int = None,
+    assigned_to: int = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    if project_id:
-        tasks = await get_tasks_for_project(db, project_id)
-    else:
-        tasks = await get_tasks_for_user(db, current_user.id)
-    return tasks
+    try:
+        print(f"🔍 [TASKS-API] read_tasks called with project_id={project_id}, assigned_to={assigned_to}, user={current_user.id}")
+        
+        if assigned_to:
+            # Lade Tasks für einen bestimmten Benutzer
+            print(f"🔍 [TASKS-API] Loading tasks assigned to user {assigned_to}")
+            tasks = await get_tasks_assigned_to_user(db, assigned_to)
+        elif project_id:
+            print(f"🔍 [TASKS-API] Loading tasks for project {project_id}")
+            tasks = await get_tasks_for_project(db, project_id)
+        else:
+            print(f"🔍 [TASKS-API] Loading tasks for current user {current_user.id}")
+            tasks = await get_tasks_for_user(db, current_user.id)
+        
+        print(f"✅ [TASKS-API] Found {len(tasks)} tasks")
+        return tasks
+        
+    except Exception as e:
+        print(f"❌ [TASKS-API] Error in read_tasks: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=f"Error loading tasks: {str(e)}")
 
 
 @router.get("/{task_id}", response_model=TaskRead)
@@ -135,4 +164,99 @@ async def get_upcoming_tasks_endpoint(
 ):
     """Holt anstehende Tasks in den nächsten X Tagen"""
     tasks = await get_upcoming_tasks(db, current_user.id, days)
+    return tasks
+
+
+@router.post("/{task_id}/status")
+async def update_task_status_endpoint(
+    task_id: int,
+    status_data: dict,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Aktualisiere Task-Status (für Drag & Drop)"""
+    task = await get_task_by_id(db, task_id)
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Task nicht gefunden"
+        )
+    
+    # Prüfe Berechtigung
+    if task.created_by != current_user.id and task.assigned_to != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Keine Berechtigung für diese Task"
+        )
+    
+    # Extrahiere Status aus JSON
+    new_status = status_data.get("status")
+    if not new_status:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Status ist erforderlich"
+        )
+    
+    try:
+        # Konvertiere String zu TaskStatus Enum
+        task_status = TaskStatus(new_status)
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Ungültiger Status: {new_status}"
+        )
+    
+    # Aktualisiere Status
+    task_update = TaskUpdate(status=task_status)
+    updated_task = await update_task(db, task_id, task_update)
+    return {"message": "Status aktualisiert", "task": updated_task}
+
+
+@router.get("/archived", response_model=List[TaskSummary])
+async def get_archived_tasks_endpoint(
+    project_id: int = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Hole archivierte Tasks"""
+    tasks = await get_archived_tasks(db, project_id)
+    return tasks
+
+
+@router.post("/archive-completed")
+async def archive_completed_tasks_endpoint(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Archiviere alle completed Tasks die älter als 14 Tage sind"""
+    archived_count = await archive_completed_tasks(db)
+    return {"message": f"{archived_count} Tasks archiviert", "count": archived_count}
+
+
+@router.post("/{task_id}/restore")
+async def restore_task_endpoint(
+    task_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Stelle archivierten Task wieder her"""
+    task = await restore_task_from_archive(db, task_id)
+    if not task:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Archivierter Task nicht gefunden"
+        )
+    
+    return {"message": "Task wiederhergestellt", "task": task}
+
+
+@router.get("/milestone/{milestone_id}", response_model=List[TaskSummary])
+async def get_tasks_by_milestone_endpoint(
+    milestone_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Hole alle Tasks die einem Gewerk zugeordnet sind"""
+    from ..services.task_service import get_tasks_by_milestone
+    tasks = await get_tasks_by_milestone(db, milestone_id)
     return tasks 

@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Text, Date, DateTime, ForeignKey, Enum, Boolean
+from sqlalchemy import Column, Integer, String, Text, Date, DateTime, ForeignKey, Enum, Boolean, Float
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
 import enum
@@ -12,6 +12,7 @@ class TaskStatus(enum.Enum):
     REVIEW = "review"
     COMPLETED = "completed"
     CANCELLED = "cancelled"
+    ARCHIVED = "archived"
 
 
 class TaskPriority(enum.Enum):
@@ -36,14 +37,20 @@ class Task(Base):
     
     # Zeitplan
     due_date = Column(Date, nullable=True)
-    estimated_hours = Column(Integer, nullable=True)
-    actual_hours = Column(Integer, nullable=True)
+    estimated_hours = Column(Float, nullable=True)
+    actual_hours = Column(Float, nullable=True)
     
     # Fortschritt
     progress_percentage = Column(Integer, default=0)
     
     # Einstellungen
     is_milestone = Column(Boolean, default=False)
+    
+    # Gewerk-Zuordnung (optional)
+    milestone_id = Column(Integer, ForeignKey("milestones.id", ondelete="SET NULL"), nullable=True)
+    
+    # Archivierung
+    archived_at = Column(DateTime(timezone=True), nullable=True)
     
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -53,4 +60,6 @@ class Task(Base):
     # Relationships
     project = relationship("Project", back_populates="tasks")
     assigned_user = relationship("User", foreign_keys=[assigned_to])
-    creator = relationship("User", foreign_keys=[created_by]) 
+    creator = relationship("User", foreign_keys=[created_by])
+    milestone = relationship("Milestone", back_populates="tasks")
+    # defect = relationship("AcceptanceDefect", back_populates="task", uselist=False)  # Temporär deaktiviert 
