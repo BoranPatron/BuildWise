@@ -16,6 +16,7 @@ class DocumentType(enum.Enum):
     REPORT = "report"
     VIDEO = "video"
     PDF = "pdf"  # Hinzugefügt für PDF-Dokumente
+    ACCEPTANCE_PROTOCOL = "acceptance_protocol"  # Abnahmeprotokoll
     OTHER = "other"
 
 class DocumentCategory(enum.Enum):

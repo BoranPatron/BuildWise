@@ -43,6 +43,12 @@ from .rating import (
     ServiceProviderRatingBase, ServiceProviderRatingCreate, ServiceProviderRatingResponse,
     ServiceProviderRatingSummary, RatingCheckResponse
 )
+from .acceptance import (
+    AcceptanceCreate, AcceptanceUpdate, AcceptanceResponse, AcceptanceStatusUpdate,
+    AcceptanceDefectCreate, AcceptanceDefectUpdate, AcceptanceDefectResponse,
+    AcceptanceScheduleRequest, AcceptanceScheduleResponse, AcceptanceStartRequest,
+    AcceptanceCompleteRequest, AcceptanceSummary, AcceptanceListItem
+)
 
 __all__ = [
     # User schemas
@@ -80,4 +86,9 @@ __all__ = [
     # Rating schemas
     "ServiceProviderRatingBase", "ServiceProviderRatingCreate", "ServiceProviderRatingResponse",
     "ServiceProviderRatingSummary", "RatingCheckResponse",
+    # Acceptance schemas
+    "AcceptanceCreate", "AcceptanceUpdate", "AcceptanceResponse", "AcceptanceStatusUpdate",
+    "AcceptanceDefectCreate", "AcceptanceDefectUpdate", "AcceptanceDefectResponse",
+    "AcceptanceScheduleRequest", "AcceptanceScheduleResponse", "AcceptanceStartRequest",
+    "AcceptanceCompleteRequest", "AcceptanceSummary", "AcceptanceListItem",
 ]

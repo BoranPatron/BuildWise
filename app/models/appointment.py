@@ -12,6 +12,7 @@ class AppointmentType(enum.Enum):
     MEETING = "MEETING"
     CONSULTATION = "CONSULTATION"
     REVIEW = "REVIEW"
+    ACCEPTANCE = "ACCEPTANCE"  # Neu: Abnahme-Termine
 
 
 class AppointmentStatus(enum.Enum):

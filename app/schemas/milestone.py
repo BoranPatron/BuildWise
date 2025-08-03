@@ -179,6 +179,7 @@ class MilestoneSummary(BaseModel):
     id: int
     title: str
     status: str  # String statt Enum
+    completion_status: Optional[str] = None  # ✅ WICHTIG: completion_status hinzufügen
     priority: str  # String statt Enum
     category: Optional[str] = None
     planned_date: date

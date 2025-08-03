@@ -81,3 +81,4 @@ class Project(Base):
     buildwise_fees = relationship("BuildWiseFee", back_populates="project", cascade="all, delete-orphan")
     expenses = relationship("Expense", back_populates="project", cascade="all, delete-orphan")
     appointments = relationship("Appointment", back_populates="project", cascade="all, delete-orphan")
+    acceptances = relationship("Acceptance", back_populates="project", cascade="all, delete-orphan")

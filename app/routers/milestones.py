@@ -3,8 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
 from datetime import datetime
 
-from ..database import get_db
-from ..auth import get_current_user
+from ..core.database import get_db
+from ..api.deps import get_current_user
 from ..models.user import User
 from ..schemas.milestone import (
     MilestoneCreate, 
@@ -16,7 +16,7 @@ from ..schemas.milestone import (
 )
 from ..services import milestone_service
 
-router = APIRouter()
+router = APIRouter(prefix="/milestones", tags=["milestones"])
 
 # ==================== ABSCHLUSS-WORKFLOW ENDPOINTS ====================
 
@@ -249,6 +249,7 @@ async def get_milestone_completion_status(
     return {
         "milestone_id": milestone_id,
         "completion_status": milestone.completion_status,
+        "progress_percentage": milestone.progress_percentage,
         "completion_requested_at": milestone.completion_requested_at,
         "inspection_date": milestone.inspection_date,
         "acceptance_date": milestone.acceptance_date,

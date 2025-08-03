@@ -151,6 +151,7 @@ async def read_milestones(
                 id=milestone_dict["id"],
                 title=milestone_dict["title"],
                 status=milestone_dict["status"],
+                completion_status=milestone_dict.get("completion_status"),  # ✅ WICHTIG: completion_status hinzufügen
                 priority=milestone_dict["priority"],
                 category=milestone_dict["category"],
                 planned_date=milestone_dict["planned_date"],
@@ -465,4 +466,38 @@ async def get_invoice(
         "due_date": milestone.invoice_due_date.isoformat() if milestone.invoice_due_date else None,
         "approved": milestone.invoice_approved,
         "approved_at": milestone.invoice_approved_at.isoformat() if milestone.invoice_approved_at else None
+    }
+
+
+# ==================== COMPLETION STATUS ENDPOINT ====================
+
+@router.get("/{milestone_id}/completion-status")
+async def get_milestone_completion_status(
+    milestone_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Holt den aktuellen Abschluss-Status eines Gewerkes
+    """
+    from ..services.milestone_service import get_milestone_by_id
+    
+    milestone = await get_milestone_by_id(db, milestone_id)
+    
+    if not milestone:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Gewerk nicht gefunden"
+        )
+    
+    return {
+        "milestone_id": milestone_id,
+        "completion_status": milestone.completion_status,
+        "progress_percentage": milestone.progress_percentage,
+        "completion_requested_at": milestone.completion_requested_at,
+        "inspection_date": milestone.inspection_date,
+        "acceptance_date": milestone.acceptance_date,
+        "invoice_generated": milestone.invoice_generated,
+        "invoice_approved": milestone.invoice_approved,
+        "archived": milestone.archived
     } 
