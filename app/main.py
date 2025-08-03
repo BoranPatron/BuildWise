@@ -95,6 +95,18 @@ async def global_exception_handler(request: Request, exc: Exception):
 # API Router einbinden
 app.include_router(api_router, prefix="/api/v1")
 
+# Static Files für Storage
+from fastapi.staticfiles import StaticFiles
+import os
+
+# Erstelle Storage-Verzeichnis falls nicht vorhanden
+storage_path = "storage"
+if not os.path.exists(storage_path):
+    os.makedirs(storage_path)
+
+# Mount static files für Storage
+app.mount("/storage", StaticFiles(directory="storage"), name="storage")
+
 # Authentifizierte Datei-Serving Route
 from fastapi import Depends, HTTPException, status, Query
 from fastapi.responses import FileResponse

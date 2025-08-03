@@ -27,9 +27,10 @@ async def create_acceptance(
     """Erstelle eine neue Abnahme"""
     try:
         # Nur Bauträger können Abnahmen erstellen
+        from ..models.user import UserRole, UserType
         is_bautraeger = (
-            current_user.user_role == 'BAUTRAEGER' or 
-            current_user.user_type in ['bautraeger', 'developer', 'PROFESSIONAL', 'professional']
+            current_user.user_role == UserRole.BAUTRAEGER or 
+            current_user.user_type in [UserType.PROFESSIONAL, 'bautraeger', 'developer', 'PROFESSIONAL', 'professional']
         )
         
         if not is_bautraeger:
@@ -59,9 +60,10 @@ async def schedule_acceptance_appointment(
     """Terminvereinbarung für Abnahme"""
     try:
         # Nur Bauträger können Abnahme-Termine vorschlagen
+        from ..models.user import UserRole, UserType
         is_bautraeger = (
-            current_user.user_role == 'BAUTRAEGER' or 
-            current_user.user_type in ['bautraeger', 'developer', 'PROFESSIONAL', 'professional']
+            current_user.user_role == UserRole.BAUTRAEGER or 
+            current_user.user_type in [UserType.PROFESSIONAL, 'bautraeger', 'developer', 'PROFESSIONAL', 'professional']
         )
         
         if not is_bautraeger:
@@ -396,8 +398,8 @@ async def upload_acceptance_photo(
             content = await file.read()
             buffer.write(content)
         
-        # URL für Frontend
-        photo_url = f"/storage/acceptances/photos/{filename}"
+        # URL für Frontend (absolut mit Backend-Server)
+        photo_url = f"http://localhost:8000/storage/acceptances/photos/{filename}"
         
         return {
             "message": "Foto hochgeladen",
@@ -421,9 +423,10 @@ async def complete_acceptance(
     """
     try:
         # Nur Bauträger können Abnahmen abschließen
+        from ..models.user import UserRole, UserType
         is_bautraeger = (
-            current_user.user_role == 'BAUTRAEGER' or 
-            current_user.user_type in ['bautraeger', 'developer', 'PROFESSIONAL', 'professional']
+            current_user.user_role == UserRole.BAUTRAEGER or 
+            current_user.user_type in [UserType.PROFESSIONAL, 'bautraeger', 'developer', 'PROFESSIONAL', 'professional']
         )
         
         if not is_bautraeger:
@@ -463,7 +466,10 @@ async def complete_acceptance(
         }
         
     except ValueError as e:
+        await db.rollback()  # Explicit rollback
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
+        await db.rollback()  # Explicit rollback
         print(f"❌ Fehler beim Abschließen der Abnahme: {e}")
+        print(f"❌ Datenbankfehler: 500: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))

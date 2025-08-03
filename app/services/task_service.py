@@ -70,6 +70,28 @@ async def get_tasks_assigned_to_user(db: AsyncSession, user_id: int) -> List[Tas
         from sqlalchemy.orm import selectinload
         from ..models import User, Milestone
         
+        # Zusätzliche Validierung: Prüfe auf korrupte Daten
+        validation_result = await db.execute(
+            select(Task.id, Task.assigned_to, Task.milestone_id)
+            .where(Task.assigned_to == user_id)
+        )
+        validation_tasks = validation_result.fetchall()
+        
+        # Bereinige korrupte Tasks
+        corrupted_ids = []
+        for task_id, assigned_to, milestone_id in validation_tasks:
+            if isinstance(assigned_to, str) or (milestone_id is not None and isinstance(milestone_id, str) and '-' in str(milestone_id)):
+                print(f"❌ [TASK-SERVICE] Korrupte Task gefunden: ID={task_id}, assigned_to={assigned_to}, milestone_id={milestone_id}")
+                corrupted_ids.append(task_id)
+        
+        # Lösche korrupte Tasks
+        if corrupted_ids:
+            print(f"🧹 [TASK-SERVICE] Lösche {len(corrupted_ids)} korrupte Tasks")
+            from sqlalchemy import delete
+            for task_id in corrupted_ids:
+                await db.execute(delete(Task).where(Task.id == task_id))
+            await db.commit()
+        
         result = await db.execute(
             select(Task)
             .options(

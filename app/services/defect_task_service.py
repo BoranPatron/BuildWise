@@ -106,15 +106,15 @@ async def create_defect_task_for_service_provider(
     )
     
     db.add(task)
-    await db.commit()
-    await db.refresh(task)
+    await db.flush()  # Flush um task.id zu bekommen, aber noch nicht committen
     
     # Verknüpfe Task mit Mangel
     defect.task_id = task.id
     defect.deadline = datetime.combine(due_date, datetime.min.time())
     
+    # Ein einziger Commit für beide Änderungen
     await db.commit()
-    await db.refresh(defect)
+    await db.refresh(task)
     
     print(f"✅ Task für Mangel '{defect.title}' erstellt (ID: {task.id}) - Zugewiesen an User {assigned_to}")
     
@@ -189,14 +189,14 @@ async def create_review_task_for_bautraeger(
     )
     
     db.add(task)
-    await db.commit()
-    await db.refresh(task)
+    await db.flush()  # Flush um task.id zu bekommen, aber noch nicht committen
     
     # Verknüpfe Task mit Acceptance
     acceptance.review_task_id = task.id
     
+    # Ein einziger Commit für beide Änderungen
     await db.commit()
-    await db.refresh(acceptance)
+    await db.refresh(task)
     
     print(f"✅ Wiedervorlage-Task für Abnahme erstellt (ID: {task.id}) - Zugewiesen an Bauträger {bautraeger_id}")
     

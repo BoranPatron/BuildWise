@@ -491,23 +491,71 @@ class AcceptanceService:
             Acceptance: Die abgeschlossene Abnahme
         """
         try:
-            print(f"🏁 Schließe Abnahme {acceptance_id} ab...")
+            if acceptance_id:
+                print(f"🏁 Schließe bestehende Abnahme {acceptance_id} ab...")
+                
+                # Hole bestehende Abnahme
+                result = await db.execute(
+                    select(Acceptance)
+                    .options(selectinload(Acceptance.defects))
+                    .where(Acceptance.id == acceptance_id)
+                )
+                acceptance = result.scalars().first()
+                
+                if not acceptance:
+                    raise ValueError(f"Abnahme {acceptance_id} nicht gefunden")
+            else:
+                print(f"🏁 Erstelle neue Abnahme für Milestone {completion_data.get('milestone_id')}...")
+                
+                # Erstelle neue Abnahme
+                milestone_id = completion_data.get('milestone_id')
+                if not milestone_id:
+                    raise ValueError("milestone_id ist erforderlich für neue Abnahme")
+                
+                # Hole Milestone-Daten
+                milestone_result = await db.execute(
+                    select(Milestone).where(Milestone.id == milestone_id)
+                )
+                milestone = milestone_result.scalar_one_or_none()
+                if not milestone:
+                    raise ValueError(f"Milestone {milestone_id} nicht gefunden")
+                
+                # Ermittle Service Provider aus akzeptiertem Quote
+                from ..models.quote import Quote, QuoteStatus
+                quotes_result = await db.execute(
+                    select(Quote).where(
+                        and_(
+                            Quote.milestone_id == milestone_id,
+                            Quote.status == QuoteStatus.ACCEPTED
+                        )
+                    )
+                )
+                accepted_quote = quotes_result.scalar_one_or_none()
+                if not accepted_quote:
+                    raise ValueError(f"Kein akzeptiertes Quote für Milestone {milestone_id} gefunden")
+                service_provider_id = accepted_quote.service_provider_id
+                
+                # Erstelle neue Abnahme
+                acceptance = Acceptance(
+                    project_id=milestone.project_id,
+                    milestone_id=milestone_id,
+                    contractor_id=completed_by_user_id,
+                    service_provider_id=service_provider_id,
+                    created_by=completed_by_user_id,
+                    acceptance_type=AcceptanceType.FINAL,
+                    status=AcceptanceStatus.ACCEPTED,  # Wird später basierend auf acceptance.accepted gesetzt
+                    completed_at=datetime.now()
+                )
+                db.add(acceptance)
+                await db.flush()  # Um ID zu erhalten
             
-            # Hole Abnahme
-            result = await db.execute(
-                select(Acceptance)
-                .options(selectinload(Acceptance.defects))
-                .where(Acceptance.id == acceptance_id)
-            )
-            acceptance = result.scalars().first()
-            
-            if not acceptance:
-                raise ValueError(f"Abnahme {acceptance_id} nicht gefunden")
-            
-            # Aktualisiere Abnahme-Status
-            acceptance.status = AcceptanceStatus.COMPLETED
-            acceptance.completed_at = datetime.now()
+            # Aktualisiere Abnahme-Status basierend auf Ergebnis
             acceptance.accepted = completion_data.get('accepted', False)
+            if acceptance.accepted:
+                acceptance.status = AcceptanceStatus.ACCEPTED
+            else:
+                acceptance.status = AcceptanceStatus.ACCEPTED_WITH_DEFECTS
+            acceptance.completed_at = datetime.now()
             acceptance.acceptance_notes = completion_data.get('acceptanceNotes', '')
             acceptance.contractor_notes = completion_data.get('contractorNotes', '')
             acceptance.quality_rating = completion_data.get('qualityRating', 0)
@@ -535,22 +583,19 @@ class AcceptanceService:
                     resolved=False
                 )
                 db.add(defect)
-                acceptance.defects.append(defect)
+                # Nicht acceptance.defects.append(defect) verwenden - das verursacht lazy loading
             
             await db.commit()
-            await db.refresh(acceptance)
             
-            # Automatische Task-Erstellung
-            print("🤖 Starte automatische Task-Erstellung...")
-            task_result = await process_acceptance_completion(
-                db=db,
-                acceptance=acceptance,
-                created_by_user_id=completed_by_user_id
+            # Lade Acceptance mit Defects neu
+            acceptance_result = await db.execute(
+                select(Acceptance)
+                .options(selectinload(Acceptance.defects))
+                .where(Acceptance.id == acceptance.id)
             )
+            acceptance = acceptance_result.scalars().first()
             
-            print(f"✅ Abnahme abgeschlossen: {task_result['defect_tasks_created']} Mangel-Tasks, {'1' if task_result['review_task_created'] else '0'} Wiedervorlage-Task erstellt")
-            
-            # Aktualisiere Milestone-Status
+            # Aktualisiere Milestone-Status ZUERST (vor Task-Erstellung)
             if acceptance.milestone_id:
                 milestone_result = await db.execute(select(Milestone).where(Milestone.id == acceptance.milestone_id))
                 milestone = milestone_result.scalars().first()
@@ -564,8 +609,19 @@ class AcceptanceService:
                     else:
                         milestone.completion_status = 'completed_with_defects'
                         print(f"⚠️ Milestone {milestone.title} als 'abgenommen unter Vorbehalt' markiert")
-                    
-                    await db.commit()
+            
+            # Commit alle Änderungen in einem Rutsch
+            await db.commit()
+            
+            # Automatische Task-Erstellung in separater Session
+            print("🤖 Starte automatische Task-Erstellung...")
+            task_result = await process_acceptance_completion(
+                db=db,
+                acceptance=acceptance,
+                created_by_user_id=completed_by_user_id
+            )
+            
+            print(f"✅ Abnahme abgeschlossen: {task_result['defect_tasks_created']} Mangel-Tasks, {'1' if task_result['review_task_created'] else '0'} Wiedervorlage-Task erstellt")
             
             return acceptance
             
