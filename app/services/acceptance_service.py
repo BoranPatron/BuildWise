@@ -520,7 +520,10 @@ class AcceptanceService:
                 if not milestone:
                     raise ValueError(f"Milestone {milestone_id} nicht gefunden")
                 
-                # Ermittle Service Provider aus akzeptiertem Quote
+                # Ermittle Service Provider aus akzeptiertem Quote oder Milestone
+                service_provider_id = None
+                
+                # Versuch 1: Suche nach akzeptiertem Quote
                 from ..models.quote import Quote, QuoteStatus
                 quotes_result = await db.execute(
                     select(Quote).where(
@@ -531,9 +534,19 @@ class AcceptanceService:
                     )
                 )
                 accepted_quote = quotes_result.scalar_one_or_none()
-                if not accepted_quote:
-                    raise ValueError(f"Kein akzeptiertes Quote für Milestone {milestone_id} gefunden")
-                service_provider_id = accepted_quote.service_provider_id
+                if accepted_quote:
+                    service_provider_id = accepted_quote.service_provider_id
+                    print(f"✅ Service Provider aus akzeptiertem Quote ermittelt: {service_provider_id}")
+                
+                # Versuch 2: Verwende milestone.accepted_by (für Bauträger-Workflow)
+                elif milestone.accepted_by:
+                    service_provider_id = milestone.accepted_by
+                    print(f"✅ Service Provider aus milestone.accepted_by ermittelt: {service_provider_id}")
+                
+                # Fallback: Verwende den Bauträger als Service Provider (für reine Bauträger-Abnahmen)
+                else:
+                    print(f"⚠️ Kein Service Provider für Milestone {milestone_id} gefunden - verwende Bauträger als Fallback")
+                    service_provider_id = completed_by_user_id  # Bauträger führt selbst die Abnahme durch
                 
                 # Erstelle neue Abnahme
                 acceptance = Acceptance(

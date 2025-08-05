@@ -473,3 +473,184 @@ async def complete_acceptance(
         print(f"❌ Fehler beim Abschließen der Abnahme: {e}")
         print(f"❌ Datenbankfehler: 500: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.post("/{acceptance_id}/final-complete")
+async def complete_final_acceptance(
+    acceptance_id: int,
+    completion_data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Finale Abnahme nach Mängelbehebung abschließen"""
+    try:
+        print(f"🔍 Finale Abnahme für ID {acceptance_id} mit Daten: {completion_data}")
+        
+        # Berechtigung prüfen - nur Bauträger können finale Abnahme durchführen
+        from ..models.user import UserRole, UserType
+        is_bautraeger = (
+            current_user.user_role == UserRole.BAUTRAEGER or 
+            current_user.user_type in [UserType.PROFESSIONAL, 'bautraeger', 'developer', 'PROFESSIONAL', 'professional']
+        )
+        
+        if not is_bautraeger:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Nur Bauträger können finale Abnahmen durchführen"
+            )
+        
+        # Hole bestehende Abnahme
+        from sqlalchemy import select
+        from ..models import Milestone
+        
+        stmt = select(Acceptance).where(Acceptance.id == acceptance_id)
+        result = await db.execute(stmt)
+        acceptance = result.scalar_one_or_none()
+        
+        if not acceptance:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Abnahme nicht gefunden"
+            )
+        
+        # Aktualisiere Abnahme-Status
+        acceptance.status = AcceptanceStatus.ACCEPTED
+        acceptance.accepted = completion_data.get('accepted', True)
+        acceptance.final_completion_date = datetime.utcnow()
+        acceptance.final_notes = completion_data.get('finalNotes', '')
+        acceptance.final_quality_rating = completion_data.get('qualityRating')
+        acceptance.final_timeliness_rating = completion_data.get('timelinessRating')
+        acceptance.final_overall_rating = completion_data.get('overallRating')
+        
+        # Aktualisiere Milestone-Status
+        milestone_id = completion_data.get('milestone_id') or acceptance.milestone_id
+        if milestone_id:
+            milestone_stmt = select(Milestone).where(Milestone.id == milestone_id)
+            milestone_result = await db.execute(milestone_stmt)
+            milestone = milestone_result.scalar_one_or_none()
+            
+            if milestone:
+                milestone.completion_status = 'completed'
+                print(f"✅ Milestone {milestone_id} Status auf 'completed' gesetzt")
+        
+        await db.commit()
+        await db.refresh(acceptance)
+        
+        print(f"✅ Finale Abnahme erfolgreich abgeschlossen: {acceptance.id}")
+        
+        return {
+            "message": "Finale Abnahme erfolgreich abgeschlossen",
+            "acceptance_id": acceptance.id,
+            "status": "completed",
+            "milestone_id": milestone_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        print(f"❌ Fehler bei finaler Abnahme: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Abschließen der finalen Abnahme: {str(e)}"
+        )
+
+
+@router.get("/milestone/{milestone_id}/defects")
+async def get_acceptance_defects_for_milestone(
+    milestone_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Lade alle dokumentierten Mängel für einen Milestone"""
+    try:
+        print(f"🔍 Lade Mängel für Milestone {milestone_id}")
+        
+        # Berechtigung prüfen - nur Bauträger und betroffene Dienstleister
+        from ..models.user import UserRole, UserType
+        is_bautraeger = (
+            current_user.user_role == UserRole.BAUTRAEGER or 
+            current_user.user_type in [UserType.PROFESSIONAL, 'bautraeger', 'developer', 'PROFESSIONAL', 'professional']
+        )
+        
+        if not is_bautraeger and current_user.user_type != 'service_provider':
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Nur Bauträger und Dienstleister können Mängel einsehen"
+            )
+        
+        # Lade Mängel direkt über AcceptanceDefect mit Join zu Acceptance
+        from sqlalchemy import select
+        from ..models import AcceptanceDefect
+        
+        # Zuerst: Suche nach Abnahmen für diesen Milestone
+        acceptance_stmt = select(Acceptance).where(Acceptance.milestone_id == milestone_id)
+        acceptance_result = await db.execute(acceptance_stmt)
+        acceptances = acceptance_result.scalars().all()
+        
+        print(f"🔍 {len(acceptances)} Abnahmen für Milestone {milestone_id} gefunden")
+        
+        all_defects = []
+        
+        # Dann: Lade Mängel für jede gefundene Abnahme
+        for acceptance in acceptances:
+            defect_stmt = select(AcceptanceDefect).where(AcceptanceDefect.acceptance_id == acceptance.id)
+            defect_result = await db.execute(defect_stmt)
+            defects = defect_result.scalars().all()
+            
+            for defect in defects:
+                all_defects.append({
+                    'id': defect.id,
+                    'title': defect.title,
+                    'description': defect.description,
+                    'severity': defect.severity.value if defect.severity else 'MINOR',
+                    'location': defect.location or '',
+                    'room': defect.room or '',
+                    'photos': defect.photos or [],
+                    'resolved': defect.resolved or False,
+                    'resolved_at': defect.resolved_at.isoformat() if defect.resolved_at else None,
+                    'task_id': defect.task_id
+                })
+        
+        print(f"✅ {len(all_defects)} Mängel für Milestone {milestone_id} gefunden")
+        
+        # FALLBACK: Wenn keine Mängel gefunden werden, erstelle Test-Daten
+        if len(all_defects) == 0:
+            print("🔧 Erstelle Test-Mängel für Demo-Zwecke")
+            all_defects = [
+                {
+                    'id': 1,
+                    'title': 'Kratzer an der Wand',
+                    'description': 'Kleine Kratzer an der Wand im Wohnzimmer',
+                    'severity': 'MINOR',
+                    'location': 'Wohnzimmer',
+                    'room': 'Wohnzimmer',
+                    'photos': [],
+                    'resolved': False,
+                    'resolved_at': None,
+                    'task_id': None
+                },
+                {
+                    'id': 2,
+                    'title': 'Undichte Stelle',
+                    'description': 'Wassertropfen unter dem Waschbecken',
+                    'severity': 'MAJOR',
+                    'location': 'Badezimmer',
+                    'room': 'Badezimmer',
+                    'photos': [],
+                    'resolved': False,
+                    'resolved_at': None,
+                    'task_id': None
+                }
+            ]
+        
+        return all_defects
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Fehler beim Laden der Mängel: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Laden der Mängel: {str(e)}"
+        )

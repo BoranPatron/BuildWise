@@ -226,6 +226,8 @@ async def read_milestone(
         # Konvertiere zu MilestoneRead Schema für korrekte JSON-Deserialisierung
         milestone_read = MilestoneRead.from_orm(milestone)
         print(f"🔍 read_milestone: Milestone {milestone_id} geladen")
+        print(f"🔍 read_milestone: completion_status in DB: {milestone.completion_status}")
+        print(f"🔍 read_milestone: completion_status in Schema: {milestone_read.completion_status}")
         print(f"🔍 read_milestone: Documents type: {type(milestone_read.documents)}")
         print(f"🔍 read_milestone: Documents: {milestone_read.documents}")
         
@@ -500,4 +502,172 @@ async def get_milestone_completion_status(
         "invoice_generated": milestone.invoice_generated,
         "invoice_approved": milestone.invoice_approved,
         "archived": milestone.archived
-    } 
+    }
+
+
+@router.get("/archived", response_model=List[dict])
+async def get_archived_milestones(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lade archivierte Gewerke für den aktuellen Benutzer (Dienstleister)"""
+    try:
+        from sqlalchemy import select, and_
+        from sqlalchemy.orm import selectinload
+        from ..models import Project, Quote, Invoice, ServiceProviderRating
+        
+        print(f"🔍 Lade archivierte Gewerke für User: {current_user.id}")
+        
+        # Nur für Dienstleister
+        if current_user.user_type not in ['service_provider', 'SERVICE_PROVIDER']:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Nur Dienstleister können archivierte Gewerke einsehen"
+            )
+        
+        # Lade abgeschlossene Milestones des Dienstleisters
+        stmt = select(Milestone).where(
+            and_(
+                Milestone.service_provider_id == current_user.id,
+                Milestone.completion_status.in_(['completed', 'completed_with_defects'])
+            )
+        ).options(
+            selectinload(Milestone.project),
+            selectinload(Milestone.quotes),
+            selectinload(Milestone.invoices)
+        ).order_by(Milestone.acceptance_date.desc())
+        
+        result = await db.execute(stmt)
+        milestones = result.scalars().all()
+        
+        archived_trades = []
+        for milestone in milestones:
+            # Finde das akzeptierte Angebot
+            accepted_quote = None
+            for quote in milestone.quotes:
+                if quote.status == 'accepted':
+                    accepted_quote = quote
+                    break
+            
+            # Finde die Rechnung
+            invoice = None
+            if milestone.invoices:
+                invoice = milestone.invoices[0]  # Nehme die erste/neueste Rechnung
+            
+            # Finde die Bewertung
+            rating_stmt = select(ServiceProviderRating).where(
+                and_(
+                    ServiceProviderRating.service_provider_id == current_user.id,
+                    ServiceProviderRating.milestone_id == milestone.id
+                )
+            )
+            rating_result = await db.execute(rating_stmt)
+            rating = rating_result.scalar_one_or_none()
+            
+            # Berechne Projektdauer
+            duration_days = 0
+            if milestone.acceptance_date and milestone.created_at:
+                duration_days = (milestone.acceptance_date - milestone.created_at).days
+            
+            archived_trade = {
+                'id': milestone.id,
+                'title': milestone.title,
+                'description': milestone.description or '',
+                'category': milestone.category or 'eigene',
+                'completion_status': milestone.completion_status,
+                'completed_date': milestone.acceptance_date.isoformat() if milestone.acceptance_date else milestone.updated_at.isoformat(),
+                'total_amount': accepted_quote.total_amount if accepted_quote else 0,
+                'currency': accepted_quote.currency if accepted_quote else 'EUR',
+                'project_name': milestone.project.title if milestone.project else 'Unbekanntes Projekt',
+                'project_id': milestone.project_id,
+                'duration_days': max(duration_days, 1),
+                'client_rating': rating.overall_rating if rating else None,
+                'invoice_status': invoice.status if invoice else None,
+                'invoice_amount': invoice.total_amount if invoice else None
+            }
+            
+            archived_trades.append(archived_trade)
+        
+        print(f"✅ {len(archived_trades)} archivierte Gewerke gefunden")
+        return archived_trades
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Fehler beim Laden archivierter Gewerke: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Laden archivierter Gewerke: {str(e)}"
+        )
+
+
+@router.get("/service-provider/completed", response_model=List[dict])
+async def get_completed_milestones_for_service_provider(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lade abgeschlossene Gewerke für Dienstleister (für Rechnungsstellung)"""
+    try:
+        from sqlalchemy import select, and_
+        from sqlalchemy.orm import selectinload
+        from ..models import Project, Quote
+        
+        print(f"🔍 Lade abgeschlossene Gewerke für Dienstleister: {current_user.id}")
+        
+        # Nur für Dienstleister
+        if current_user.user_type not in ['service_provider', 'SERVICE_PROVIDER']:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Nur Dienstleister können abgeschlossene Gewerke einsehen"
+            )
+        
+        # Lade abgeschlossene Milestones des Dienstleisters
+        stmt = select(Milestone).where(
+            and_(
+                Milestone.service_provider_id == current_user.id,
+                Milestone.completion_status == 'completed'
+            )
+        ).options(
+            selectinload(Milestone.project),
+            selectinload(Milestone.quotes)
+        ).order_by(Milestone.acceptance_date.desc())
+        
+        result = await db.execute(stmt)
+        milestones = result.scalars().all()
+        
+        completed_milestones = []
+        for milestone in milestones:
+            # Finde das akzeptierte Angebot
+            accepted_quote = None
+            for quote in milestone.quotes:
+                if quote.status == 'accepted':
+                    accepted_quote = quote
+                    break
+            
+            completed_milestone = {
+                'id': milestone.id,
+                'title': milestone.title,
+                'description': milestone.description or '',
+                'category': milestone.category or 'eigene',
+                'completion_status': milestone.completion_status,
+                'completed_date': milestone.acceptance_date.isoformat() if milestone.acceptance_date else milestone.updated_at.isoformat(),
+                'total_amount': accepted_quote.total_amount if accepted_quote else 0,
+                'currency': accepted_quote.currency if accepted_quote else 'EUR',
+                'project_name': milestone.project.title if milestone.project else 'Unbekanntes Projekt',
+                'project_id': milestone.project_id,
+                'has_invoice': False  # TODO: Prüfe ob bereits Rechnung existiert
+            }
+            
+            completed_milestones.append(completed_milestone)
+        
+        print(f"✅ {len(completed_milestones)} abgeschlossene Gewerke für Rechnungsstellung gefunden")
+        return completed_milestones
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Fehler beim Laden abgeschlossener Gewerke: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Laden abgeschlossener Gewerke: {str(e)}"
+        ) 

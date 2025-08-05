@@ -1,7 +1,7 @@
 """
 API endpoints for invoice management
 """
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form, status, Query
 from fastapi.responses import FileResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
@@ -10,14 +10,81 @@ from pathlib import Path
 
 from app.core.database import get_db
 from app.api.deps import get_current_user
-from app.models import User, UserRole, UserType, Invoice, InvoiceStatus
+from app.models import User, UserRole, UserType, Invoice, InvoiceStatus, Milestone
 from app.schemas.invoice import (
     InvoiceCreate, InvoiceUpdate, InvoiceRead, InvoiceSummary,
     InvoiceUpload, InvoicePayment, InvoiceRating, InvoiceStats
 )
 from app.services.invoice_service import InvoiceService
+from sqlalchemy import select, and_
+from sqlalchemy.orm import selectinload
 
-router = APIRouter()
+router = APIRouter(prefix="/invoices", tags=["invoices"])
+
+
+@router.get("/my-invoices", response_model=List[dict])
+async def get_my_invoices_simple(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lade alle Rechnungen des aktuellen Dienstleisters (vereinfacht)"""
+    try:
+        print(f"🔍 Lade Rechnungen für User: {current_user.id} (Type: {current_user.user_type}, Role: {current_user.user_role})")
+        
+        # Prüfe ob User ein Dienstleister ist
+        is_service_provider = (
+            current_user.user_type in ['service_provider', 'SERVICE_PROVIDER'] or
+            current_user.user_role in ['DIENSTLEISTER', 'service_provider'] or
+            str(current_user.user_type).lower() == 'service_provider'
+        )
+        
+        if not is_service_provider:
+            print(f"❌ Zugriff verweigert - User Type: {current_user.user_type}, User Role: {current_user.user_role}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Nur Dienstleister können ihre Rechnungen einsehen"
+            )
+        
+        # Lade alle Rechnungen des Dienstleisters
+        stmt = select(Invoice).where(
+            Invoice.service_provider_id == current_user.id
+        ).options(
+            selectinload(Invoice.milestone).selectinload(Milestone.project)
+        ).order_by(Invoice.created_at.desc())
+        
+        result = await db.execute(stmt)
+        invoices = result.scalars().all()
+        
+        print(f"✅ {len(invoices)} Rechnungen gefunden für Dienstleister {current_user.id}")
+        
+        invoice_list = []
+        for invoice in invoices:
+            invoice_data = {
+                'id': invoice.id,
+                'invoice_number': invoice.invoice_number,
+                'milestone_id': invoice.milestone_id,
+                'milestone_title': invoice.milestone.title if invoice.milestone else 'Unbekannt',
+                'project_name': invoice.milestone.project.name if invoice.milestone and invoice.milestone.project else 'Unbekannt',
+                'total_amount': float(invoice.total_amount) if invoice.total_amount else 0.0,
+                'status': invoice.status.value if invoice.status else 'draft',
+                'due_date': invoice.due_date.isoformat() if invoice.due_date else None,
+                'created_at': invoice.created_at.isoformat() if invoice.created_at else None,
+                'updated_at': invoice.updated_at.isoformat() if invoice.updated_at else None,
+                'pdf_path': invoice.pdf_path
+            }
+            invoice_list.append(invoice_data)
+        
+        return invoice_list
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Fehler beim Laden der Rechnungen: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Laden der Rechnungen: {str(e)}"
+        )
+
 
 @router.post("/create", response_model=InvoiceRead)
 async def create_manual_invoice(
@@ -361,3 +428,133 @@ async def get_my_invoice_stats(
     )
     
     return stats
+
+
+@router.get("/service-provider", response_model=List[dict])
+async def get_service_provider_invoices(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lade alle Rechnungen eines Dienstleisters"""
+    try:
+        print(f"🔍 Lade Rechnungen für Dienstleister: {current_user.id}")
+        
+        # Nur für Dienstleister
+        is_service_provider = (
+            current_user.user_type in ['service_provider', 'SERVICE_PROVIDER'] or
+            current_user.user_role in ['DIENSTLEISTER', 'service_provider'] or
+            str(current_user.user_type).lower() == 'service_provider'
+        )
+        
+        if not is_service_provider:
+            print(f"❌ Zugriff verweigert - User Type: {current_user.user_type}, User Role: {current_user.user_role}")
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Nur Dienstleister können ihre Rechnungen einsehen"
+            )
+        
+        # Lade alle Rechnungen des Dienstleisters
+        stmt = select(Invoice).where(
+            Invoice.service_provider_id == current_user.id
+        ).options(
+            selectinload(Invoice.milestone).selectinload(Milestone.project)
+        ).order_by(Invoice.created_at.desc())
+        
+        result = await db.execute(stmt)
+        invoices = result.scalars().all()
+        
+        invoice_list = []
+        for invoice in invoices:
+            invoice_data = {
+                'id': invoice.id,
+                'invoice_number': invoice.invoice_number,
+                'milestone_id': invoice.milestone_id,
+                'milestone_title': invoice.milestone.title if invoice.milestone else 'Unbekanntes Gewerk',
+                'project_name': invoice.milestone.project.title if invoice.milestone and invoice.milestone.project else 'Unbekanntes Projekt',
+                'total_amount': invoice.total_amount,
+                'currency': invoice.currency,
+                'status': invoice.status,
+                'created_at': invoice.created_at.isoformat(),
+                'due_date': invoice.due_date.isoformat() if invoice.due_date else None,
+                'paid_at': invoice.paid_at.isoformat() if invoice.paid_at else None
+            }
+            
+            invoice_list.append(invoice_data)
+        
+        print(f"✅ {len(invoice_list)} Rechnungen für Dienstleister gefunden")
+        return invoice_list
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Fehler beim Laden der Rechnungen: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Laden der Rechnungen: {str(e)}"
+        )
+
+
+@router.get("/milestone/{milestone_id}", response_model=dict)
+async def get_invoice_for_milestone(
+    milestone_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lade Rechnung für ein spezifisches Gewerk"""
+    try:
+        print(f"🔍 Lade Rechnung für Milestone: {milestone_id}")
+        
+        # Prüfe ob Milestone existiert und dem Dienstleister gehört
+        milestone_stmt = select(Milestone).where(
+            and_(
+                Milestone.id == milestone_id,
+                Milestone.service_provider_id == current_user.id
+            )
+        )
+        milestone_result = await db.execute(milestone_stmt)
+        milestone = milestone_result.scalar_one_or_none()
+        
+        if not milestone:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Gewerk nicht gefunden oder Sie haben keine Berechtigung"
+            )
+        
+        # Lade Rechnung für dieses Gewerk
+        invoice_stmt = select(Invoice).where(
+            Invoice.milestone_id == milestone_id
+        )
+        invoice_result = await db.execute(invoice_stmt)
+        invoice = invoice_result.scalar_one_or_none()
+        
+        if not invoice:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Keine Rechnung für dieses Gewerk gefunden"
+            )
+        
+        invoice_data = {
+            'id': invoice.id,
+            'invoice_number': invoice.invoice_number,
+            'milestone_id': invoice.milestone_id,
+            'milestone_title': milestone.title,
+            'project_name': milestone.project.title if milestone.project else 'Unbekanntes Projekt',
+            'total_amount': invoice.total_amount,
+            'currency': invoice.currency,
+            'status': invoice.status,
+            'created_at': invoice.created_at.isoformat(),
+            'due_date': invoice.due_date.isoformat() if invoice.due_date else None,
+            'paid_at': invoice.paid_at.isoformat() if invoice.paid_at else None
+        }
+        
+        print(f"✅ Rechnung für Milestone {milestone_id} gefunden")
+        return invoice_data
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Fehler beim Laden der Rechnung: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Laden der Rechnung: {str(e)}"
+        )
