@@ -78,12 +78,19 @@ class Invoice(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     created_by = Column(Integer, ForeignKey("users.id"), nullable=False)
     
+    # DMS-Integration
+    dms_document_id = Column(Integer, ForeignKey("documents.id"), nullable=True)
+    
     # Relationships
     project = relationship("Project", back_populates="invoices")
     milestone = relationship("Milestone", back_populates="invoices")
     service_provider = relationship("User", foreign_keys=[service_provider_id], back_populates="created_invoices")
     creator = relationship("User", foreign_keys=[created_by])
     rater = relationship("User", foreign_keys=[rated_by])
+    dms_document = relationship("Document")
+    
+    # Flexible Kostenpositionen
+    cost_positions = relationship("CostPosition", back_populates="invoice", cascade="all, delete-orphan", order_by="CostPosition.position_order")
 
     def __repr__(self):
         return f"<Invoice(id={self.id}, number={self.invoice_number}, total={self.total_amount})>"

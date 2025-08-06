@@ -86,7 +86,7 @@ async def get_my_invoices_simple(
         )
 
 
-@router.post("/create", response_model=InvoiceRead)
+@router.post("/create")
 async def create_manual_invoice(
     invoice_data: InvoiceCreate,
     db: AsyncSession = Depends(get_db),
@@ -95,7 +95,14 @@ async def create_manual_invoice(
     """Erstelle eine manuelle Rechnung"""
     
     # Berechtigung prüfen: Nur Dienstleister können Rechnungen erstellen
-    if current_user.user_type not in [UserType.COMPANY, UserType.FREELANCER]:
+    is_service_provider = (
+        current_user.user_type in ['service_provider', 'SERVICE_PROVIDER', UserType.SERVICE_PROVIDER] or
+        current_user.user_role in ['DIENSTLEISTER', 'service_provider'] or
+        str(current_user.user_type).lower() == 'service_provider'
+    )
+    
+    if not is_service_provider:
+        print(f"❌ Zugriff verweigert - User Type: {current_user.user_type}, User Role: {current_user.user_role}")
         raise HTTPException(
             status_code=403,
             detail="Nur Dienstleister können Rechnungen erstellen"
@@ -111,13 +118,22 @@ async def create_manual_invoice(
             created_by_user_id=current_user.id
         )
         
-        return invoice
+        # Konvertiere Invoice-Objekt zu Dictionary (minimal)
+        return {
+            "id": invoice.id,
+            "invoice_number": invoice.invoice_number,
+            "total_amount": float(invoice.total_amount),
+            "status": str(invoice.status),
+            "message": "Rechnung erfolgreich erstellt"
+        }
         
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
         print(f"❌ Fehler beim Erstellen der Rechnung: {e}")
-        raise HTTPException(status_code=500, detail="Interner Server-Fehler")
+        import traceback
+        print(f"🔍 Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Interner Server-Fehler: {str(e)}")
 
 @router.post("/upload", response_model=InvoiceRead)
 async def upload_invoice_pdf(
@@ -132,7 +148,7 @@ async def upload_invoice_pdf(
     """Lade eine PDF-Rechnung hoch"""
     
     # Berechtigung prüfen
-    if current_user.user_type not in [UserType.COMPANY, UserType.FREELANCER]:
+    if current_user.user_type not in [UserType.SERVICE_PROVIDER]:
         raise HTTPException(
             status_code=403,
             detail="Nur Dienstleister können Rechnungen hochladen"
@@ -303,6 +319,47 @@ async def get_my_invoices(
     
     return summaries
 
+@router.post("/{invoice_id}/mark-viewed", response_model=InvoiceRead)
+async def mark_invoice_viewed(
+    invoice_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Markiere eine Rechnung als angesehen"""
+    
+    invoice = await InvoiceService.get_invoice_by_id(db, invoice_id)
+    if not invoice:
+        raise HTTPException(status_code=404, detail="Rechnung nicht gefunden")
+    
+    # Berechtigung prüfen: Nur Bauträger oder Admin
+    if (current_user.id != invoice.project.owner_id and
+        current_user.user_role != UserRole.ADMIN):
+        raise HTTPException(status_code=403, detail="Keine Berechtigung")
+    
+    # ✅ Automatische DMS-Integration falls noch nicht vorhanden
+    if not invoice.dms_document_id:
+        try:
+            # Generiere PDF falls nicht vorhanden
+            if not invoice.pdf_file_path or not Path(invoice.pdf_file_path).exists():
+                pdf_path = await InvoiceService.generate_invoice_pdf(db, invoice_id)
+                invoice.pdf_file_path = pdf_path
+                invoice.pdf_file_name = f"Rechnung_{invoice.invoice_number}.pdf"
+            else:
+                pdf_path = invoice.pdf_file_path
+            
+            # Erstelle DMS-Dokument
+            await InvoiceService.create_dms_document(db, invoice, pdf_path)
+            print(f"✅ DMS-Dokument für Rechnung {invoice_id} erstellt")
+            
+        except Exception as e:
+            print(f"❌ Fehler bei DMS-Integration: {e}")
+            # Fehler bei DMS-Integration sollte nicht blockieren
+    
+    # Markiere als angesehen (optional - für Tracking)
+    # Hier könnte man ein viewed_at Feld hinzufügen falls benötigt
+    
+    return invoice
+
 @router.post("/{invoice_id}/mark-paid", response_model=InvoiceRead)
 async def mark_invoice_paid(
     invoice_id: int,
@@ -381,7 +438,25 @@ async def download_invoice_pdf(
     
     # Prüfe ob PDF-Datei existiert
     if not invoice.pdf_file_path or not Path(invoice.pdf_file_path).exists():
-        raise HTTPException(status_code=404, detail="PDF-Datei nicht gefunden")
+        # ✅ PDF generieren falls nicht vorhanden (für manuelle Rechnungen)
+        try:
+            print(f"🔍 PDF nicht gefunden für Rechnung {invoice_id}, generiere...")
+            pdf_path = await InvoiceService.generate_invoice_pdf(db, invoice_id)
+            
+            # Update invoice mit PDF-Pfad
+            invoice.pdf_file_path = pdf_path
+            invoice.pdf_file_name = f"Rechnung_{invoice.invoice_number}.pdf"
+            await db.commit()
+            await db.refresh(invoice)
+            
+            # ✅ Automatische DMS-Integration für bestehende Rechnungen
+            if not invoice.dms_document_id:
+                await InvoiceService.create_dms_document(db, invoice, pdf_path)
+            
+            print(f"✅ PDF generiert: {pdf_path}")
+        except Exception as e:
+            print(f"❌ Fehler beim PDF-Generieren: {e}")
+            raise HTTPException(status_code=500, detail="Fehler beim PDF-Generieren")
     
     return FileResponse(
         path=invoice.pdf_file_path,

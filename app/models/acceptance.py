@@ -113,6 +113,7 @@ class AcceptanceDefect(Base):
     title = Column(String, nullable=False)  # Kurze Beschreibung
     description = Column(Text, nullable=True)  # Detaillierte Beschreibung
     severity = Column(Enum(DefectSeverity), nullable=False, default=DefectSeverity.MINOR)
+    category = Column(String, nullable=True)  # Kategorie des Mangels (z.B. "Elektrik", "Sanitär", "Malerarbeiten")
     
     # Lokalisierung
     location = Column(String, nullable=True)  # Wo ist der Mangel

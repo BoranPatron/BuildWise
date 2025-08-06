@@ -99,6 +99,10 @@ class Milestone(Base):
     # Geteilte Dokumente für Ausschreibung
     shared_document_ids = Column(Text, nullable=True)  # IDs der für Ausschreibung geteilten Dokumente (JSON Array)
     
+    # Mängelbehebung
+    defects_resolved = Column(Boolean, default=False)  # Flag für "alle Mängel behoben"
+    defects_resolved_at = Column(DateTime, nullable=True)  # Zeitpunkt der Mängelbehebung
+    
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

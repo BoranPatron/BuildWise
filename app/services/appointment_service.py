@@ -5,7 +5,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 import json
 
-from ..models import Appointment, AppointmentStatus, AppointmentType, User, Project, Milestone, CostPosition, CostStatus
+from ..models import Appointment, AppointmentStatus, AppointmentType, User, Project, Milestone, CostPosition
 from ..schemas.appointment import (
     AppointmentCreate, AppointmentUpdate, ServiceProviderInvite, 
     InspectionDecisionRequest, CalendarEventData
@@ -88,36 +88,20 @@ class AppointmentService:
     
     @staticmethod
     async def _set_milestone_on_hold(db: AsyncSession, milestone_id: int):
-        """Setze alle CostPositions einer Milestone auf ON_HOLD"""
+        """Setze alle CostPositions einer Milestone auf ON_HOLD (Legacy-Funktion)"""
         try:
             print(f"🔄 Setze CostPositions für Milestone {milestone_id} auf ON_HOLD")
-            result = await db.execute(
-                select(CostPosition).where(CostPosition.milestone_id == milestone_id)
-            )
-            cost_positions = result.scalars().all()
-            
-            if cost_positions:
-                for cost_position in cost_positions:
-                    cost_position.status = CostStatus.ON_HOLD
-                
-                await db.commit()
-                print(f"✅ {len(cost_positions)} CostPositions auf ON_HOLD gesetzt")
-            else:
-                print(f"ℹ️ Keine CostPositions für Milestone {milestone_id} gefunden")
-                
+            # Da wir jetzt einfache CostPosition für Rechnungen haben,
+            # ist diese Funktion nicht mehr relevant
+            print(f"ℹ️ CostPosition-Status nicht mehr relevant für neue Struktur")
         except Exception as e:
-            print(f"❌ Fehler beim Setzen der CostPositions auf ON_HOLD: {e}")
-            await db.rollback()
-            raise e
+            print(f"⚠️ Warnung beim Setzen der CostPosition-Status: {e}")
     
     @staticmethod
     async def _mark_inspection_sent(db: AsyncSession, milestone_id: int):
-        """Markiere Milestone als 'Besichtigung versendet'"""
+        """Markiere Milestone als Inspektion gesendet"""
         try:
-            from ..models.milestone import Milestone
-            from datetime import datetime
-            
-            print(f"🔄 Markiere Milestone {milestone_id} als 'Besichtigung versendet'")
+            print(f"🔄 Markiere Milestone {milestone_id} als Inspektion gesendet")
             result = await db.execute(
                 select(Milestone).where(Milestone.id == milestone_id)
             )
@@ -125,14 +109,14 @@ class AppointmentService:
             
             if milestone:
                 milestone.inspection_sent = True
-                milestone.inspection_sent_at = datetime.utcnow()
+                milestone.inspection_sent_date = datetime.now()
                 await db.commit()
-                print(f"✅ Milestone {milestone_id} als 'Besichtigung versendet' markiert")
+                print(f"✅ Milestone {milestone_id} als Inspektion gesendet markiert")
             else:
                 print(f"⚠️ Milestone {milestone_id} nicht gefunden")
                 
         except Exception as e:
-            print(f"❌ Fehler beim Markieren der Milestone: {e}")
+            print(f"❌ Fehler beim Markieren der Inspektion: {e}")
             await db.rollback()
             raise e
     
@@ -467,7 +451,7 @@ class AppointmentService:
         cost_position = result.scalar_one_or_none()
         
         if cost_position:
-            cost_position.status = CostStatus.ACTIVE
+            cost_position.status = "active" # Da CostStatus nicht mehr existiert, verwende String
             await db.commit()
     
     @staticmethod

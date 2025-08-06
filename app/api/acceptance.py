@@ -654,3 +654,112 @@ async def get_acceptance_defects_for_milestone(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Fehler beim Laden der Mängel: {str(e)}"
         )
+
+
+# 🔧 Mängel-Management Endpunkte
+
+@router.get("/{milestone_id}/defects")
+async def get_milestone_defects(
+    milestone_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Lade alle Mängel für ein Gewerk"""
+    try:
+        defects = await AcceptanceService.get_milestone_defects(db, milestone_id, current_user.id)
+        return defects
+        
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        print(f"❌ Fehler beim Laden der Mängel: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.post("/{milestone_id}/defects/{defect_id}/resolve")
+async def resolve_defect(
+    milestone_id: int,
+    defect_id: int,
+    resolution_data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Markiere einen Mangel als behoben oder unbehoben"""
+    try:
+        # Nur Dienstleister können Mängel als behoben markieren
+        from ..models.user import UserRole, UserType
+        is_service_provider = (
+            current_user.user_role == UserRole.DIENSTLEISTER or 
+            current_user.user_type in [UserType.SERVICE_PROVIDER, 'service_provider', 'dienstleister', 'SERVICE_PROVIDER']
+        )
+        
+        if not is_service_provider:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Nur Dienstleister können Mängel als behoben markieren"
+            )
+        
+        defect = await AcceptanceService.resolve_defect(
+            db, milestone_id, defect_id, resolution_data, current_user.id
+        )
+        
+        return {"success": True, "defect": defect}
+        
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        print(f"❌ Fehler beim Markieren des Mangels: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.post("/{milestone_id}/defects/submit-resolution")
+async def submit_defect_resolution(
+    milestone_id: int,
+    resolution_data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Melde alle Mängel als behoben und bereit für finale Abnahme"""
+    try:
+        # Nur Dienstleister können Mängelbehebung melden
+        from ..models.user import UserRole, UserType
+        is_service_provider = (
+            current_user.user_role == UserRole.DIENSTLEISTER or 
+            current_user.user_type in [UserType.SERVICE_PROVIDER, 'service_provider', 'dienstleister', 'SERVICE_PROVIDER']
+        )
+        
+        if not is_service_provider:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Nur Dienstleister können Mängelbehebung melden"
+            )
+        
+        result = await AcceptanceService.submit_defect_resolution(
+            db, milestone_id, resolution_data, current_user.id
+        )
+        
+        return {"success": True, "message": "Mängelbehebung erfolgreich gemeldet", "result": result}
+        
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        print(f"❌ Fehler beim Melden der Mängelbehebung: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
+
+
+@router.get("/{milestone_id}/defects/status")
+async def get_defect_resolution_status(
+    milestone_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Prüfe den Status der Mängelbehebung für ein Gewerk"""
+    try:
+        status_info = await AcceptanceService.get_defect_resolution_status(db, milestone_id, current_user.id)
+        return status_info
+        
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+    except Exception as e:
+        print(f"❌ Fehler beim Laden des Mängelbehebungsstatus: {e}")
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))

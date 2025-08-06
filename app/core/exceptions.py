@@ -31,3 +31,13 @@ class ValidationException(BuildWiseException):
 class AuthenticationException(BuildWiseException):
     """Exception raised when authentication fails"""
     pass
+
+
+class QuoteNotFoundException(NotFoundException):
+    """Exception raised when a quote is not found"""
+    pass
+
+
+class InvalidQuoteStatusException(ValidationException):
+    """Exception raised when a quote status transition is invalid"""
+    pass

@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 import os
 import json
 from datetime import datetime
+from sqlalchemy import select
 
 from ..core.database import get_db
 from ..api.deps import get_current_user
@@ -116,10 +117,20 @@ async def get_progress_updates(
     
     print(f"🔍 [GET_PROGRESS] Milestone ID: {milestone_id}")
     print(f"🔍 [GET_PROGRESS] User ID: {current_user.id}")
+    print(f"🔍 [GET_PROGRESS] User Type: {current_user.user_type}")
     
     # Bauträger sind PRIVATE oder PROFESSIONAL User (nicht SERVICE_PROVIDER)
     is_bautraeger = current_user.user_type != UserType.SERVICE_PROVIDER
     print(f"🔍 [GET_PROGRESS] Is Bauträger: {is_bautraeger}")
+    
+    # Debug: Prüfe ob Milestone existiert
+    from ..models import Milestone
+    milestone_result = await db.execute(select(Milestone).where(Milestone.id == milestone_id))
+    milestone = milestone_result.scalar_one_or_none()
+    if milestone:
+        print(f"🔍 [GET_PROGRESS] Milestone gefunden: ID={milestone.id}, Title='{milestone.title}', Project={milestone.project_id}")
+    else:
+        print(f"❌ [GET_PROGRESS] Milestone mit ID {milestone_id} nicht gefunden!")
     
     updates = await milestone_progress_service.get_progress_updates(
         db=db,

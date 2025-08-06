@@ -1,11 +1,13 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, update, func, and_
-from typing import List, Optional
-from datetime import datetime, date
-from sqlalchemy.orm import selectinload, joinedload
+from sqlalchemy import select, and_, or_, func, update
+from sqlalchemy.orm import selectinload
+from typing import List, Optional, Dict, Any
+from datetime import datetime, timedelta
+import json
 
-from ..models import Quote, QuoteStatus
-from ..schemas.quote import QuoteCreate, QuoteUpdate, QuoteForMilestone
+from ..models import Quote, QuoteStatus, User, Project, Milestone, CostPosition
+from ..schemas.quote import QuoteCreate, QuoteUpdate, QuoteRead
+from ..core.exceptions import QuoteNotFoundException, InvalidQuoteStatusException
 from ..services.cost_position_service import get_cost_position_by_quote_id
 
 
@@ -87,14 +89,14 @@ async def get_quotes_for_service_provider(db: AsyncSession, service_provider_id:
 
 async def get_all_quotes(db: AsyncSession) -> List[Quote]:
     """Ruft alle Angebote ab (für Admin)"""
-    result = await db.execute(select(Quote).options(joinedload(Quote.project)))
+    result = await db.execute(select(Quote).options(selectinload(Quote.project)))
     return list(result.scalars().all())
 
 async def get_quotes_by_project(db: AsyncSession, project_id: int) -> List[Quote]:
     """Ruft Angebote für ein bestimmtes Projekt ab"""
     result = await db.execute(
         select(Quote)
-        .options(joinedload(Quote.project))
+        .options(selectinload(Quote.project))
         .where(Quote.project_id == project_id)
     )
     return list(result.scalars().all())
@@ -103,7 +105,7 @@ async def get_quotes_by_service_provider(db: AsyncSession, service_provider_id: 
     """Ruft Angebote eines bestimmten Dienstleisters ab"""
     result = await db.execute(
         select(Quote)
-        .options(joinedload(Quote.project))
+        .options(selectinload(Quote.project))
         .where(Quote.service_provider_id == service_provider_id)
     )
     return list(result.scalars().all())
@@ -331,116 +333,13 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
 
 
 async def create_cost_position_from_quote(db: AsyncSession, quote: Quote) -> bool:
-    """Erstellt eine Kostenposition basierend auf einem akzeptierten Angebot"""
+    """Erstellt eine Kostenposition aus einem akzeptierten Angebot (Legacy-Funktion)"""
     try:
-        from ..models import CostPosition, CostCategory, CostType, CostStatus
+        print(f"🔄 Erstelle Kostenposition aus Quote {quote.id} für Projekt {quote.project_id}")
         
-        # Prüfe, ob bereits eine Kostenposition für dieses Quote existiert
-        existing_cost_position = await get_cost_position_by_quote_id(db, quote.id)
-        if existing_cost_position:
-            print(f"⚠️  Kostenposition für Quote {quote.id} existiert bereits (ID: {existing_cost_position.id})")
-            return True
-        
-        # Stelle sicher, dass wir die korrekte Projekt-ID haben
-        project_id = quote.project_id
-        print(f"🔧 Erstelle Kostenposition für Quote {quote.id} (Projekt: {project_id})")
-        
-        # Bestimme die Kostenkategorie basierend auf dem Gewerk
-        category_mapping = {
-            'elektro': 'electrical',
-            'sanitär': 'plumbing', 
-            'heizung': 'heating',
-            'dach': 'roofing',
-            'mauerwerk': 'masonry',
-            'trockenbau': 'drywall',
-            'maler': 'painting',
-            'boden': 'flooring',
-            'garten': 'landscaping',
-            'küche': 'kitchen',
-            'bad': 'bathroom'
-        }
-        
-        # Hole Gewerk-Informationen
-        milestone_title = ""
-        if quote.milestone_id:
-            from ..models import Milestone
-            milestone_result = await db.execute(
-                select(Milestone).where(Milestone.id == quote.milestone_id)
-            )
-            milestone = milestone_result.scalar_one_or_none()
-            if milestone and milestone.title:
-                milestone_title = milestone.title.lower()
-        
-        # Bestimme Kategorie
-        category = CostCategory.OTHER
-        for keyword, cat in category_mapping.items():
-            if keyword in milestone_title:
-                if cat == 'electrical':
-                    category = CostCategory.ELECTRICAL
-                elif cat == 'plumbing':
-                    category = CostCategory.PLUMBING
-                elif cat == 'heating':
-                    category = CostCategory.HEATING
-                elif cat == 'roofing':
-                    category = CostCategory.ROOFING
-                elif cat == 'masonry':
-                    category = CostCategory.MASONRY
-                elif cat == 'drywall':
-                    category = CostCategory.DRYWALL
-                elif cat == 'painting':
-                    category = CostCategory.PAINTING
-                elif cat == 'flooring':
-                    category = CostCategory.FLOORING
-                elif cat == 'landscaping':
-                    category = CostCategory.LANDSCAPING
-                elif cat == 'kitchen':
-                    category = CostCategory.KITCHEN
-                elif cat == 'bathroom':
-                    category = CostCategory.BATHROOM
-                break
-        
-        # Erstelle Kostenposition mit expliziter Projekt-ID und korrekten Timestamps
-        now = datetime.utcnow()
-        cost_position = CostPosition(
-            project_id=project_id,  # Explizit die Quote-Projekt-ID verwenden
-            title=f"Kostenposition: {quote.title}",
-            description=quote.description or f"Kostenposition für {quote.title}",
-            amount=quote.total_amount,
-            currency=quote.currency,
-            category=category,
-            cost_type=CostType.QUOTE_ACCEPTED,  # Spezieller Typ für akzeptierte Angebote
-            status=CostStatus.ACTIVE,
-            payment_terms=quote.payment_terms,
-            warranty_period=quote.warranty_period,
-            estimated_duration=quote.estimated_duration,
-            start_date=quote.start_date,
-            completion_date=quote.completion_date,
-            contractor_name=quote.company_name,
-            contractor_contact=quote.contact_person,
-            contractor_phone=quote.phone,
-            contractor_email=quote.email,
-            contractor_website=quote.website,
-            quote_id=quote.id,  # Verknüpfung zum ursprünglichen Angebot
-            milestone_id=quote.milestone_id,
-            service_provider_id=quote.service_provider_id,
-            # Aufschlüsselung der Kosten
-            labor_cost=quote.labor_cost,
-            material_cost=quote.material_cost,
-            overhead_cost=quote.overhead_cost,
-            # Zusätzliche Informationen
-            risk_score=quote.risk_score,
-            price_deviation=quote.price_deviation,
-            ai_recommendation=quote.ai_recommendation,
-            # Korrekte Timestamps
-            created_at=now,
-            updated_at=now
-        )
-        
-        db.add(cost_position)
-        await db.commit()
-        await db.refresh(cost_position)
-        
-        print(f"✅ Kostenposition für Angebot '{quote.title}' erstellt (ID: {cost_position.id}, Projekt: {cost_position.project_id})")
+        # Da wir jetzt einfache CostPosition für Rechnungen haben,
+        # ist diese Funktion nicht mehr relevant für die neue Struktur
+        print(f"ℹ️ Kostenposition-Erstellung aus Quote nicht mehr relevant für neue Struktur")
         return True
         
     except Exception as e:

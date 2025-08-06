@@ -3,8 +3,16 @@ Pydantic schemas for invoice management
 """
 from pydantic import BaseModel, Field, validator
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from app.models.invoice import InvoiceStatus, InvoiceType
+
+class CostPosition(BaseModel):
+    """Einzelne Kostenposition in einer Rechnung"""
+    description: str = Field(..., description="Beschreibung der Leistung")
+    amount: float = Field(..., ge=0, description="Betrag der Position")
+    category: str = Field(default="custom", description="Kategorie der Position: material, labor, other, custom")
+    cost_type: str = Field(default="standard", description="Kostenart: standard, additional, other")
+    status: str = Field(default="active", description="Status der Position: active, deleted, etc.")
 
 class InvoiceBase(BaseModel):
     invoice_number: str = Field(..., description="Eindeutige Rechnungsnummer")
@@ -16,9 +24,12 @@ class InvoiceBase(BaseModel):
     vat_amount: float = Field(..., ge=0, description="Mehrwertsteuerbetrag")
     total_amount: float = Field(..., ge=0, description="Gesamtbetrag")
     
-    material_costs: Optional[float] = Field(default=0.0, ge=0, description="Materialkosten")
-    labor_costs: Optional[float] = Field(default=0.0, ge=0, description="Arbeitskosten")
-    additional_costs: Optional[float] = Field(default=0.0, ge=0, description="Zusatzkosten")
+    cost_positions: Optional[List[CostPosition]] = Field(default=[], description="Flexible Kostenpositionen")
+    
+    # Legacy-Felder für Abwärtskompatibilität (optional)
+    material_costs: Optional[float] = Field(default=None, ge=0, description="Materialkosten (Legacy)")
+    labor_costs: Optional[float] = Field(default=None, ge=0, description="Arbeitskosten (Legacy)")
+    additional_costs: Optional[float] = Field(default=None, ge=0, description="Zusatzkosten (Legacy)")
     
     description: Optional[str] = Field(None, description="Leistungsbeschreibung")
     work_period_from: Optional[datetime] = Field(None, description="Leistungszeitraum von")
@@ -81,16 +92,41 @@ class InvoiceRating(BaseModel):
     rating_overall: int = Field(..., ge=1, le=5, description="Gesamtbewertung (1-5 Sterne)")
     rating_notes: Optional[str] = Field(None, description="Bewertungsnotizen")
 
-class InvoiceRead(InvoiceBase):
+class InvoiceRead(BaseModel):
     id: int
     project_id: int
     milestone_id: int
     service_provider_id: int
+    
+    # Rechnungsdetails
+    invoice_number: str
+    invoice_date: datetime
+    due_date: datetime
+    net_amount: float
+    vat_rate: float
+    vat_amount: float
+    total_amount: float
+    
+    # Kostenaufstellung (Legacy)
+    material_costs: Optional[float] = None
+    labor_costs: Optional[float] = None
+    additional_costs: Optional[float] = None
+    
+    # Beschreibung und Leistungszeitraum
+    description: Optional[str] = None
+    work_period_from: Optional[datetime] = None
+    work_period_to: Optional[datetime] = None
+    
+    # Status und Typ
     status: InvoiceStatus
+    type: InvoiceType
     
     # PDF-Datei Info
     pdf_file_path: Optional[str] = None
     pdf_file_name: Optional[str] = None
+    
+    # Zusätzliche Informationen
+    notes: Optional[str] = None
     
     # Zahlungsinformationen
     paid_at: Optional[datetime] = None
@@ -109,8 +145,7 @@ class InvoiceRead(InvoiceBase):
     updated_at: datetime
     created_by: int
 
-    class Config:
-        from_attributes = True
+    model_config = {"from_attributes": True}
 
 class InvoiceSummary(BaseModel):
     id: int

@@ -11,6 +11,7 @@ class AcceptanceDefectBase(BaseModel):
     title: str = Field(..., description="Kurze Beschreibung des Mangels")
     description: Optional[str] = Field(None, description="Detaillierte Beschreibung")
     severity: DefectSeverity = Field(default=DefectSeverity.MINOR, description="Schweregrad")
+    category: Optional[str] = Field(None, description="Kategorie des Mangels (z.B. 'Elektrik', 'Sanitär', 'Malerarbeiten')")
     location: Optional[str] = Field(None, description="Ort des Mangels")
     room: Optional[str] = Field(None, description="Raum/Bereich")
     estimated_cost: Optional[float] = Field(None, description="Geschätzte Behebungskosten")
@@ -27,6 +28,7 @@ class AcceptanceDefectUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     severity: Optional[DefectSeverity] = None
+    category: Optional[str] = None
     location: Optional[str] = None
     room: Optional[str] = None
     resolved: Optional[bool] = None

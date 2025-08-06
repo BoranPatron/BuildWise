@@ -27,9 +27,10 @@ async def create_new_milestone(
     try:
         user_id = getattr(current_user, 'id')
         print(f"🔧 [API] create_new_milestone called for user {user_id}")
+        print(f"🔧 [API] Milestone data: {milestone_in.model_dump()}")
         
         milestone = await create_milestone(db, milestone_in, user_id)
-        print(f"✅ [API] Milestone erfolgreich erstellt: {milestone.id}")
+        print(f"✅ [API] Milestone erfolgreich erstellt: ID={milestone.id}, Title='{milestone.title}', Project={milestone.project_id}")
         
         # 🎯 KRITISCH: Explizite Schema-Konvertierung für konsistente Response
         milestone_read = MilestoneRead.from_orm(milestone)

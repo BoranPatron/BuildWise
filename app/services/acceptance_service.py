@@ -670,3 +670,210 @@ class AcceptanceService:
         except Exception as e:
             print(f"❌ Fehler bei DMS-Integration: {e}")
             # Fehler nicht weiterwerfen, da Abnahme bereits erfolgreich
+
+    # 🔧 Mängel-Management Methoden
+    
+    @staticmethod
+    async def get_milestone_defects(
+        db: AsyncSession, 
+        milestone_id: int, 
+        user_id: int
+    ) -> List[Dict[str, Any]]:
+        """Lade alle Mängel für ein Gewerk"""
+        try:
+            print(f"🔍 Lade Mängel für Milestone {milestone_id}")
+            
+            # Lade Mängel aus der Acceptance mit dem entsprechenden Milestone
+            result = await db.execute(
+                select(AcceptanceDefect)
+                .join(Acceptance, AcceptanceDefect.acceptance_id == Acceptance.id)
+                .where(Acceptance.milestone_id == milestone_id)
+                .options(joinedload(AcceptanceDefect.acceptance))
+                .order_by(AcceptanceDefect.created_at.desc())
+            )
+            
+            defects = result.scalars().all()
+            
+            # Konvertiere zu Dictionary-Format
+            defects_data = []
+            for defect in defects:
+                defects_data.append({
+                    "id": defect.id,
+                    "description": defect.description,
+                    "category": defect.category,
+                    "severity": defect.severity.value if defect.severity else "medium",
+                    "created_at": defect.created_at.isoformat() if defect.created_at else None,
+                    "resolved": defect.resolved or False,
+                    "resolved_at": defect.resolved_at.isoformat() if defect.resolved_at else None,
+                    "resolution_notes": defect.resolution_notes,
+                    "acceptance_id": defect.acceptance_id
+                })
+            
+            print(f"✅ {len(defects_data)} Mängel für Milestone {milestone_id} geladen")
+            return defects_data
+            
+        except Exception as e:
+            print(f"❌ Fehler beim Laden der Mängel: {e}")
+            raise e
+
+    @staticmethod
+    async def resolve_defect(
+        db: AsyncSession,
+        milestone_id: int,
+        defect_id: int,
+        resolution_data: Dict[str, Any],
+        user_id: int
+    ) -> Dict[str, Any]:
+        """Markiere einen Mangel als behoben oder unbehoben"""
+        try:
+            print(f"🔧 Markiere Mangel {defect_id} als {'behoben' if resolution_data.get('resolved') else 'unbehoben'}")
+            
+            # Lade den Mangel
+            result = await db.execute(
+                select(AcceptanceDefect)
+                .join(Acceptance, AcceptanceDefect.acceptance_id == Acceptance.id)
+                .where(
+                    and_(
+                        AcceptanceDefect.id == defect_id,
+                        Acceptance.milestone_id == milestone_id
+                    )
+                )
+            )
+            
+            defect = result.scalar_one_or_none()
+            if not defect:
+                raise ValueError(f"Mangel {defect_id} für Milestone {milestone_id} nicht gefunden")
+            
+            # Aktualisiere den Status
+            defect.resolved = resolution_data.get('resolved', False)
+            defect.resolution_notes = resolution_data.get('resolution_notes', '')
+            
+            if defect.resolved:
+                defect.resolved_at = datetime.utcnow()
+            else:
+                defect.resolved_at = None
+            
+            await db.commit()
+            
+            print(f"✅ Mangel {defect_id} erfolgreich aktualisiert")
+            
+            return {
+                "id": defect.id,
+                "description": defect.description,
+                "resolved": defect.resolved,
+                "resolved_at": defect.resolved_at.isoformat() if defect.resolved_at else None,
+                "resolution_notes": defect.resolution_notes
+            }
+            
+        except Exception as e:
+            print(f"❌ Fehler beim Aktualisieren des Mangels: {e}")
+            await db.rollback()
+            raise e
+
+    @staticmethod
+    async def submit_defect_resolution(
+        db: AsyncSession,
+        milestone_id: int,
+        resolution_data: Dict[str, Any],
+        user_id: int
+    ) -> Dict[str, Any]:
+        """Melde alle Mängel als behoben und bereit für finale Abnahme"""
+        try:
+            print(f"🎯 Melde Mängelbehebung für Milestone {milestone_id}")
+            
+            # Prüfe ob alle Mängel behoben sind
+            result = await db.execute(
+                select(func.count(AcceptanceDefect.id), func.count(AcceptanceDefect.id).filter(AcceptanceDefect.resolved == True))
+                .join(Acceptance, AcceptanceDefect.acceptance_id == Acceptance.id)
+                .where(Acceptance.milestone_id == milestone_id)
+            )
+            
+            total_defects, resolved_defects = result.first()
+            
+            if total_defects == 0:
+                raise ValueError("Keine Mängel für dieses Gewerk gefunden")
+            
+            if resolved_defects != total_defects:
+                raise ValueError(f"Nicht alle Mängel behoben: {resolved_defects}/{total_defects}")
+            
+            # Aktualisiere Milestone Status für finale Abnahme-Bereitschaft
+            milestone_result = await db.execute(
+                select(Milestone).where(Milestone.id == milestone_id)
+            )
+            milestone = milestone_result.scalar_one_or_none()
+            
+            if milestone:
+                # Setze einen Flag oder Status für "bereit für finale Abnahme"
+                milestone.defects_resolved = True
+                milestone.defects_resolved_at = datetime.utcnow()
+                
+                # Optional: Erstelle eine Benachrichtigung für den Bauträger
+                # TODO: Implementiere Benachrichtigungssystem
+                
+                await db.commit()
+                
+                print(f"✅ Milestone {milestone_id} als bereit für finale Abnahme markiert")
+                
+                return {
+                    "milestone_id": milestone_id,
+                    "total_defects": total_defects,
+                    "resolved_defects": resolved_defects,
+                    "ready_for_final_acceptance": True,
+                    "message": resolution_data.get('message', 'Alle Mängel behoben')
+                }
+            else:
+                raise ValueError(f"Milestone {milestone_id} nicht gefunden")
+                
+        except Exception as e:
+            print(f"❌ Fehler beim Melden der Mängelbehebung: {e}")
+            await db.rollback()
+            raise e
+
+    @staticmethod
+    async def get_defect_resolution_status(
+        db: AsyncSession,
+        milestone_id: int,
+        user_id: int
+    ) -> Dict[str, Any]:
+        """Prüfe den Status der Mängelbehebung für ein Gewerk"""
+        try:
+            print(f"🔍 Prüfe Mängelbehebungsstatus für Milestone {milestone_id}")
+            
+            # Zähle Mängel und behobene Mängel
+            result = await db.execute(
+                select(
+                    func.count(AcceptanceDefect.id).label('total_defects'),
+                    func.count(AcceptanceDefect.id).filter(AcceptanceDefect.resolved == True).label('resolved_defects')
+                )
+                .join(Acceptance, AcceptanceDefect.acceptance_id == Acceptance.id)
+                .where(Acceptance.milestone_id == milestone_id)
+            )
+            
+            row = result.first()
+            total_defects = row.total_defects or 0
+            resolved_defects = row.resolved_defects or 0
+            
+            all_resolved = total_defects > 0 and resolved_defects == total_defects
+            
+            # Prüfe Milestone-Status
+            milestone_result = await db.execute(
+                select(Milestone.defects_resolved, Milestone.defects_resolved_at)
+                .where(Milestone.id == milestone_id)
+            )
+            milestone_data = milestone_result.first()
+            
+            status = {
+                "milestone_id": milestone_id,
+                "total_defects": total_defects,
+                "resolved_defects": resolved_defects,
+                "all_resolved": all_resolved,
+                "ready_for_final_acceptance": milestone_data.defects_resolved if milestone_data else False,
+                "defects_resolved_at": milestone_data.defects_resolved_at.isoformat() if milestone_data and milestone_data.defects_resolved_at else None
+            }
+            
+            print(f"✅ Mängelbehebungsstatus: {status}")
+            return status
+            
+        except Exception as e:
+            print(f"❌ Fehler beim Prüfen des Mängelbehebungsstatus: {e}")
+            raise e
