@@ -475,6 +475,7 @@ class GeoService:
                             "project_type": project.project_type,
                             "project_status": project.status,
                             # Adress-Informationen (vom übergeordneten Projekt)
+                            "project_address": project.address or "",  # Vollständige Projektadresse
                             "address_street": project.address_street or "",
                             "address_zip": project.address_zip or "",
                             "address_city": project.address_city or "",
