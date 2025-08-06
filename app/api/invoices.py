@@ -22,6 +22,42 @@ from sqlalchemy.orm import selectinload
 router = APIRouter(prefix="/invoices", tags=["invoices"])
 
 
+@router.delete("/debug/delete-all-invoices")
+async def delete_all_invoices(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Debug-Endpoint zum Löschen aller Rechnungen"""
+    try:
+        # Prüfe ob User ein Admin oder Bauträger ist
+        if not (current_user.user_role == UserRole.ADMIN or current_user.user_role == UserRole.BAUTRAEGER):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Nur Admins und Bauträger können alle Rechnungen löschen"
+            )
+        
+        # Lösche alle Rechnungen und zugehörige Kostenpositionen
+        from sqlalchemy import text
+        
+        # Lösche zuerst die Kostenpositionen
+        await db.execute(text("DELETE FROM cost_positions"))
+        
+        # Dann lösche die Rechnungen
+        await db.execute(text("DELETE FROM invoices"))
+        
+        await db.commit()
+        
+        return {"message": "Alle Rechnungen und Kostenpositionen wurden gelöscht"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Löschen der Rechnungen: {str(e)}"
+        )
+
+
 @router.get("/my-invoices", response_model=List[dict])
 async def get_my_invoices_simple(
     current_user: User = Depends(get_current_user),
@@ -33,9 +69,10 @@ async def get_my_invoices_simple(
         
         # Prüfe ob User ein Dienstleister ist
         is_service_provider = (
-            current_user.user_type in ['service_provider', 'SERVICE_PROVIDER'] or
-            current_user.user_role in ['DIENSTLEISTER', 'service_provider'] or
-            str(current_user.user_type).lower() == 'service_provider'
+            current_user.user_type == UserType.SERVICE_PROVIDER or
+            current_user.user_role == UserRole.DIENSTLEISTER or
+            str(current_user.user_type).lower() == 'service_provider' or
+            str(current_user.user_role).lower() == 'dienstleister'
         )
         
         if not is_service_provider:
@@ -70,7 +107,7 @@ async def get_my_invoices_simple(
                 'due_date': invoice.due_date.isoformat() if invoice.due_date else None,
                 'created_at': invoice.created_at.isoformat() if invoice.created_at else None,
                 'updated_at': invoice.updated_at.isoformat() if invoice.updated_at else None,
-                'pdf_path': invoice.pdf_path
+                'pdf_path': invoice.pdf_file_path
             }
             invoice_list.append(invoice_data)
         
@@ -96,9 +133,10 @@ async def create_manual_invoice(
     
     # Berechtigung prüfen: Nur Dienstleister können Rechnungen erstellen
     is_service_provider = (
-        current_user.user_type in ['service_provider', 'SERVICE_PROVIDER', UserType.SERVICE_PROVIDER] or
-        current_user.user_role in ['DIENSTLEISTER', 'service_provider'] or
-        str(current_user.user_type).lower() == 'service_provider'
+        current_user.user_type == UserType.SERVICE_PROVIDER or
+        current_user.user_role == UserRole.DIENSTLEISTER or
+        str(current_user.user_type).lower() == 'service_provider' or
+        str(current_user.user_role).lower() == 'dienstleister'
     )
     
     if not is_service_provider:
@@ -331,8 +369,9 @@ async def mark_invoice_viewed(
     if not invoice:
         raise HTTPException(status_code=404, detail="Rechnung nicht gefunden")
     
-    # Berechtigung prüfen: Nur Bauträger oder Admin
+    # Berechtigung prüfen: Bauträger, Dienstleister oder Admin
     if (current_user.id != invoice.project.owner_id and
+        current_user.id != invoice.service_provider_id and
         current_user.user_role != UserRole.ADMIN):
         raise HTTPException(status_code=403, detail="Keine Berechtigung")
     

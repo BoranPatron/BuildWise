@@ -693,6 +693,15 @@ class InvoiceService:
             
             # Aktualisiere die Rechnung mit der DMS-Referenz
             invoice.dms_document_id = dms_document.id
+            # Speichere auch den Pfad zum Dokument, um das Dokument im DMS Verzeichnis zu finden
+            if not dms_document.file_path.startswith("storage/documents/"):
+                # Erstelle eine Kopie des Dokuments im DMS Verzeichnis
+                import shutil
+                os.makedirs("storage/documents", exist_ok=True)
+                dms_dest_path = f"storage/documents/Rechnung_{invoice.invoice_number}_{invoice.id}.pdf"
+                shutil.copy(pdf_path, dms_dest_path)
+                # Aktualisiere den Pfad des DMS-Dokuments
+                dms_document.file_path = dms_dest_path
             await db.commit()
             
         except Exception as e:

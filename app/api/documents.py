@@ -35,6 +35,65 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
+@router.delete("/debug/delete-all-documents")
+async def delete_all_documents(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Debug-Endpoint zum Löschen aller Dokumente"""
+    try:
+        # Prüfe ob User ein Admin oder Bauträger ist
+        from ..models.user import UserRole
+        if not (current_user.user_role == UserRole.ADMIN or current_user.user_role == UserRole.BAUTRAEGER):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Nur Admins und Bauträger können alle Dokumente löschen"
+            )
+        
+        # Lösche alle Dokumente und zugehörige Daten
+        from sqlalchemy import text
+        
+        # Lösche zuerst die Kommentare
+        await db.execute(text("DELETE FROM comments"))
+        
+        # Lösche die Dokumenten-Versionen
+        await db.execute(text("DELETE FROM document_versions"))
+        
+        # Lösche die Dokumenten-Status-Historie
+        await db.execute(text("DELETE FROM document_status_history"))
+        
+        # Lösche die Dokumenten-Freigaben
+        await db.execute(text("DELETE FROM document_shares"))
+        
+        # Lösche die Dokumenten-Zugriffe
+        await db.execute(text("DELETE FROM document_access_log"))
+        
+        # Dann lösche die Dokumente selbst
+        await db.execute(text("DELETE FROM documents"))
+        
+        await db.commit()
+        
+        # Lösche auch die physischen Dateien
+        import shutil
+        storage_dir = Path("storage/uploads")
+        if storage_dir.exists():
+            for item in storage_dir.iterdir():
+                if item.is_dir():
+                    shutil.rmtree(item)
+                else:
+                    item.unlink()
+        
+        return {"message": "Alle Dokumente und zugehörige Daten wurden gelöscht"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Löschen der Dokumente: {str(e)}"
+        )
+
+
 @router.post("/upload", response_model=DocumentUploadResponse, status_code=status.HTTP_201_CREATED)
 async def upload_document(
     project_id: int = Form(...),
@@ -896,4 +955,116 @@ async def get_document_content(
         raise
     except Exception as e:
         logger.error(f"Fehler beim Laden des Dokument-Inhalts {document_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail="Fehler beim Laden des Dokument-Inhalts") 
+        raise HTTPException(status_code=500, detail="Fehler beim Laden des Dokument-Inhalts")
+
+
+# Dienstleister-spezifische Endpunkte
+@router.get("/service-provider", response_model=List[DocumentSummary])
+async def read_service_provider_documents(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lade Dokumente für Dienstleister (Rechnungen, etc.)"""
+    logger.info(f"🔍 Service provider documents request - User: {current_user.email}, Type: {current_user.user_type}, Role: {current_user.user_role}")
+    try:
+        # Prüfe ob User ein Dienstleister ist
+        is_service_provider = (
+            current_user.user_type == "service_provider" or
+            current_user.user_role == "DIENSTLEISTER"
+        )
+        
+        if not is_service_provider:
+            raise HTTPException(
+                status_code=403,
+                detail="Nur Dienstleister können ihre Dokumente einsehen"
+            )
+        
+        # Lade Dienstleister-spezifische Dokumente (vereinfacht)
+        stmt = select(Document).where(
+            Document.uploaded_by == current_user.id
+        ).order_by(Document.created_at.desc()).limit(100)
+        
+        result = await db.execute(stmt)
+        documents = result.scalars().all()
+        
+        # Konvertiere zu DocumentSummary mit allen erforderlichen Feldern
+        document_summaries = []
+        for doc in documents:
+            summary = {
+                "id": doc.id,
+                "title": doc.title,
+                "document_type": doc.document_type or "other",
+                "category": doc.category,
+                "subcategory": doc.subcategory,
+                "version_number": "1.0",  # Standard-Version
+                "document_status": doc.status or "DRAFT",
+                "workflow_stage": "UPLOADED",  # Standard-Stage
+                "file_name": doc.file_name,
+                "file_size": doc.file_size or 0,
+                "created_at": doc.created_at,
+                "updated_at": doc.updated_at,
+                "is_favorite": doc.is_favorite or False,
+                "download_count": 0  # Standard-Download-Count
+            }
+            document_summaries.append(DocumentSummary(**summary))
+        
+        return document_summaries
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Fehler beim Laden der Dienstleister-Dokumente: {str(e)}")
+        raise HTTPException(status_code=500, detail="Fehler beim Laden der Dokumente")
+
+
+@router.get("/categories/stats/service-provider")
+async def get_service_provider_category_statistics(
+    project_id: Optional[int] = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lade Kategorie-Statistiken für Dienstleister-Dokumente"""
+    try:
+        # Prüfe ob User ein Dienstleister ist
+        is_service_provider = (
+            current_user.user_type == "service_provider" or
+            current_user.user_role == "DIENSTLEISTER"
+        )
+        
+        if not is_service_provider:
+            raise HTTPException(
+                status_code=403,
+                detail="Nur Dienstleister können ihre Statistiken einsehen"
+            )
+        
+        # Lade Statistiken für Dienstleister-Dokumente
+        stmt = select(
+            Document.category,
+            func.count(Document.id).label('total_documents'),
+            func.sum(Document.file_size).label('total_size'),
+            func.sum(func.case((Document.is_favorite == True, 1), else_=0)).label('favorite_count')
+        ).where(
+            Document.uploaded_by == current_user.id
+        ).group_by(Document.category)
+        
+        result = await db.execute(stmt)
+        stats = result.all()
+        
+        # Formatiere Statistiken
+        category_stats = {}
+        for stat in stats:
+            category = stat.category or "other"
+            category_stats[category] = {
+                "total_documents": stat.total_documents,
+                "total_size": stat.total_size or 0,
+                "favorite_count": stat.favorite_count,
+                "subcategories": {}  # Vereinfacht für Dienstleister
+            }
+        
+        return category_stats
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Fehler beim Laden der Dienstleister-Statistiken: {str(e)}")
+        raise HTTPException(status_code=500, detail="Fehler beim Laden der Statistiken")

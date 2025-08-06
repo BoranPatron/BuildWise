@@ -18,6 +18,43 @@ from ..services.acceptance_service import AcceptanceService
 router = APIRouter(prefix="/acceptance", tags=["acceptance"])
 
 
+@router.delete("/debug/delete-all-acceptances")
+async def delete_all_acceptances(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Debug-Endpoint zum Löschen aller Abnahmen"""
+    try:
+        # Prüfe ob User ein Admin oder Bauträger ist
+        from ..models.user import UserRole
+        if not (current_user.user_role == UserRole.ADMIN or current_user.user_role == UserRole.BAUTRAEGER):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Nur Admins und Bauträger können alle Abnahmen löschen"
+            )
+        
+        # Lösche alle Abnahmen und zugehörige Mängel
+        from sqlalchemy import text
+        
+        # Lösche zuerst die Mängel
+        await db.execute(text("DELETE FROM acceptance_defects"))
+        
+        # Dann lösche die Abnahmen
+        await db.execute(text("DELETE FROM acceptances"))
+        
+        await db.commit()
+        
+        return {"message": "Alle Abnahmen und Mängel wurden gelöscht"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Löschen der Abnahmen: {str(e)}"
+        )
+
+
 @router.post("/", response_model=AcceptanceResponse)
 async def create_acceptance(
     acceptance_data: AcceptanceCreate,

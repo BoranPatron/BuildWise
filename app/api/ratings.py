@@ -22,6 +22,37 @@ router = APIRouter(
 )
 
 
+@router.delete("/debug/delete-all-ratings")
+async def delete_all_ratings(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Debug-Endpoint zum Löschen aller Bewertungen"""
+    try:
+        # Prüfe ob User ein Admin oder Bauträger ist
+        from ..models.user import UserRole
+        if not (current_user.user_role == UserRole.ADMIN or current_user.user_role == UserRole.BAUTRAEGER):
+            raise HTTPException(
+                status_code=403,
+                detail="Nur Admins und Bauträger können alle Bewertungen löschen"
+            )
+        
+        # Lösche alle Bewertungen
+        from sqlalchemy import text
+        await db.execute(text("DELETE FROM service_provider_ratings"))
+        await db.commit()
+        
+        return {"message": "Alle Bewertungen wurden gelöscht"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Fehler beim Löschen der Bewertungen: {str(e)}"
+        )
+
+
 @router.post("/", response_model=ServiceProviderRatingResponse)
 async def create_rating(
     data: ServiceProviderRatingCreate,

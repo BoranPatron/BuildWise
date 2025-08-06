@@ -18,6 +18,37 @@ from ..services.cost_position_service import (
 router = APIRouter(prefix="/cost-positions", tags=["cost-positions"])
 
 
+@router.delete("/debug/delete-all-cost-positions")
+async def delete_all_cost_positions(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Debug-Endpoint zum Löschen aller Kostenpositionen"""
+    try:
+        # Prüfe ob User ein Admin oder Bauträger ist
+        from ..models.user import UserRole
+        if not (current_user.user_role == UserRole.ADMIN or current_user.user_role == UserRole.BAUTRAEGER):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Nur Admins und Bauträger können alle Kostenpositionen löschen"
+            )
+        
+        # Lösche alle Kostenpositionen
+        from sqlalchemy import text
+        await db.execute(text("DELETE FROM cost_positions"))
+        await db.commit()
+        
+        return {"message": "Alle Kostenpositionen wurden gelöscht"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Löschen der Kostenpositionen: {str(e)}"
+        )
+
+
 @router.post("/", response_model=CostPositionRead, status_code=status.HTTP_201_CREATED)
 async def create_new_cost_position(
     cost_position_in: CostPositionCreate,

@@ -20,6 +20,43 @@ router = APIRouter(prefix="/appointments", tags=["appointments"])
 # Sonst fängt "/{appointment_id}" alle anderen Routes ab!
 
 
+@router.delete("/debug/delete-all-appointments")
+async def delete_all_appointments(
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Debug-Endpoint zum Löschen aller Termine"""
+    try:
+        # Prüfe ob User ein Admin oder Bauträger ist
+        from ..models.user import UserRole
+        if not (current_user.user_role == UserRole.ADMIN or current_user.user_role == UserRole.BAUTRAEGER):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Nur Admins und Bauträger können alle Termine löschen"
+            )
+        
+        # Lösche alle Termine
+        from sqlalchemy import text
+        
+        # Lösche zuerst die Termin-Antworten
+        await db.execute(text("DELETE FROM appointment_responses"))
+        
+        # Dann lösche die Termine
+        await db.execute(text("DELETE FROM appointments"))
+        
+        await db.commit()
+        
+        return {"message": "Alle Termine und Termin-Antworten wurden gelöscht"}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Löschen der Termine: {str(e)}"
+        )
+
+
 @router.get("/test-simple")
 async def test_simple():
     """Einfacher Test ohne Dependencies"""
