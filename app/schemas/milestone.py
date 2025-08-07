@@ -104,45 +104,8 @@ class MilestoneRead(MilestoneBase):
                 print(f"⚠️ [SCHEMA] Fehler beim Parsen von documents: {e}")
                 documents = []
         
-        # Wenn documents leer sind, lade geteilte Dokumente
-        if not documents and hasattr(obj, 'shared_document_ids') and obj.shared_document_ids:
-            try:
-                if isinstance(obj.shared_document_ids, str):
-                    shared_ids = json.loads(obj.shared_document_ids)
-                elif isinstance(obj.shared_document_ids, list):
-                    shared_ids = obj.shared_document_ids
-                else:
-                    shared_ids = []
-                
-                if shared_ids:
-                    # Lade die geteilten Dokumente aus der Datenbank
-                    from sqlalchemy.ext.asyncio import AsyncSession
-                    from ..models.document import Document
-                    from sqlalchemy import select
-                    
-                    # Da wir hier in einem Schema sind, können wir nicht direkt auf die DB zugreifen
-                    # Stattdessen erstellen wir Dokument-Objekte basierend auf den IDs
-                    documents = []
-                    for doc_id in shared_ids:
-                        documents.append({
-                            "id": str(doc_id),
-                            "name": f"Geteiltes Dokument {doc_id}",
-                            "title": f"Geteiltes Dokument {doc_id}",
-                            "file_name": f"shared_document_{doc_id}.pdf",
-                            "url": f"/api/v1/documents/{doc_id}/download",
-                            "file_path": f"/api/v1/documents/{doc_id}/download",
-                            "type": "application/pdf",
-                            "mime_type": "application/pdf",
-                            "size": 0,
-                            "file_size": 0,
-                            "category": "shared",
-                            "subcategory": "shared",
-                            "created_at": None
-                        })
-                    
-                    print(f"🔧 [SCHEMA] Geteilte Dokumente geladen: {len(documents)}")
-            except (json.JSONDecodeError, TypeError, AttributeError) as e:
-                print(f"⚠️ [SCHEMA] Fehler beim Parsen von shared_document_ids: {e}")
+        # Hinweis: Geteilte Dokumente werden nicht im Schema geladen, 
+        # sondern über separate API-Endpunkte, um echte Dokument-Details zu erhalten
         
         print(f"🔧 [SCHEMA] Documents parsed: {documents} (type: {type(documents)})")
         
