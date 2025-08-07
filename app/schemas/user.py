@@ -35,6 +35,8 @@ class UserUpdate(BaseModel):
     region: Optional[str] = None
     languages: Optional[str] = None
     language_preference: Optional[str] = None
+    # Zusatzfelder für dynamische Client-Flags (z. B. Tutorial-/Tour-Status)
+    consent_fields: Optional[dict] = None
 
 
 class UserRead(UserBase):
@@ -75,6 +77,8 @@ class UserRead(UserBase):
     email_verified: bool
     two_factor_enabled: bool
     language_preference: str
+    # DSGVO-Erweiterung: dynamische Felder für Einwilligungen und Client-Flags
+    consent_fields: Optional[dict] = None
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
 
