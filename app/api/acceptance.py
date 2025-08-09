@@ -424,7 +424,18 @@ async def upload_acceptance_photo(
         from datetime import datetime
         
         # Erstelle Upload-Verzeichnis
-        upload_dir = f"storage/acceptances/photos"
+        # Speichere Fotos projektbasiert
+        project_id = form_data.get('project_id') if 'form_data' in locals() else None
+        if not project_id and trade_id:
+            try:
+                from sqlalchemy import select
+                from ..models import Milestone
+                ms = await db.execute(select(Milestone).where(Milestone.id == trade_id))
+                ms = ms.scalars().first()
+                project_id = ms.project_id if ms else None
+            except Exception:
+                project_id = None
+        upload_dir = f"storage/acceptances/project_{project_id}/photos" if project_id else f"storage/acceptances/photos"
         os.makedirs(upload_dir, exist_ok=True)
         
         timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -436,7 +447,8 @@ async def upload_acceptance_photo(
             buffer.write(content)
         
         # URL für Frontend (absolut mit Backend-Server)
-        photo_url = f"http://localhost:8000/storage/acceptances/photos/{filename}"
+        base_path = f"/storage/acceptances/project_{project_id}/photos" if project_id else "/storage/acceptances/photos"
+        photo_url = f"http://localhost:8000{base_path}/{filename}"
         
         return {
             "message": "Foto hochgeladen",

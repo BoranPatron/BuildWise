@@ -216,8 +216,9 @@ class InvoiceService:
             await db.execute(delete_query)
             await db.flush()
         
-        # Speichere die PDF-Datei
-        upload_dir = Path("storage/invoices")
+        # Speichere die PDF-Datei projektbasiert
+        project_dir = Path(f"storage/invoices/project_{milestone.project_id}")
+        upload_dir = project_dir
         upload_dir.mkdir(parents=True, exist_ok=True)
         
         # Generiere einen eindeutigen Dateinamen
@@ -310,8 +311,8 @@ class InvoiceService:
         if not invoice:
             raise ValueError(f"Rechnung mit ID {invoice_id} nicht gefunden")
         
-        # Erstelle PDF-Verzeichnis
-        pdf_dir = Path("storage/invoices")
+        # Erstelle PDF-Verzeichnis projektbasiert
+        pdf_dir = Path(f"storage/invoices/project_{invoice.project_id}")
         pdf_dir.mkdir(parents=True, exist_ok=True)
         
         # Generiere PDF-Dateiname

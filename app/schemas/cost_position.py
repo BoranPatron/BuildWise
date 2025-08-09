@@ -4,6 +4,7 @@ from datetime import datetime
 
 class CostPositionBase(BaseModel):
     """Basis-Schema für Kostenpositionen in Rechnungen"""
+    title: Optional[str] = None
     description: str
     amount: float
     position_order: Optional[int] = 0
@@ -33,12 +34,26 @@ class CostPositionRead(CostPositionBase):
 class CostPositionSummary(BaseModel):
     """Schema für Zusammenfassung einer Kostenposition"""
     id: int
+    title: Optional[str] = None
     description: str
     amount: float
     position_order: int
 
     class Config:
         from_attributes = True
+
+
+class CostPositionListItem(BaseModel):
+    """Erweitertes Listenelement für die Projekt-Ansicht"""
+    id: int
+    title: Optional[str] = None
+    amount: float
+    created_at: datetime
+    milestone_id: Optional[int] = None
+    milestone_title: Optional[str] = None
+    service_provider_id: Optional[int] = None
+    service_provider_name: Optional[str] = None
+    contractor_name: Optional[str] = None
 
 class CostPositionStatistics(BaseModel):
     """Schema für Statistiken von Kostenpositionen"""

@@ -3,7 +3,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, and_, or_, func
 from sqlalchemy.orm import selectinload
 
-from ..models import CostPosition, Quote, QuoteStatus
+from ..models import CostPosition, Quote, QuoteStatus, Invoice, Milestone, User
+from ..schemas.cost_position import CostPositionListItem
 from ..schemas.cost_position import CostPositionCreate, CostPositionUpdate
 
 
@@ -93,3 +94,40 @@ async def get_cost_position_by_quote_id(db: AsyncSession, quote_id: int):
     # Da wir jetzt einfache Kostenpositionen für Rechnungen haben,
     # geben wir eine leere Liste zurück
     return [] 
+
+
+async def get_cost_positions_for_project(db: AsyncSession, project_id: int) -> List[CostPositionListItem]:
+    """Holt alle Kostenpositionen für ein Projekt über die verknüpften Rechnungen"""
+    result = await db.execute(
+        select(
+            CostPosition.id,
+            CostPosition.title,
+            CostPosition.amount,
+            CostPosition.created_at,
+            Milestone.id.label("milestone_id"),
+            Milestone.title.label("milestone_title"),
+            Invoice.service_provider_id,
+            User.company_name.label("service_provider_name"),
+            CostPosition.contractor_name
+        )
+        .join(Invoice, CostPosition.invoice_id == Invoice.id)
+        .join(Milestone, Invoice.milestone_id == Milestone.id)
+        .join(User, User.id == Invoice.service_provider_id)
+        .where((Invoice.project_id == project_id) | (CostPosition.project_id == project_id))
+        .order_by(CostPosition.created_at.desc())
+    )
+    rows = result.all()
+    items: List[CostPositionListItem] = []
+    for row in rows:
+        items.append(CostPositionListItem(
+            id=row.id,
+            title=row.title,
+            amount=float(row.amount or 0),
+            created_at=row.created_at,
+            milestone_id=row.milestone_id,
+            milestone_title=row.milestone_title,
+            service_provider_id=row.service_provider_id,
+            service_provider_name=row.service_provider_name,
+            contractor_name=row.contractor_name
+        ))
+    return items

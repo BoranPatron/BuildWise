@@ -11,6 +11,8 @@ class CostPosition(Base):
     __tablename__ = "cost_positions"
     
     id = Column(Integer, primary_key=True, index=True)
+    # Verknüpfungen
+    project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
     invoice_id = Column(Integer, ForeignKey("invoices.id", ondelete="CASCADE"), nullable=False)
     title = Column(String, nullable=False)  # Hinzugefügt für DB-Kompatibilität
     description = Column(Text, nullable=False)
@@ -19,6 +21,7 @@ class CostPosition(Base):
     category = Column(String, nullable=False, default="custom")  # Kategorie: material, labor, other, custom
     cost_type = Column(String, nullable=False, default="standard")  # Fehlende Spalte
     status = Column(String, nullable=False, default="active")  # Status: active, deleted, etc.
+    contractor_name = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
     
     # Beziehung zur Rechnung

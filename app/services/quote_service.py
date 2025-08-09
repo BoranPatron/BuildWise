@@ -336,10 +336,69 @@ async def create_cost_position_from_quote(db: AsyncSession, quote: Quote) -> boo
     """Erstellt eine Kostenposition aus einem akzeptierten Angebot (Legacy-Funktion)"""
     try:
         print(f"🔄 Erstelle Kostenposition aus Quote {quote.id} für Projekt {quote.project_id}")
+        # Robuste Erstellung einer Projekt-Rechnung inkl. Kostenposition, falls noch keine existiert
+        from ..models import Invoice, InvoiceStatus, InvoiceType, Milestone
+        from ..schemas.invoice import InvoiceCreate
+        from ..services.invoice_service import InvoiceService
+        from ..models.cost_position import CostPosition
+        from ..schemas.cost_position import CostPositionCreate
+        from sqlalchemy import select
+
+        # 1) Prüfe, ob bereits eine Rechnung für dieses Gewerk existiert
+        milestone_id = quote.milestone_id
+        if milestone_id is None:
+            print("⚠️ Quote hat keinen milestone_id – überspringe Kostenposition-Erstellung")
+            return True
+
+        existing_invoice_result = await db.execute(
+            select(Invoice).where(Invoice.milestone_id == milestone_id)
+        )
+        existing_invoice = existing_invoice_result.scalar_one_or_none()
+
+        # 2) Hole Milestone für project_id
+        milestone_result = await db.execute(select(Milestone).where(Milestone.id == milestone_id))
+        milestone = milestone_result.scalar_one_or_none()
+        if not milestone:
+            print("⚠️ Milestone nicht gefunden – kann project_id nicht bestimmen")
+            return True
+
+        # 3) Rechnung anlegen, falls nicht vorhanden
+        if not existing_invoice:
+            invoice = Invoice(
+                project_id=milestone.project_id,
+                milestone_id=milestone_id,
+                service_provider_id=quote.service_provider_id,
+                invoice_number=f"AUTO-{quote.id}",
+                total_amount=quote.total_amount or 0,
+                status=InvoiceStatus.SENT,
+                type=InvoiceType.MANUAL,
+                notes="Automatisch aus Angebotsannahme erstellt"
+            )
+            db.add(invoice)
+            await db.commit()
+            await db.refresh(invoice)
+        else:
+            invoice = existing_invoice
+
+        # 4) Kostenposition aus dem angenommenen Angebot anlegen, sofern noch keine Position existiert
+        existing_cp = await db.execute(
+            select(CostPosition).where(CostPosition.invoice_id == invoice.id)
+        )
+        if not existing_cp.scalars().first():
+            cp = CostPosition(
+                invoice_id=invoice.id,
+                project_id=milestone.project_id,
+                title=quote.title or "Angebot",
+                description=quote.description or "Kostenposition aus angenommenem Angebot",
+                amount=float(quote.total_amount or 0),
+                category="custom",
+                cost_type="standard",
+                status="active"
+            )
+            db.add(cp)
+            await db.commit()
         
-        # Da wir jetzt einfache CostPosition für Rechnungen haben,
-        # ist diese Funktion nicht mehr relevant für die neue Struktur
-        print(f"ℹ️ Kostenposition-Erstellung aus Quote nicht mehr relevant für neue Struktur")
+        print(f"✅ Kostenposition/Rechnung erstellt oder vorhanden – Projekt {milestone.project_id}, Invoice {invoice.id}")
         return True
         
     except Exception as e:

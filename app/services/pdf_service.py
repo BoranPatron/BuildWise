@@ -18,8 +18,9 @@ class PDFService:
     def generate_acceptance_protocol(acceptance: Acceptance) -> str:
         """Generiere Abnahmeprotokoll als PDF"""
         try:
-            # Erstelle Verzeichnis falls nicht vorhanden
-            pdf_dir = "storage/acceptances"
+            # Erstelle Verzeichnis falls nicht vorhanden (projektbasiert, wenn bekannt)
+            project_id = data.get('project_id') if isinstance(data, dict) else None
+            pdf_dir = f"storage/acceptances/project_{project_id}" if project_id else "storage/acceptances"
             os.makedirs(pdf_dir, exist_ok=True)
             
             # PDF-Dateiname
@@ -309,8 +310,9 @@ class PDFService:
             return None
             
         try:
-            # Erstelle Verzeichnis falls nicht vorhanden
-            pdf_dir = "storage/acceptances"
+            # Erstelle Verzeichnis falls nicht vorhanden (projektbasiert, wenn bekannt)
+            project_id = data.get('project_id') if isinstance(data, dict) else None
+            pdf_dir = f"storage/acceptances/project_{project_id}" if project_id else "storage/acceptances"
             os.makedirs(pdf_dir, exist_ok=True)
             
             # PDF-Dateiname

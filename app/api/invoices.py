@@ -498,7 +498,7 @@ async def download_invoice_pdf(
             raise HTTPException(status_code=500, detail="Fehler beim PDF-Generieren")
     
     return FileResponse(
-        path=invoice.pdf_file_path,
+        path=str(invoice.pdf_file_path),
         filename=invoice.pdf_file_name or f"Rechnung_{invoice.invoice_number}.pdf",
         media_type="application/pdf"
     )

@@ -7,15 +7,24 @@ from ..api.deps import get_current_user
 from ..models import User
 from ..schemas.cost_position import (
     CostPositionCreate, CostPositionRead, CostPositionUpdate, 
-    CostPositionSummary, CostPositionStatistics
+    CostPositionSummary, CostPositionStatistics, CostPositionListItem
 )
 from ..services.cost_position_service import (
     create_cost_position, get_cost_position_by_id, get_cost_positions_for_invoice,
     update_cost_position, delete_cost_position, get_cost_position_statistics,
-    get_cost_position_by_quote_id
+    get_cost_position_by_quote_id, get_cost_positions_for_project
 )
 
 router = APIRouter(prefix="/cost-positions", tags=["cost-positions"])
+@router.get("/project/{project_id}", response_model=List[CostPositionListItem])
+async def read_cost_positions_for_project(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Holt alle Kostenpositionen eines Projekts (über verknüpfte Rechnungen)"""
+    positions = await get_cost_positions_for_project(db, project_id)
+    return positions
 
 
 @router.delete("/debug/delete-all-cost-positions")
