@@ -112,6 +112,7 @@ async def login(
             "first_login_completed": user.first_login_completed,
             "onboarding_completed": user.onboarding_completed,
             "onboarding_step": user.onboarding_step,
+            "created_at": user.created_at.isoformat() if getattr(user, 'created_at', None) else None,
             # DSGVO/dynamische Felder inkl. Tutorial-/Tour-Status
             "consent_fields": getattr(user, 'consent_fields', None),
             "consents": {
@@ -260,6 +261,7 @@ async def oauth_callback(
                 "role_selected": user.role_selected,
                 "onboarding_completed": user.onboarding_completed,
                 "first_login_completed": user.first_login_completed,
+                "created_at": user.created_at.isoformat() if getattr(user, 'created_at', None) else None,
                 "consent_fields": getattr(user, 'consent_fields', None)
             }
         }

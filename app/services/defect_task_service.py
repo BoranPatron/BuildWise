@@ -65,9 +65,18 @@ async def create_defect_task_for_service_provider(
     photo_count = len(defect.photos or [])
     photo_info = ""
     if photo_count > 0:
+        # Nutze Markdown-Bildsyntax, damit im Kanban nur das Bild erscheint
+        # und keine langen Base64-Strings den Text füllen
         photo_info = f"\n📸 **Anhänge:**\n"
         for i, photo_url in enumerate(defect.photos or [], 1):
-            photo_info += f"- Foto {i}: {photo_url}\n"
+            # Falls ein Base64-Data-URL übergeben wird, betten wir das Bild direkt ein,
+            # ohne den sehr langen String im Klartext anzuzeigen
+            if isinstance(photo_url, str) and photo_url.startswith("data:image"):
+                photo_info += f"\n![Foto {i}]({photo_url})\n"
+            else:
+                # Für normale URLs ebenfalls als Bild einbetten; falls der Renderer
+                # keine Bilder unterstützt, wird zumindest der Link angezeigt
+                photo_info += f"\n![Foto {i}]({photo_url})\n"
     
     task_description = f"""🔧 MANGELBEHEBUNG ERFORDERLICH
 
