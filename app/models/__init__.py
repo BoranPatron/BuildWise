@@ -27,6 +27,7 @@ from .acceptance import Acceptance, AcceptanceDefect, AcceptanceStatus, Acceptan
 from .invoice import Invoice, InvoiceStatus, InvoiceType
 from .milestone_progress import MilestoneProgress, ProgressUpdateType
 from .service_provider_rating import ServiceProviderRating
+from .visualization import Visualization, VisualizationCategory, VisualizationStatus
 
 __all__ = [
     "Base",
@@ -90,6 +91,10 @@ __all__ = [
     "MilestoneProgress",
     "ProgressUpdateType",
     "ServiceProviderRating",
+    # Visualization
+    "Visualization",
+    "VisualizationCategory",
+    "VisualizationStatus",
     "Acceptance", 
     "AcceptanceDefect", 
     "AcceptanceStatus", 

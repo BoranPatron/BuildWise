@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from . import auth, users, projects, tasks, documents, milestones, quotes, messages, gdpr, cost_positions, buildwise_fees, geo, finance_analytics, subscriptions, expenses, credits, inspections, appointments, milestone_progress, ratings, acceptance, invoices
+from . import auth, users, projects, tasks, documents, milestones, quotes, messages, gdpr, cost_positions, buildwise_fees, geo, finance_analytics, subscriptions, expenses, credits, inspections, appointments, milestone_progress, ratings, acceptance, invoices, visualizations
 
 api_router = APIRouter()
 api_router.include_router(auth.router)
@@ -25,3 +25,4 @@ api_router.include_router(milestone_progress.router)
 api_router.include_router(ratings.router)
 api_router.include_router(acceptance.router)
 api_router.include_router(invoices.router)
+api_router.include_router(visualizations.router)
