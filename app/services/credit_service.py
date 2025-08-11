@@ -8,7 +8,7 @@ import logging
 from ..models.user_credits import UserCredits, PlanStatus
 from ..models.credit_event import CreditEvent, CreditEventType
 from ..models.credit_purchase import CreditPurchase, CreditPackage, PurchaseStatus
-from ..models.user import User, UserRole
+from ..models.user import User, UserRole, SubscriptionPlan, SubscriptionStatus
 from ..schemas.user_credits import (
     UserCreditsCreate, UserCreditsUpdate, UserCreditsRead,
     CreditBalanceResponse, CreditSystemStatus, CreditAdjustmentRequest
@@ -57,11 +57,12 @@ class CreditService:
         user_credits = result.scalar_one_or_none()
         
         if not user_credits:
-            # Erstelle neue UserCredits mit Start-Credits
+            # Erstelle neue UserCredits mit Willkommensbonus
             user_credits = UserCredits(
                 user_id=user_id,
-                credits=100,  # Start-Credits
-                plan_status=PlanStatus.PRO
+                credits=90,  # Willkommensbonus: 90 Credits
+                plan_status=PlanStatus.PRO,
+                pro_start_date=datetime.now()
             )
             db.add(user_credits)
             await db.flush()
@@ -73,12 +74,12 @@ class CreditService:
                 db=db,
                 user_credits_id=user_credits.id,
                 event_type=CreditEventType.REGISTRATION_BONUS,
-                credits_change=100,
-                description="Willkommens-Bonus bei Registrierung",
+                credits_change=90,
+                description="🎉 Willkommensbonus! 90 Credits für Ihren Start mit BuildWise Pro",
                 ip_address=None
             )
             
-            logger.info(f"UserCredits für User {user_id} erstellt mit 100 Start-Credits")
+            logger.info(f"UserCredits für User {user_id} erstellt mit 90 Credits Willkommensbonus")
         
         return user_credits
     
@@ -140,6 +141,16 @@ class CreditService:
         # Upgrade zu Pro falls nötig
         if user_credits.plan_status != PlanStatus.PRO and user_credits.credits > 0:
             user_credits.upgrade_to_pro()
+            
+            # Aktualisiere auch den subscription_plan in der User-Tabelle auf PRO
+            await db.execute(
+                update(User)
+                .where(User.id == user_id)
+                .values(
+                    subscription_plan=SubscriptionPlan.PRO,
+                    subscription_status=SubscriptionStatus.ACTIVE
+                )
+            )
         
         await db.commit()
         await db.refresh(user_credits)
@@ -181,6 +192,17 @@ class CreditService:
         if user_credits.credits <= 0:
             user_credits.downgrade_to_basic()
             user_credits.credits = 0  # Nicht unter 0
+            
+            # Aktualisiere auch den subscription_plan in der User-Tabelle auf BASIC
+            await db.execute(
+                update(User)
+                .where(User.id == user_id)
+                .values(
+                    subscription_plan=SubscriptionPlan.BASIC,
+                    subscription_status=SubscriptionStatus.ACTIVE
+                )
+            )
+            
             logger.info(f"User {user_id} wurde automatisch auf Basic downgraded")
         
         await db.commit()
@@ -466,8 +488,26 @@ class CreditService:
         # Upgrade/Downgrade basierend auf Credits
         if user_credits.credits > 0:
             user_credits.upgrade_to_pro()
+            # Aktualisiere auch den subscription_plan in der User-Tabelle auf PRO
+            await db.execute(
+                update(User)
+                .where(User.id == adjustment_request.user_id)
+                .values(
+                    subscription_plan=SubscriptionPlan.PRO,
+                    subscription_status=SubscriptionStatus.ACTIVE
+                )
+            )
         else:
             user_credits.downgrade_to_basic()
+            # Aktualisiere auch den subscription_plan in der User-Tabelle auf BASIC
+            await db.execute(
+                update(User)
+                .where(User.id == adjustment_request.user_id)
+                .values(
+                    subscription_plan=SubscriptionPlan.BASIC,
+                    subscription_status=SubscriptionStatus.ACTIVE
+                )
+            )
         
         await db.commit()
         await db.refresh(user_credits)
@@ -517,16 +557,27 @@ class CreditService:
             logger.info(f"UserCredits für User {user_id} bereits existiert")
             return True
         
-        # Erstelle UserCredits mit Start-Credits
+        # Erstelle UserCredits mit Start-Credits (90 Credits Willkommensbonus)
         user_credits = UserCredits(
             user_id=user_id,
-            credits=100,  # Start-Credits
+            credits=90,  # Willkommensbonus: 90 Credits
             plan_status=PlanStatus.PRO,
             pro_start_date=datetime.now()
         )
         
         db.add(user_credits)
         await db.flush()
+        
+        # Aktualisiere auch den subscription_plan in der User-Tabelle auf PRO
+        await db.execute(
+            update(User)
+            .where(User.id == user_id)
+            .values(
+                subscription_plan=SubscriptionPlan.PRO,
+                subscription_status='ACTIVE'
+            )
+        )
+        
         await db.commit()
         await db.refresh(user_credits)
         
@@ -535,20 +586,20 @@ class CreditService:
             db=db,
             user_credits_id=user_credits.id,
             event_type=CreditEventType.REGISTRATION_BONUS,
-            credits_change=100,
-            description="Willkommens-Bonus bei Registrierung",
+            credits_change=90,
+            description="🎉 Willkommensbonus! 90 Credits für Ihren Start mit BuildWise Pro",
             ip_address=ip_address
         )
         
         # Audit-Log
         await SecurityService.create_audit_log(
             db, user_id, AuditAction.DATA_CREATE,
-            f"Credits für neuen Bauträger initialisiert: 100 Credits",
+            f"Credits für neuen Bauträger initialisiert: 90 Credits Willkommensbonus",
             resource_type="user_credits", resource_id=user_credits.id,
             ip_address=ip_address
         )
         
-        logger.info(f"Credits für neuen Bauträger {user_id} initialisiert: 100 Credits")
+        logger.info(f"Credits für neuen Bauträger {user_id} initialisiert: 90 Credits Willkommensbonus")
         return True
     
     @staticmethod
@@ -577,6 +628,17 @@ class CreditService:
                 if user_credits.credits <= 0:
                     user_credits.downgrade_to_basic()
                     user_credits.credits = 0
+                    
+                    # Aktualisiere auch den subscription_plan in der User-Tabelle auf BASIC
+                    await db.execute(
+                        update(User)
+                        .where(User.id == user_credits.user_id)
+                        .values(
+                            subscription_plan=SubscriptionPlan.BASIC,
+                            subscription_status='ACTIVE'
+                        )
+                    )
+                    
                     downgraded_count += 1
                 
                 # Erstelle Credit-Event

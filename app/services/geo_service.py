@@ -372,9 +372,6 @@ class GeoService:
             # Zeige ALLE Gewerke an (mit und ohne Besichtigungsoption)
             query = select(Milestone, Project).join(
                 Project, Milestone.project_id == Project.id
-            ).where(
-                Project.address_latitude.isnot(None),
-                Project.address_longitude.isnot(None)
             )
             
             # Filterung basierend auf Benutzerrolle
@@ -433,60 +430,76 @@ class GeoService:
             # Entfernung berechnen und filtern
             trades_with_distance = []
             for milestone, project in milestone_project_pairs:
-                # Verwende bereits vorhandene Koordinaten
-                if project.address_latitude and project.address_longitude:
-                    distance = self.calculate_distance(
-                        center_lat, center_lon,
-                        project.address_latitude, project.address_longitude
-                    )
-                    
-                    if distance <= radius_km:
-                        # Quote-Statistiken für Badge-System
-                        stats = quote_stats.get(milestone.id, {
-                            "total_quotes": 0,
-                            "accepted_quotes": 0,
-                            "pending_quotes": 0,
-                            "rejected_quotes": 0,
-                            "has_accepted_quote": False,
-                            "has_pending_quotes": False,
-                            "has_rejected_quotes": False
-                        })
-                        
-                        trade_dict = {
-                            "id": milestone.id,
-                            "title": milestone.title,
-                            "description": milestone.description,
-                            "category": milestone.category or "Unbekannt",
-                            "status": milestone.status,
-                            "priority": milestone.priority,
-                            "budget": milestone.budget,
-                            "planned_date": milestone.planned_date.isoformat() if milestone.planned_date else "",
-                            "start_date": milestone.start_date.isoformat() if milestone.start_date else None,
-                            "end_date": milestone.end_date.isoformat() if milestone.end_date else None,
-                            "progress_percentage": milestone.progress_percentage,
-                            "contractor": milestone.contractor,
-                            # Besichtigungssystem - Explizit übertragen
-                            "requires_inspection": bool(getattr(milestone, 'requires_inspection', False)),
-                            # Dokumente - Lade geteilte Dokumente für Dienstleister
-                            "documents": await self._load_shared_documents(db, milestone.id, is_service_provider),
-                            # Projekt-Informationen
-                            "project_id": project.id,
-                            "project_name": project.name,
-                            "project_type": project.project_type,
-                            "project_status": project.status,
-                            # Adress-Informationen (vom übergeordneten Projekt)
-                            "project_address": project.address or "",  # Vollständige Projektadresse
-                            "address_street": project.address_street or "",
-                            "address_zip": project.address_zip or "",
-                            "address_city": project.address_city or "",
-                            "address_latitude": project.address_latitude,
-                            "address_longitude": project.address_longitude,
-                            "distance_km": round(distance, 2),
-                            "created_at": milestone.created_at.isoformat() if milestone.created_at is not None else None,
-                            # Badge-System Daten
-                            "quote_stats": stats
-                        }
-                        trades_with_distance.append(trade_dict)
+                # Koordinaten des Projekts ermitteln (mit Fallback-Geocoding)
+                proj_lat = getattr(project, 'address_latitude', None)
+                proj_lon = getattr(project, 'address_longitude', None)
+
+                if proj_lat is None or proj_lon is None:
+                    project_address = getattr(project, 'address', None)
+                    if project_address and isinstance(project_address, str) and project_address.strip():
+                        geocoding_result = await self.geocode_address_from_string(project_address)
+                        if geocoding_result:
+                            proj_lat = geocoding_result["latitude"]
+                            proj_lon = geocoding_result["longitude"]
+                        else:
+                            # Ohne Koordinaten können wir Entfernung nicht berechnen → überspringen
+                            continue
+                    else:
+                        # Keine Adresse verfügbar → überspringen
+                        continue
+
+                distance = self.calculate_distance(
+                    center_lat, center_lon,
+                    float(proj_lat), float(proj_lon)
+                )
+
+                if distance <= radius_km:
+                    # Quote-Statistiken für Badge-System
+                    stats = quote_stats.get(milestone.id, {
+                        "total_quotes": 0,
+                        "accepted_quotes": 0,
+                        "pending_quotes": 0,
+                        "rejected_quotes": 0,
+                        "has_accepted_quote": False,
+                        "has_pending_quotes": False,
+                        "has_rejected_quotes": False
+                    })
+
+                    trade_dict = {
+                        "id": milestone.id,
+                        "title": milestone.title,
+                        "description": milestone.description,
+                        "category": milestone.category or "Unbekannt",
+                        "status": milestone.status,
+                        "priority": milestone.priority,
+                        "budget": milestone.budget,
+                        "planned_date": milestone.planned_date.isoformat() if milestone.planned_date else "",
+                        "start_date": milestone.start_date.isoformat() if milestone.start_date else None,
+                        "end_date": milestone.end_date.isoformat() if milestone.end_date else None,
+                        "progress_percentage": milestone.progress_percentage,
+                        "contractor": milestone.contractor,
+                        # Besichtigungssystem - Explizit übertragen
+                        "requires_inspection": bool(getattr(milestone, 'requires_inspection', False)),
+                        # Dokumente - Lade geteilte Dokumente für Dienstleister
+                        "documents": await self._load_shared_documents(db, milestone.id, is_service_provider),
+                        # Projekt-Informationen
+                        "project_id": project.id,
+                        "project_name": project.name,
+                        "project_type": project.project_type,
+                        "project_status": project.status,
+                        # Adress-Informationen (vom übergeordneten Projekt)
+                        "project_address": getattr(project, 'address', "") or "",
+                        "address_street": getattr(project, 'address_street', "") or "",
+                        "address_zip": getattr(project, 'address_zip', "") or "",
+                        "address_city": getattr(project, 'address_city', "") or "",
+                        "address_latitude": float(proj_lat),
+                        "address_longitude": float(proj_lon),
+                        "distance_km": round(distance, 2),
+                        "created_at": milestone.created_at.isoformat() if milestone.created_at is not None else None,
+                        # Badge-System Daten
+                        "quote_stats": stats
+                    }
+                    trades_with_distance.append(trade_dict)
             
             # Nach Entfernung sortieren
             trades_with_distance.sort(key=lambda x: x["distance_km"])

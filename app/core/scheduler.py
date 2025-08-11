@@ -6,6 +6,9 @@ from typing import Optional
 
 from ..core.database import get_db
 from ..services.credit_service import CreditService
+from ..services.geo_service import geo_service
+from ..models.project import Project
+from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
 
@@ -60,6 +63,9 @@ class CreditScheduler:
                 
                 # Führe tägliche Credit-Abzüge aus
                 await self._process_daily_deductions()
+
+                # Ergänzung: Periodisches Geocoding-Update für Projekte ohne Koordinaten
+                await self._update_project_geocoding_batch()
                 
             except asyncio.CancelledError:
                 logger.info("Credit-Scheduler wurde abgebrochen")
@@ -92,6 +98,36 @@ class CreditScheduler:
                     
         except Exception as e:
             logger.error(f"Fehler beim Verarbeiten der täglichen Credit-Abzüge: {e}")
+
+    async def _update_project_geocoding_batch(self):
+        """Aktualisiert Geocoding-Daten für Projekte ohne gespeicherte Koordinaten.
+        Läuft täglich im Scheduler nach den Credit-Abzügen.
+        """
+        try:
+            logger.info("Starte tägliches Projekt-Geocoding-Update (Batch)...")
+            async for db in get_db():
+                try:
+                    # Wähle eine überschaubare Menge pro Lauf, z. B. 100 Projekte ohne Koordinaten
+                    result = await db.execute(
+                        select(Project).where(
+                            (getattr(Project, 'address_latitude') == None) |
+                            (getattr(Project, 'address_longitude') == None)
+                        ).limit(100)
+                    )
+                    projects = result.scalars().all()
+
+                    updated = 0
+                    for project in projects:
+                        if await geo_service.update_project_geocoding(db, project.id):
+                            updated += 1
+
+                    logger.info(f"Projekt-Geocoding-Update abgeschlossen: {updated} Projekte aktualisiert")
+                except Exception as e:
+                    logger.error(f"Fehler beim Projekt-Geocoding-Update: {e}")
+                finally:
+                    await db.close()
+        except Exception as e:
+            logger.error(f"Fehler im Geocoding-Batch: {e}")
 
 
 # Globaler Scheduler-Instance
