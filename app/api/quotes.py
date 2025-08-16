@@ -11,8 +11,9 @@ from ..services.quote_service import (
     create_quote, get_quote_by_id, get_quotes_for_project,
     update_quote, delete_quote, submit_quote, accept_quote,
     get_quote_statistics, analyze_quote, get_quotes_for_service_provider,
-    get_quotes_for_milestone, create_mock_quotes_for_milestone,
-    get_all_quotes, get_quotes_by_project, get_quotes_by_service_provider
+    get_quotes_for_milestone, get_quotes_for_milestone_by_service_provider,
+    create_mock_quotes_for_milestone, get_all_quotes, get_quotes_by_project, 
+    get_quotes_by_service_provider
 )
 from ..schemas.quote import QuoteUpdate
 from ..models.quote import QuoteStatus
@@ -73,7 +74,18 @@ async def read_quotes_for_milestone(
     db: AsyncSession = Depends(get_db),
 ):
     """Holt alle Angebote für ein bestimmtes Gewerk"""
+    user_id = getattr(current_user, 'id', 0)
+    user_type = getattr(current_user, 'user_type', '')
+    user_role = getattr(current_user, 'user_role', '')
+    user_email = getattr(current_user, 'email', '')
+    
+    # DEBUG: Ausgabe der Benutzer-Informationen
+    print(f"🔍 DEBUG quotes/milestone/{milestone_id}: user_id={user_id}, user_type='{user_type}', user_role='{user_role}', user_email='{user_email}'")
+    
+    # TEMPORÄR: Alle Benutzer sehen alle Angebote (für Debugging)
     quotes = await get_quotes_for_milestone(db, milestone_id)
+    print(f"✅ DEBUG: Lade alle {len(quotes)} Angebote für Gewerk {milestone_id} (ohne Filterung)")
+    
     return quotes
 
 

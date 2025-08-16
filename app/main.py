@@ -36,7 +36,11 @@ else:
         # Netzwerk-Zugriff für mobile Geräte
         "http://192.168.1.65:5173",
         "http://192.168.1.65:3000",
-        "http://192.168.1.65:5174"
+        "http://192.168.1.65:5174",
+        # Zusätzliche Netzwerk-IPs für verschiedene Geräte
+        "http://192.168.1.42:5173",
+        "http://192.168.1.42:3000",
+        "http://192.168.1.42:5174"
     ]
 
 # Debug-Ausgabe für CORS-Konfiguration

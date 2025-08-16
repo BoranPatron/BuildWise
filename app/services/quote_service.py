@@ -77,6 +77,21 @@ async def get_quotes_for_milestone(db: AsyncSession, milestone_id: int) -> List[
     return list(result.scalars().all())
 
 
+async def get_quotes_for_milestone_by_service_provider(db: AsyncSession, milestone_id: int, service_provider_id: int) -> List[Quote]:
+    """Holt nur die Angebote eines bestimmten Dienstleisters für ein Gewerk"""
+    result = await db.execute(
+        select(Quote)
+        .where(
+            and_(
+                Quote.milestone_id == milestone_id,
+                Quote.service_provider_id == service_provider_id
+            )
+        )
+        .order_by(Quote.created_at.desc())
+    )
+    return list(result.scalars().all())
+
+
 async def get_quotes_for_service_provider(db: AsyncSession, service_provider_id: int) -> List[Quote]:
     """Holt alle Angebote eines Dienstleisters"""
     result = await db.execute(
