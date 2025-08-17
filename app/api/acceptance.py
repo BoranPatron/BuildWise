@@ -565,11 +565,20 @@ async def complete_final_acceptance(
         # Aktualisiere Abnahme-Status
         acceptance.status = AcceptanceStatus.ACCEPTED
         acceptance.accepted = completion_data.get('accepted', True)
-        acceptance.final_completion_date = datetime.utcnow()
-        acceptance.final_notes = completion_data.get('finalNotes', '')
-        acceptance.final_quality_rating = completion_data.get('qualityRating')
-        acceptance.final_timeliness_rating = completion_data.get('timelinessRating')
-        acceptance.final_overall_rating = completion_data.get('overallRating')
+        
+        # Setze finale Bewertungen nur wenn die Felder existieren
+        try:
+            acceptance.final_completion_date = datetime.utcnow()
+            if hasattr(acceptance, 'final_quality_rating'):
+                acceptance.final_quality_rating = completion_data.get('qualityRating')
+            if hasattr(acceptance, 'final_timeliness_rating'):
+                acceptance.final_timeliness_rating = completion_data.get('timelinessRating')
+            if hasattr(acceptance, 'final_communication_rating'):
+                acceptance.final_communication_rating = completion_data.get('communicationRating')
+            if hasattr(acceptance, 'final_overall_rating'):
+                acceptance.final_overall_rating = completion_data.get('overallRating')
+        except Exception as e:
+            print(f"⚠️ Warnung: Finale Bewertungsfelder nicht verfügbar: {e}")
         
         # Aktualisiere Milestone-Status
         milestone_id = completion_data.get('milestone_id') or acceptance.milestone_id
@@ -581,6 +590,39 @@ async def complete_final_acceptance(
             if milestone:
                 milestone.completion_status = 'completed'
                 print(f"✅ Milestone {milestone_id} Status auf 'completed' gesetzt")
+        
+        # Erstelle ServiceProviderRating
+        if acceptance.service_provider_id and milestone:
+            from ..models.service_provider_rating import ServiceProviderRating
+            
+            # Prüfe ob bereits eine Bewertung existiert
+            existing_rating_stmt = select(ServiceProviderRating).where(
+                ServiceProviderRating.bautraeger_id == current_user.id,
+                ServiceProviderRating.service_provider_id == acceptance.service_provider_id,
+                ServiceProviderRating.milestone_id == milestone_id
+            )
+            existing_rating_result = await db.execute(existing_rating_stmt)
+            existing_rating = existing_rating_result.scalar_one_or_none()
+            
+            if not existing_rating:
+                # Erstelle neue Bewertung
+                new_rating = ServiceProviderRating(
+                    bautraeger_id=current_user.id,
+                    service_provider_id=acceptance.service_provider_id,
+                    project_id=milestone.project_id,
+                    milestone_id=milestone_id,
+                    quality_rating=completion_data.get('qualityRating', 0),
+                    timeliness_rating=completion_data.get('timelinessRating', 0),
+                    communication_rating=completion_data.get('communicationRating', 0),
+                    value_rating=4.0,  # Standardwert, da nicht im Frontend erfasst
+                    overall_rating=completion_data.get('overallRating', 0),
+                    comment="Bewertung aus finaler Abnahme",
+                    is_public=1
+                )
+                db.add(new_rating)
+                print(f"✅ ServiceProviderRating erstellt für Service Provider {acceptance.service_provider_id}")
+            else:
+                print(f"ℹ️ ServiceProviderRating existiert bereits für Milestone {milestone_id}")
         
         await db.commit()
         await db.refresh(acceptance)

@@ -521,6 +521,10 @@ async def check_role(
 class RoleSelectionRequest(BaseModel):
     role: str  # "bautraeger" oder "dienstleister"
 
+class CompanyInfoRequest(BaseModel):
+    company_name: str
+    company_address: Optional[str] = None
+
 
 class OnboardingStepRequest(BaseModel):
     step: int  # Onboarding-Schritt
@@ -765,6 +769,66 @@ async def complete_first_login(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Fehler beim Abschließen des ersten Logins"
+        )
+
+
+@router.post("/update-company-info")
+async def update_company_info(
+    company_data: CompanyInfoRequest,
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    req: Request = None
+):
+    """Aktualisiert die Firmeninformationen des aktuellen Benutzers"""
+    
+    try:
+        from datetime import datetime
+        from sqlalchemy import update
+        
+        # Validierung der Eingaben
+        company_name = company_data.company_name.strip()
+        company_address = company_data.company_address.strip() if company_data.company_address else None
+        
+        if not company_name:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Firmenname ist erforderlich"
+            )
+        
+        # Update der Benutzerinformationen
+        await db.execute(
+            update(User)
+            .where(User.id == current_user.id)
+            .values(
+                company_name=company_name,
+                company_address=company_address,
+                updated_at=datetime.utcnow()
+            )
+        )
+        await db.commit()
+        
+        # Audit-Log
+        ip_address = req.client.host if req else None
+        await SecurityService.create_audit_log(
+            db, current_user.id, AuditAction.USER_UPDATE,
+            f"Firmeninformationen aktualisiert: {company_name}",
+            resource_type="user", resource_id=current_user.id,
+            ip_address=SecurityService.anonymize_ip_address(ip_address) if ip_address else None
+        )
+        
+        return {
+            "message": "Firmeninformationen erfolgreich gespeichert",
+            "company_name": company_name,
+            "company_address": company_address
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Fehler beim Speichern der Firmeninformationen: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Fehler beim Speichern der Firmeninformationen"
         )
 
 

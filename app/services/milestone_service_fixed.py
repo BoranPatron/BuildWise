@@ -21,53 +21,7 @@ from ..schemas.milestone import (
     InvoiceData
 )
 
-# Milestone CRUD Operations
-async def create_milestone(
-    db: AsyncSession,
-    milestone_in: MilestoneCreate,
-    created_by: int,
-    documents: List[UploadFile] = None,
-    shared_document_ids: List[int] = None
-) -> Milestone:
-    """
-    Erstellt ein neues Milestone/Gewerk
-    """
-    try:
-        # Erstelle Milestone-Objekt
-        milestone_data = milestone_in.dict()
-        milestone_data['created_by'] = created_by
-        milestone_data['created_at'] = datetime.utcnow()
-        milestone_data['updated_at'] = datetime.utcnow()
-        
-        # Entferne documents aus den Daten, da es nicht direkt in der DB gespeichert wird
-        milestone_data.pop('documents', None)
-        
-        milestone = Milestone(**milestone_data)
-        db.add(milestone)
-        await db.flush()  # Um die ID zu bekommen
-        
-        print(f"✅ Milestone erstellt mit ID: {milestone.id}")
-        
-        # TODO: Dokument-Upload und -Verknüpfung implementieren
-        # if documents:
-        #     # Upload und Verknüpfung der Dokumente
-        #     pass
-        
-        # if shared_document_ids:
-        #     # Verknüpfung mit geteilten Dokumenten
-        #     pass
-        
-        await db.commit()
-        await db.refresh(milestone)
-        
-        return milestone
-        
-    except Exception as e:
-        await db.rollback()
-        print(f"❌ Fehler beim Erstellen des Milestones: {str(e)}")
-        raise
-
-
+# Nur die Funktionen, die tatsächlich verwendet werden
 async def archive_milestone(
     db: AsyncSession,
     milestone_id: int,
@@ -120,3 +74,4 @@ def _generate_milestone_template_data(category: str) -> dict:
     }
     
     return templates.get(category, templates["eigene"])
+

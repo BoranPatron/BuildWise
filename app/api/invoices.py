@@ -306,17 +306,49 @@ async def get_milestone_invoice(
 ):
     """Hole die Rechnung für einen Meilenstein"""
     
-    invoice = await InvoiceService.get_invoice_by_milestone(db, milestone_id)
-    if not invoice:
-        return None
-    
-    # Berechtigung prüfen
-    if (current_user.id != invoice.service_provider_id and 
-        current_user.id != invoice.project.owner_id and
-        current_user.user_role != UserRole.ADMIN):
-        raise HTTPException(status_code=403, detail="Keine Berechtigung")
-    
-    return invoice
+    try:
+        print(f"🔍 Lade Rechnung für Milestone {milestone_id}, User: {current_user.id}")
+        
+        invoice = await InvoiceService.get_invoice_by_milestone(db, milestone_id)
+        if not invoice:
+            print(f"ℹ️ Keine Rechnung für Milestone {milestone_id} gefunden")
+            return None
+        
+        print(f"✅ Rechnung gefunden: {invoice.id}, Service Provider: {invoice.service_provider_id}")
+        print(f"🔍 Project Owner ID: {getattr(invoice.project, 'owner_id', 'NOT_LOADED')}")
+        print(f"🔍 Current User: {current_user.id}, Role: {current_user.user_role}, Type: {current_user.user_type}")
+        
+        # Erweiterte Berechtigung prüfen - auch für Bauträger
+        from ..models.user import UserRole, UserType
+        is_bautraeger = (
+            current_user.user_role == UserRole.BAUTRAEGER or 
+            current_user.user_type in [UserType.PROFESSIONAL, 'bautraeger', 'developer', 'PROFESSIONAL', 'professional']
+        )
+        
+        is_authorized = (
+            current_user.id == invoice.service_provider_id or  # Dienstleister
+            (hasattr(invoice.project, 'owner_id') and current_user.id == invoice.project.owner_id) or  # Projektbesitzer
+            is_bautraeger or  # Bauträger
+            current_user.user_role == UserRole.ADMIN  # Admin
+        )
+        
+        if not is_authorized:
+            print(f"❌ Berechtigung verweigert für User {current_user.id}")
+            raise HTTPException(status_code=403, detail="Keine Berechtigung")
+        
+        print(f"✅ Berechtigung gewährt für User {current_user.id}")
+        return invoice
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Fehler beim Laden der Rechnung für Milestone {milestone_id}: {e}")
+        import traceback
+        print(f"🔍 Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Laden der Rechnung: {str(e)}"
+        )
 
 @router.get("/service-provider/my-invoices", response_model=List[InvoiceSummary])
 async def get_my_invoices(
@@ -365,39 +397,77 @@ async def mark_invoice_viewed(
 ):
     """Markiere eine Rechnung als angesehen"""
     
-    invoice = await InvoiceService.get_invoice_by_id(db, invoice_id)
-    if not invoice:
-        raise HTTPException(status_code=404, detail="Rechnung nicht gefunden")
-    
-    # Berechtigung prüfen: Bauträger, Dienstleister oder Admin
-    if (current_user.id != invoice.project.owner_id and
-        current_user.id != invoice.service_provider_id and
-        current_user.user_role != UserRole.ADMIN):
-        raise HTTPException(status_code=403, detail="Keine Berechtigung")
-    
-    # ✅ Automatische DMS-Integration falls noch nicht vorhanden
-    if not invoice.dms_document_id:
+    try:
+        print(f"🔍 Mark-viewed für Rechnung {invoice_id}, User: {current_user.id}")
+        
+        invoice = await InvoiceService.get_invoice_by_id(db, invoice_id)
+        if not invoice:
+            raise HTTPException(status_code=404, detail="Rechnung nicht gefunden")
+        
+        print(f"✅ Rechnung gefunden: {invoice.id}, Service Provider: {invoice.service_provider_id}")
+        print(f"🔍 Current User: {current_user.id}, Role: {current_user.user_role}, Type: {current_user.user_type}")
+        
+        # Erweiterte Berechtigung prüfen - auch für Bauträger
+        from ..models.user import UserRole, UserType
+        is_bautraeger = (
+            current_user.user_role == UserRole.BAUTRAEGER or 
+            current_user.user_type in [UserType.PROFESSIONAL, 'bautraeger', 'developer', 'PROFESSIONAL', 'professional']
+        )
+        
+        is_authorized = (
+            current_user.id == invoice.service_provider_id or  # Dienstleister
+            (hasattr(invoice.project, 'owner_id') and current_user.id == invoice.project.owner_id) or  # Projektbesitzer
+            is_bautraeger or  # Bauträger
+            current_user.user_role == UserRole.ADMIN  # Admin
+        )
+        
+        if not is_authorized:
+            print(f"❌ Berechtigung verweigert für User {current_user.id}")
+            raise HTTPException(status_code=403, detail="Keine Berechtigung")
+        
+        print(f"✅ Berechtigung gewährt für User {current_user.id}")
+        
+        # ✅ Automatische DMS-Integration falls noch nicht vorhanden
         try:
             # Generiere PDF falls nicht vorhanden
             if not invoice.pdf_file_path or not Path(invoice.pdf_file_path).exists():
+                print(f"🔍 Generiere PDF für Rechnung {invoice_id}")
                 pdf_path = await InvoiceService.generate_invoice_pdf(db, invoice_id)
                 invoice.pdf_file_path = pdf_path
                 invoice.pdf_file_name = f"Rechnung_{invoice.invoice_number}.pdf"
+                await db.commit()
+                print(f"✅ PDF generiert: {pdf_path}")
             else:
-                pdf_path = invoice.pdf_file_path
+                print(f"ℹ️ PDF bereits vorhanden: {invoice.pdf_file_path}")
             
-            # Erstelle DMS-Dokument
-            await InvoiceService.create_dms_document(db, invoice, pdf_path)
-            print(f"✅ DMS-Dokument für Rechnung {invoice_id} erstellt")
-            
+            # DMS-Integration (optional - Fehler blockiert nicht)
+            if not hasattr(invoice, 'dms_document_id') or not getattr(invoice, 'dms_document_id', None):
+                try:
+                    print(f"🔍 Starte DMS-Integration für Rechnung {invoice_id}")
+                    await InvoiceService.create_dms_document(db, invoice, invoice.pdf_file_path)
+                    print(f"✅ DMS-Dokument für Rechnung {invoice_id} erstellt und kategorisiert")
+                except Exception as dms_error:
+                    print(f"⚠️ DMS-Integration fehlgeschlagen (nicht kritisch): {dms_error}")
+                    # DMS-Fehler blockiert nicht die Hauptfunktion
+            else:
+                print(f"ℹ️ DMS-Dokument bereits vorhanden für Rechnung {invoice_id}")
+                
         except Exception as e:
-            print(f"❌ Fehler bei DMS-Integration: {e}")
-            # Fehler bei DMS-Integration sollte nicht blockieren
-    
-    # Markiere als angesehen (optional - für Tracking)
-    # Hier könnte man ein viewed_at Feld hinzufügen falls benötigt
-    
-    return invoice
+            print(f"❌ Fehler bei PDF-Generierung: {e}")
+            # Auch PDF-Fehler sollten nicht blockieren, wenn die Rechnung bereits existiert
+        
+        return invoice
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Fehler beim mark-viewed für Rechnung {invoice_id}: {e}")
+        import traceback
+        print(f"🔍 Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Markieren als angesehen: {str(e)}"
+        )
 
 @router.post("/{invoice_id}/mark-paid", response_model=InvoiceRead)
 async def mark_invoice_paid(
@@ -413,8 +483,26 @@ async def mark_invoice_paid(
         raise HTTPException(status_code=404, detail="Rechnung nicht gefunden")
     
     # Berechtigung prüfen: Nur Bauträger oder Admin
-    if (current_user.id != invoice.project.owner_id and
-        current_user.user_role != UserRole.ADMIN):
+    project_owner_id = None
+    if invoice.project:
+        project_owner_id = invoice.project.owner_id
+    elif invoice.milestone and invoice.milestone.project:
+        project_owner_id = invoice.milestone.project.owner_id
+    
+    # Erweiterte Berechtigung prüfen - auch für Bauträger
+    from ..models.user import UserRole, UserType
+    is_bautraeger = (
+        current_user.user_role == UserRole.BAUTRAEGER or 
+        current_user.user_type in [UserType.PROFESSIONAL, 'bautraeger', 'developer', 'PROFESSIONAL', 'professional']
+    )
+    
+    is_authorized = (
+        current_user.user_role == UserRole.ADMIN or  # Admin
+        is_bautraeger or  # Bauträger
+        (project_owner_id and current_user.id == project_owner_id)  # Projektbesitzer
+    )
+    
+    if not is_authorized:
         raise HTTPException(status_code=403, detail="Keine Berechtigung")
     
     try:
@@ -465,20 +553,39 @@ async def download_invoice_pdf(
 ):
     """Lade die PDF-Rechnung herunter"""
     
-    invoice = await InvoiceService.get_invoice_by_id(db, invoice_id)
-    if not invoice:
-        raise HTTPException(status_code=404, detail="Rechnung nicht gefunden")
-    
-    # Berechtigung prüfen
-    if (current_user.id != invoice.service_provider_id and 
-        current_user.id != invoice.project.owner_id and
-        current_user.user_role != UserRole.ADMIN):
-        raise HTTPException(status_code=403, detail="Keine Berechtigung")
-    
-    # Prüfe ob PDF-Datei existiert
-    if not invoice.pdf_file_path or not Path(invoice.pdf_file_path).exists():
-        # ✅ PDF generieren falls nicht vorhanden (für manuelle Rechnungen)
-        try:
+    try:
+        print(f"🔍 Download-Request für Rechnung {invoice_id}, User: {current_user.id}")
+        
+        invoice = await InvoiceService.get_invoice_by_id(db, invoice_id)
+        if not invoice:
+            raise HTTPException(status_code=404, detail="Rechnung nicht gefunden")
+        
+        print(f"✅ Rechnung gefunden: {invoice.id}, Service Provider: {invoice.service_provider_id}")
+        print(f"🔍 Current User: {current_user.id}, Role: {current_user.user_role}, Type: {current_user.user_type}")
+        
+        # Erweiterte Berechtigung prüfen - auch für Bauträger
+        from ..models.user import UserRole, UserType
+        is_bautraeger = (
+            current_user.user_role == UserRole.BAUTRAEGER or 
+            current_user.user_type in [UserType.PROFESSIONAL, 'bautraeger', 'developer', 'PROFESSIONAL', 'professional']
+        )
+        
+        is_authorized = (
+            current_user.id == invoice.service_provider_id or  # Dienstleister
+            (hasattr(invoice.project, 'owner_id') and current_user.id == invoice.project.owner_id) or  # Projektbesitzer
+            is_bautraeger or  # Bauträger
+            current_user.user_role == UserRole.ADMIN  # Admin
+        )
+        
+        if not is_authorized:
+            print(f"❌ Berechtigung verweigert für User {current_user.id}")
+            raise HTTPException(status_code=403, detail="Keine Berechtigung")
+        
+        print(f"✅ Berechtigung gewährt für User {current_user.id}")
+        
+        # Prüfe ob PDF-Datei existiert
+        if not invoice.pdf_file_path or not Path(invoice.pdf_file_path).exists():
+            # ✅ PDF generieren falls nicht vorhanden (für manuelle Rechnungen)
             print(f"🔍 PDF nicht gefunden für Rechnung {invoice_id}, generiere...")
             pdf_path = await InvoiceService.generate_invoice_pdf(db, invoice_id)
             
@@ -489,19 +596,37 @@ async def download_invoice_pdf(
             await db.refresh(invoice)
             
             # ✅ Automatische DMS-Integration für bestehende Rechnungen
-            if not invoice.dms_document_id:
-                await InvoiceService.create_dms_document(db, invoice, pdf_path)
+            try:
+                if not hasattr(invoice, 'dms_document_id') or not getattr(invoice, 'dms_document_id', None):
+                    await InvoiceService.create_dms_document(db, invoice, pdf_path)
+                    print(f"✅ DMS-Dokument erstellt für Rechnung {invoice_id}")
+            except Exception as dms_error:
+                print(f"⚠️ DMS-Integration fehlgeschlagen (nicht kritisch): {dms_error}")
             
             print(f"✅ PDF generiert: {pdf_path}")
-        except Exception as e:
-            print(f"❌ Fehler beim PDF-Generieren: {e}")
-            raise HTTPException(status_code=500, detail="Fehler beim PDF-Generieren")
-    
-    return FileResponse(
-        path=str(invoice.pdf_file_path),
-        filename=invoice.pdf_file_name or f"Rechnung_{invoice.invoice_number}.pdf",
-        media_type="application/pdf"
-    )
+        else:
+            print(f"ℹ️ PDF bereits vorhanden: {invoice.pdf_file_path}")
+        
+        # Prüfe nochmal ob die Datei existiert
+        if not Path(invoice.pdf_file_path).exists():
+            raise HTTPException(status_code=500, detail="PDF-Datei konnte nicht erstellt werden")
+        
+        return FileResponse(
+            path=str(invoice.pdf_file_path),
+            filename=invoice.pdf_file_name or f"Rechnung_{invoice.invoice_number}.pdf",
+            media_type="application/pdf"
+        )
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Fehler beim Download für Rechnung {invoice_id}: {e}")
+        import traceback
+        print(f"🔍 Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Herunterladen der Rechnung: {str(e)}"
+        )
 
 @router.get("/stats/project/{project_id}", response_model=InvoiceStats)
 async def get_project_invoice_stats(

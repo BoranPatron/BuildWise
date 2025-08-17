@@ -172,17 +172,31 @@ class InvoiceService:
         await db.commit()
         await db.refresh(invoice)
         
-        # ✅ Automatische DMS-Integration für manuelle Rechnungen
-        # PDF wird erst beim ersten Download generiert
-        print(f"✅ Manuelle Rechnung erstellt: {invoice.invoice_number} für Meilenstein {milestone.title}")
+        # ✅ Generiere PDF sofort bei Erstellung
+        try:
+            print(f"🔍 Generiere PDF für neue manuelle Rechnung {invoice.id}")
+            pdf_path = await InvoiceService.generate_invoice_pdf(db, invoice.id)
+            
+            # Update invoice mit PDF-Pfad
+            invoice.pdf_file_path = pdf_path
+            invoice.pdf_file_name = f"Rechnung_{invoice.invoice_number}.pdf"
+            await db.commit()
+            await db.refresh(invoice)
+            
+            print(f"✅ PDF sofort generiert: {pdf_path}")
+            
+            # ✅ Automatische DMS-Integration
+            try:
+                await InvoiceService.create_dms_document(db, invoice, pdf_path)
+                print(f"✅ DMS-Dokument erstellt für neue Rechnung {invoice.id}")
+            except Exception as dms_error:
+                print(f"⚠️ DMS-Integration fehlgeschlagen (nicht kritisch): {dms_error}")
+                
+        except Exception as pdf_error:
+            print(f"⚠️ PDF-Generierung bei Erstellung fehlgeschlagen: {pdf_error}")
+            # PDF-Fehler blockiert nicht die Rechnungserstellung
         
-        # Debug: Prüfe Invoice-Objekt
-        print(f"🔍 Invoice ID: {invoice.id}")
-        print(f"🔍 Invoice Number: {invoice.invoice_number}")
-        print(f"🔍 Invoice Status: {invoice.status}")
-        print(f"🔍 Invoice Type: {invoice.type}")
-        print(f"🔍 Invoice Date: {invoice.invoice_date}")
-        print(f"🔍 Invoice Due Date: {invoice.due_date}")
+        print(f"✅ Manuelle Rechnung erstellt: {invoice.invoice_number} für Meilenstein {milestone.title}")
         
         return invoice
     
@@ -300,7 +314,7 @@ class InvoiceService:
         
         # Lade die Rechnung mit allen Beziehungen
         invoice_query = select(Invoice).options(
-            selectinload(Invoice.milestone).selectinload(Milestone.project),
+            selectinload(Invoice.milestone).selectinload(Milestone.project).selectinload(Project.owner),
             selectinload(Invoice.service_provider),
             selectinload(Invoice.cost_positions)  # ✅ Lade auch die Kostenpositionen
         ).where(Invoice.id == invoice_id)
@@ -344,6 +358,36 @@ class InvoiceService:
             story.append(Paragraph(f"RECHNUNG {invoice.invoice_number}", title_style))
             story.append(Spacer(1, 20))
             
+            # Bauträger-Kontaktdaten (Rechnungsempfänger)
+            bautraeger = invoice.milestone.project.owner if invoice.milestone.project.owner else None
+            
+            story.append(Paragraph("Rechnungsempfänger:", styles['Heading3']))
+            if bautraeger:
+                bautraeger_info = f"{bautraeger.first_name} {bautraeger.last_name}"
+                if bautraeger.company_name:
+                    bautraeger_info = f"{bautraeger.company_name}<br/>{bautraeger_info}"
+                if bautraeger.email:
+                    bautraeger_info += f"<br/>{bautraeger.email}"
+                if bautraeger.phone:
+                    bautraeger_info += f"<br/>{bautraeger.phone}"
+                story.append(Paragraph(bautraeger_info, styles['Normal']))
+            else:
+                story.append(Paragraph("Bauträger-Daten nicht verfügbar", styles['Normal']))
+            
+            story.append(Spacer(1, 20))
+            
+            # Dienstleister-Kontaktdaten (Rechnungssteller)
+            story.append(Paragraph("Rechnungssteller:", styles['Heading3']))
+            dienstleister_info = f"{invoice.service_provider.first_name} {invoice.service_provider.last_name}"
+            if invoice.service_provider.company_name:
+                dienstleister_info = f"{invoice.service_provider.company_name}<br/>{dienstleister_info}"
+            if invoice.service_provider.email:
+                dienstleister_info += f"<br/>{invoice.service_provider.email}"
+            if invoice.service_provider.phone:
+                dienstleister_info += f"<br/>{invoice.service_provider.phone}"
+            story.append(Paragraph(dienstleister_info, styles['Normal']))
+            story.append(Spacer(1, 20))
+            
             # Rechnungsdetails
             invoice_data = [
                 ['Rechnungsnummer:', invoice.invoice_number],
@@ -351,7 +395,6 @@ class InvoiceService:
                 ['Fälligkeitsdatum:', invoice.due_date.strftime('%d.%m.%Y')],
                 ['Projekt:', invoice.milestone.project.name],
                 ['Gewerk:', invoice.milestone.title],
-                ['Dienstleister:', f"{invoice.service_provider.first_name} {invoice.service_provider.last_name}"],
             ]
             
             if invoice.work_period_from and invoice.work_period_to:
@@ -425,35 +468,176 @@ class InvoiceService:
             
             return str(pdf_path)
             
-        except ImportError:
-            # Fallback: Erstelle einfache Text-PDF
-            print("⚠️ ReportLab nicht verfügbar, erstelle einfache PDF")
+        except Exception as e:
+            # Fallback: Erstelle einfache HTML-PDF mit weasyprint oder Text-Datei
+            print(f"⚠️ PDF-Generierung mit ReportLab fehlgeschlagen: {e}")
+            print("🔍 Versuche Fallback-PDF-Generierung...")
             
-            with open(pdf_path, 'w') as f:
-                f.write(f"RECHNUNG {invoice.invoice_number}\n")
-                f.write(f"Rechnungsdatum: {invoice.invoice_date.strftime('%d.%m.%Y')}\n")
-                f.write(f"Fälligkeitsdatum: {invoice.due_date.strftime('%d.%m.%Y')}\n")
-                f.write(f"Projekt: {invoice.milestone.project.name}\n")
-                f.write(f"Gewerk: {invoice.milestone.title}\n")
-                f.write(f"Dienstleister: {invoice.service_provider.first_name} {invoice.service_provider.last_name}\n")
-                f.write(f"Nettobetrag: {invoice.net_amount:.2f} EUR\n")
-                f.write(f"MwSt. ({invoice.vat_rate:.0f}%): {invoice.vat_amount:.2f} EUR\n")
-                f.write(f"Gesamtbetrag: {invoice.total_amount:.2f} EUR\n")
-                if invoice.description:
-                    f.write(f"Beschreibung: {invoice.description}\n")
-            
-            return str(pdf_path)
+            try:
+                # Erstelle einfache HTML-basierte PDF
+                html_content = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                    <meta charset="UTF-8">
+                    <style>
+                        body {{ font-family: Arial, sans-serif; margin: 40px; }}
+                        .header {{ text-align: center; margin-bottom: 30px; }}
+                        .section {{ margin-bottom: 20px; }}
+                        .table {{ width: 100%; border-collapse: collapse; }}
+                        .table th, .table td {{ border: 1px solid #ddd; padding: 8px; text-align: left; }}
+                        .table th {{ background-color: #f2f2f2; }}
+                        .total {{ font-weight: bold; }}
+                    </style>
+                </head>
+                <body>
+                    <div class="header">
+                        <h1>RECHNUNG {invoice.invoice_number}</h1>
+                    </div>
+                    
+                    <div class="section">
+                        <h3>Rechnungsempfänger:</h3>
+                        <p>
+                            {bautraeger.company_name if bautraeger and bautraeger.company_name else ''}<br/>
+                            {bautraeger.first_name if bautraeger else ''} {bautraeger.last_name if bautraeger else ''}<br/>
+                            {bautraeger.email if bautraeger and bautraeger.email else ''}<br/>
+                            {bautraeger.phone if bautraeger and bautraeger.phone else ''}
+                        </p>
+                    </div>
+                    
+                    <div class="section">
+                        <h3>Rechnungssteller:</h3>
+                        <p>
+                            {invoice.service_provider.company_name if invoice.service_provider.company_name else ''}<br/>
+                            {invoice.service_provider.first_name} {invoice.service_provider.last_name}<br/>
+                            {invoice.service_provider.email if invoice.service_provider.email else ''}<br/>
+                            {invoice.service_provider.phone if invoice.service_provider.phone else ''}
+                        </p>
+                    </div>
+                    
+                    <div class="section">
+                        <table class="table">
+                            <tr><th>Rechnungsnummer</th><td>{invoice.invoice_number}</td></tr>
+                            <tr><th>Rechnungsdatum</th><td>{invoice.invoice_date.strftime('%d.%m.%Y')}</td></tr>
+                            <tr><th>Fälligkeitsdatum</th><td>{invoice.due_date.strftime('%d.%m.%Y')}</td></tr>
+                            <tr><th>Projekt</th><td>{invoice.milestone.project.name}</td></tr>
+                            <tr><th>Gewerk</th><td>{invoice.milestone.title}</td></tr>
+                        </table>
+                    </div>
+                    
+                    <div class="section">
+                        <h3>Leistungsverzeichnis:</h3>
+                        <table class="table">
+                            <tr><th>Position</th><th>Betrag (EUR)</th></tr>
+                """
+                
+                # Kostenpositionen hinzufügen
+                if invoice.cost_positions:
+                    for pos in invoice.cost_positions:
+                        html_content += f"<tr><td>{pos.description}</td><td>{pos.amount:.2f}</td></tr>"
+                else:
+                    # Legacy-Kostenfelder
+                    if invoice.material_costs and invoice.material_costs > 0:
+                        html_content += f"<tr><td>Materialkosten</td><td>{invoice.material_costs:.2f}</td></tr>"
+                    if invoice.labor_costs and invoice.labor_costs > 0:
+                        html_content += f"<tr><td>Arbeitskosten</td><td>{invoice.labor_costs:.2f}</td></tr>"
+                    if invoice.additional_costs and invoice.additional_costs > 0:
+                        html_content += f"<tr><td>Zusatzkosten</td><td>{invoice.additional_costs:.2f}</td></tr>"
+                
+                html_content += f"""
+                            <tr><td><strong>Nettobetrag</strong></td><td><strong>{invoice.net_amount:.2f}</strong></td></tr>
+                            <tr><td>MwSt. ({invoice.vat_rate:.0f}%)</td><td>{invoice.vat_amount:.2f}</td></tr>
+                            <tr class="total"><td><strong>Gesamtbetrag</strong></td><td><strong>{invoice.total_amount:.2f}</strong></td></tr>
+                        </table>
+                    </div>
+                    
+                    {f'<div class="section"><h3>Beschreibung:</h3><p>{invoice.description}</p></div>' if invoice.description else ''}
+                </body>
+                </html>
+                """
+                
+                # Schreibe HTML-Datei
+                html_path = pdf_path.with_suffix('.html')
+                with open(html_path, 'w', encoding='utf-8') as f:
+                    f.write(html_content)
+                
+                print(f"✅ HTML-Fallback erstellt: {html_path}")
+                return str(html_path)
+                
+            except Exception as fallback_error:
+                print(f"❌ Auch HTML-Fallback fehlgeschlagen: {fallback_error}")
+                # Letzter Fallback: Einfache Text-Datei
+                with open(pdf_path.with_suffix('.txt'), 'w', encoding='utf-8') as f:
+                    f.write(f"RECHNUNG {invoice.invoice_number}\n\n")
+                    
+                    if bautraeger:
+                        f.write("RECHNUNGSEMPFÄNGER:\n")
+                        if bautraeger.company_name:
+                            f.write(f"{bautraeger.company_name}\n")
+                        f.write(f"{bautraeger.first_name} {bautraeger.last_name}\n")
+                        if bautraeger.email:
+                            f.write(f"{bautraeger.email}\n")
+                        if bautraeger.phone:
+                            f.write(f"{bautraeger.phone}\n")
+                        f.write("\n")
+                    
+                    f.write("RECHNUNGSSTELLER:\n")
+                    if invoice.service_provider.company_name:
+                        f.write(f"{invoice.service_provider.company_name}\n")
+                    f.write(f"{invoice.service_provider.first_name} {invoice.service_provider.last_name}\n")
+                    if invoice.service_provider.email:
+                        f.write(f"{invoice.service_provider.email}\n")
+                    if invoice.service_provider.phone:
+                        f.write(f"{invoice.service_provider.phone}\n")
+                    f.write("\n")
+                    
+                    f.write(f"Rechnungsdatum: {invoice.invoice_date.strftime('%d.%m.%Y')}\n")
+                    f.write(f"Fälligkeitsdatum: {invoice.due_date.strftime('%d.%m.%Y')}\n")
+                    f.write(f"Projekt: {invoice.milestone.project.name}\n")
+                    f.write(f"Gewerk: {invoice.milestone.title}\n\n")
+                    
+                    f.write("LEISTUNGSVERZEICHNIS:\n")
+                    if invoice.cost_positions:
+                        for pos in invoice.cost_positions:
+                            f.write(f"- {pos.description}: {pos.amount:.2f} EUR\n")
+                    else:
+                        if invoice.material_costs and invoice.material_costs > 0:
+                            f.write(f"- Materialkosten: {invoice.material_costs:.2f} EUR\n")
+                        if invoice.labor_costs and invoice.labor_costs > 0:
+                            f.write(f"- Arbeitskosten: {invoice.labor_costs:.2f} EUR\n")
+                        if invoice.additional_costs and invoice.additional_costs > 0:
+                            f.write(f"- Zusatzkosten: {invoice.additional_costs:.2f} EUR\n")
+                    
+                    f.write(f"\nNettobetrag: {invoice.net_amount:.2f} EUR\n")
+                    f.write(f"MwSt. ({invoice.vat_rate:.0f}%): {invoice.vat_amount:.2f} EUR\n")
+                    f.write(f"GESAMTBETRAG: {invoice.total_amount:.2f} EUR\n")
+                    
+                    if invoice.description:
+                        f.write(f"\nBeschreibung: {invoice.description}\n")
+                
+                print(f"✅ Text-Fallback erstellt: {pdf_path.with_suffix('.txt')}")
+                return str(pdf_path.with_suffix('.txt'))
     
     @staticmethod
     async def get_invoice_by_id(db: AsyncSession, invoice_id: int) -> Optional[Invoice]:
         """Hole eine Rechnung anhand der ID"""
         query = select(Invoice).where(Invoice.id == invoice_id).options(
             selectinload(Invoice.project),
-            selectinload(Invoice.milestone),
+            selectinload(Invoice.milestone).selectinload(Milestone.project),
             selectinload(Invoice.service_provider)
         )
         result = await db.execute(query)
-        return result.scalar_one_or_none()
+        invoice = result.scalar_one_or_none()
+        
+        # Debug-Ausgabe für Problemdiagnose
+        if invoice:
+            print(f"🔍 Invoice {invoice_id} geladen:")
+            print(f"  - project: {invoice.project}")
+            print(f"  - milestone: {invoice.milestone}")
+            print(f"  - milestone.project: {invoice.milestone.project if invoice.milestone else None}")
+            print(f"  - service_provider: {invoice.service_provider}")
+        
+        return invoice
     
     @staticmethod
     async def get_invoices_for_project(
@@ -519,6 +703,7 @@ class InvoiceService:
         if not invoice:
             raise ValueError(f"Rechnung mit ID {invoice_id} nicht gefunden")
         
+        old_status = invoice.status
         invoice.status = InvoiceStatus.PAID
         invoice.paid_at = payment_data.paid_at
         invoice.payment_reference = payment_data.payment_reference
@@ -527,8 +712,107 @@ class InvoiceService:
         await db.commit()
         await db.refresh(invoice)
         
+        # ✅ Automatische DMS-Kategorisierung für bezahlte Rechnungen
+        try:
+            await InvoiceService.auto_categorize_paid_invoice(db, invoice)
+            print(f"✅ DMS-Kategorisierung für bezahlte Rechnung {invoice.invoice_number} erfolgreich")
+        except Exception as dms_error:
+            print(f"⚠️ DMS-Kategorisierung nach Bezahlung fehlgeschlagen (nicht kritisch): {dms_error}")
+            # DMS-Fehler sollen die Zahlungsmarkierung nicht blockieren
+        
         print(f"✅ Rechnung {invoice.invoice_number} als bezahlt markiert")
         return invoice
+    
+    @staticmethod
+    async def auto_categorize_paid_invoice(db: AsyncSession, invoice: Invoice) -> None:
+        """Automatische DMS-Kategorisierung für bezahlte Rechnungen"""
+        from ..schemas.document import DocumentCreate, DocumentCategory
+        from ..utils.document_categorizer import DocumentCategorizer
+        from ..services.document_service import DocumentService
+        from pathlib import Path
+        import os
+        
+        try:
+            # Prüfe ob PDF-Datei existiert
+            if not invoice.pdf_file_path or not Path(invoice.pdf_file_path).exists():
+                print(f"⚠️ Keine PDF-Datei für Rechnung {invoice.invoice_number} gefunden")
+                return
+            
+            # Lade Milestone und Service Provider für zusätzliche Informationen
+            await db.refresh(invoice, ['milestone', 'service_provider', 'project'])
+            
+            # Generiere Dateiname und Metadaten
+            filename = Path(invoice.pdf_file_path).name
+            milestone_title = invoice.milestone.title if invoice.milestone else "Unbekanntes Gewerk"
+            service_provider_name = invoice.service_provider.company_name if invoice.service_provider else "Unbekannt"
+            
+            # Automatische Kategorisierung mit DocumentCategorizer
+            category = "finance"  # Fest auf Finanzen setzen
+            subcategory = DocumentCategorizer.suggest_subcategory(
+                category=category,
+                filename=filename,
+                invoice_status='paid',
+                invoice_type=invoice.invoice_type or 'GENERATED'
+            )
+            
+            # Generiere intelligente Tags
+            tags = DocumentCategorizer.generate_tags(
+                filename=filename,
+                milestone_title=milestone_title,
+                service_provider_name=service_provider_name,
+                amount=float(invoice.amount),
+                status='paid',
+                invoice_type=invoice.invoice_type or 'GENERATED'
+            )
+            
+            # Erstelle oder aktualisiere DMS-Dokument
+            document_data = DocumentCreate(
+                title=f"Bezahlte Rechnung - {invoice.invoice_number}",
+                filename=filename,
+                file_path=invoice.pdf_file_path,
+                file_type="PDF",
+                file_size=Path(invoice.pdf_file_path).stat().st_size,
+                category=DocumentCategory.FINANCE,
+                subcategory="Bezahlte Rechnungen",
+                tags=tags,
+                project_id=invoice.project_id,
+                milestone_id=invoice.milestone_id,
+                created_by_user_id=invoice.created_by_user_id,
+                description=f"Automatisch kategorisierte bezahlte Rechnung von {service_provider_name} für {milestone_title}. Betrag: {invoice.amount}€"
+            )
+            
+            # Prüfe ob bereits ein DMS-Dokument existiert
+            if hasattr(invoice, 'dms_document_id') and invoice.dms_document_id:
+                # Aktualisiere bestehendes Dokument
+                await DocumentService.update_document(
+                    db=db,
+                    document_id=invoice.dms_document_id,
+                    document_update=document_data
+                )
+                print(f"📁 DMS-Dokument {invoice.dms_document_id} für bezahlte Rechnung aktualisiert")
+            else:
+                # Erstelle neues DMS-Dokument
+                document = await DocumentService.create_document(db=db, document=document_data)
+                # Verknüpfe Rechnung mit DMS-Dokument (falls Feld existiert)
+                if hasattr(invoice, 'dms_document_id'):
+                    invoice.dms_document_id = document.id
+                    await db.commit()
+                print(f"📁 Neues DMS-Dokument {document.id} für bezahlte Rechnung erstellt")
+            
+            # Kopiere Datei in DMS-Storage-Struktur
+            project_id = invoice.project_id
+            target_dir = Path("storage") / "projects" / f"project_{project_id}" / "uploaded_documents" / "finance" / "bezahlte_rechnungen"
+            target_dir.mkdir(parents=True, exist_ok=True)
+            
+            target_file = target_dir / filename
+            if not target_file.exists():
+                import shutil
+                shutil.copy2(invoice.pdf_file_path, target_file)
+                print(f"📄 Rechnung nach {target_file} kopiert")
+            
+        except Exception as e:
+            print(f"❌ Fehler bei automatischer DMS-Kategorisierung: {e}")
+            raise
     
     @staticmethod
     async def rate_service_provider(
@@ -663,22 +947,45 @@ class InvoiceService:
             else:
                 document_type = DocumentType.INVOICE
             
-            # Erstelle DMS-Dokument
+            # ✅ Automatische Kategorisierung mit DocumentCategorizer
+            from ..utils.document_categorizer import DocumentCategorizer
+            
+            filename = f"Rechnung_{invoice.invoice_number}_{invoice.milestone.title}.pdf"
+            category = DocumentCategorizer.categorize_document(filename, ".pdf")
+            subcategory = DocumentCategorizer.suggest_subcategory(
+                category, 
+                filename, 
+                invoice.status.value, 
+                invoice.type.value if invoice.type else None
+            )
+            
+            # Intelligente Tag-Generierung
+            tags = DocumentCategorizer.generate_tags(
+                filename=filename,
+                milestone_title=invoice.milestone.title,
+                service_provider_name=invoice.service_provider.company_name or invoice.service_provider.last_name,
+                amount=float(invoice.total_amount),
+                status=invoice.status.value,
+                invoice_type=invoice.type.value if invoice.type else "UNKNOWN"
+            )
+            
+            # Erstelle DMS-Dokument mit intelligenter Kategorisierung
             document_data = DocumentCreate(
                 project_id=invoice.project_id,
                 title=f"Rechnung {invoice.invoice_number} - {invoice.milestone.title}",
                 description=f"Rechnung für Gewerk: {invoice.milestone.title}\n"
                            f"Dienstleister: {invoice.service_provider.first_name} {invoice.service_provider.last_name}\n"
                            f"Betrag: {invoice.total_amount:.2f} EUR\n"
-                           f"Status: {invoice.status.value}",
+                           f"Status: {invoice.status.value}\n"
+                           f"Automatisch kategorisiert als: {subcategory}",
                 document_type=DocumentTypeEnum.INVOICE,
                 category=DocumentCategory.FINANCE,
-                subcategory="Rechnungen",
+                subcategory=subcategory,
                 file_name=f"Rechnung_{invoice.invoice_number}_{invoice.id}.pdf",
                 file_path=pdf_path,
                 file_size=Path(pdf_path).stat().st_size if Path(pdf_path).exists() else 0,
                 mime_type="application/pdf",
-                tags=["Rechnung", "Finanzen", invoice.milestone.title],
+                tags=tags,
                 is_public=False,  # Rechnungen sind nicht öffentlich
                 version_number="1.0.0"
             )
@@ -708,3 +1015,49 @@ class InvoiceService:
         except Exception as e:
             print(f"❌ Fehler bei DMS-Integration: {e}")
             # Fehler bei DMS-Integration sollte nicht die Rechnungserstellung blockieren
+    
+    @staticmethod
+    async def update_dms_document_for_payment(
+        db: AsyncSession,
+        invoice: Invoice
+    ) -> None:
+        """Aktualisiert ein DMS-Dokument nach Zahlungseingang"""
+        
+        try:
+            # Einfache DMS-Update-Logik ohne komplexe Abhängigkeiten
+            print(f"🔍 Versuche DMS-Update für Rechnung {invoice.invoice_number}")
+            
+            # Prüfe ob alle erforderlichen Services verfügbar sind
+            try:
+                from ..services.document_service import update_document
+                from ..schemas.document import DocumentUpdate
+            except ImportError as import_error:
+                print(f"⚠️ DMS-Services nicht verfügbar: {import_error}")
+                return
+            
+            # Einfache Update-Daten ohne DocumentCategorizer
+            update_data = DocumentUpdate(
+                title=f"Rechnung {invoice.invoice_number} - {invoice.milestone.title} (BEZAHLT)",
+                description=f"Rechnung für Gewerk: {invoice.milestone.title}\n"
+                           f"Dienstleister: {invoice.service_provider.first_name} {invoice.service_provider.last_name}\n"
+                           f"Betrag: {invoice.total_amount:.2f} EUR\n"
+                           f"Status: BEZAHLT am {invoice.paid_at.strftime('%d.%m.%Y') if invoice.paid_at else 'Unbekannt'}",
+                subcategory="Bezahlte Rechnungen",
+                tags=["Rechnung", "Bezahlt", "Finanzen", invoice.milestone.title]
+            )
+            
+            # Führe das Update durch
+            await update_document(
+                db=db,
+                document_id=getattr(invoice, 'dms_document_id', None),
+                document_in=update_data,
+                updated_by=getattr(invoice, 'created_by', None)
+            )
+            
+            print(f"✅ DMS-Dokument für bezahlte Rechnung {invoice.invoice_number} aktualisiert")
+            
+        except Exception as e:
+            print(f"❌ Fehler beim DMS-Update: {e}")
+            import traceback
+            print(f"🔍 DMS-Update Traceback: {traceback.format_exc()}")
+            # Fehler beim DMS-Update sollte nicht die Zahlungsmarkierung blockieren

@@ -153,6 +153,7 @@ async def archive_milestone(
 async def get_archived_milestones(
     search_query: Optional[str] = None,
     category_filter: Optional[str] = None,
+    project_id: Optional[int] = None,
     skip: int = 0,
     limit: int = 100,
     db: AsyncSession = Depends(get_db),
@@ -170,6 +171,7 @@ async def get_archived_milestones(
         is_service_provider,
         search_query,
         category_filter,
+        project_id,
         skip,
         limit
     )

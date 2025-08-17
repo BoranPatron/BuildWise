@@ -91,6 +91,7 @@ class UserProfile(BaseModel):
     first_name: str
     last_name: str
     company_name: Optional[str] = None
+    company_address: Optional[str] = None
     bio: Optional[str] = None
     profile_image: Optional[str] = None
     region: Optional[str] = None
