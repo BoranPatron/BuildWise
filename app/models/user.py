@@ -140,6 +140,7 @@ class User(Base):
     # Firmendaten für Dienstleister (optional, nur bei Einwilligung)
     company_name = Column(String, nullable=True)
     company_address = Column(Text, nullable=True)
+    company_uid = Column(String(50), nullable=True)  # UID-Nummer
     company_phone = Column(String, nullable=True)
     company_website = Column(String, nullable=True)
     business_license = Column(String, nullable=True)  # Gewerbeschein

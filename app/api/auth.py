@@ -524,6 +524,7 @@ class RoleSelectionRequest(BaseModel):
 class CompanyInfoRequest(BaseModel):
     company_name: str
     company_address: Optional[str] = None
+    company_uid: Optional[str] = None
 
 
 class OnboardingStepRequest(BaseModel):
@@ -788,6 +789,7 @@ async def update_company_info(
         # Validierung der Eingaben
         company_name = company_data.company_name.strip()
         company_address = company_data.company_address.strip() if company_data.company_address else None
+        company_uid = company_data.company_uid.strip() if company_data.company_uid else None
         
         if not company_name:
             raise HTTPException(
@@ -802,6 +804,7 @@ async def update_company_info(
             .values(
                 company_name=company_name,
                 company_address=company_address,
+                company_uid=company_uid,
                 updated_at=datetime.utcnow()
             )
         )
@@ -819,7 +822,8 @@ async def update_company_info(
         return {
             "message": "Firmeninformationen erfolgreich gespeichert",
             "company_name": company_name,
-            "company_address": company_address
+            "company_address": company_address,
+            "company_uid": company_uid
         }
         
     except HTTPException:

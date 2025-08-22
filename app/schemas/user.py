@@ -27,6 +27,7 @@ class UserUpdate(BaseModel):
     phone: Optional[str] = None
     company_name: Optional[str] = None
     company_address: Optional[str] = None
+    company_uid: Optional[str] = None
     company_phone: Optional[str] = None
     company_website: Optional[str] = None
     business_license: Optional[str] = None
@@ -43,6 +44,7 @@ class UserRead(UserBase):
     id: int
     company_name: Optional[str] = None
     company_address: Optional[str] = None
+    company_uid: Optional[str] = None
     company_phone: Optional[str] = None
     company_website: Optional[str] = None
     business_license: Optional[str] = None

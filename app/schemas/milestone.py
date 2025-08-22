@@ -24,11 +24,13 @@ class MilestoneBase(BaseModel):
     construction_phase: Optional[str] = None
     # Besichtigungssystem
     requires_inspection: bool = False
+    # Geteilte Dokumente
+    shared_document_ids: Optional[List[int]] = []
 
 
 class MilestoneCreate(MilestoneBase):
     project_id: int
-    documents: List[Dict[str, Any]] = []
+    documents: List[int] = []  # Liste von Dokument-IDs
 
 
 class MilestoneUpdate(BaseModel):
@@ -60,7 +62,7 @@ class MilestoneRead(MilestoneBase):
     created_by: int
     actual_date: Optional[date] = None
     progress_percentage: int
-    documents: List[Dict[str, Any]] = []  # Immer Liste, nie None
+    documents: List[int] = []  # Liste von Dokument-IDs
     created_at: datetime
     updated_at: datetime
     completed_at: Optional[datetime] = None
@@ -80,6 +82,18 @@ class MilestoneRead(MilestoneBase):
                 data['documents'] = parsed if isinstance(parsed, list) else []
             except (json.JSONDecodeError, TypeError):
                 data['documents'] = []
+        
+        # Sichere JSON-Deserialisierung für shared_document_ids falls direkt aus DB-Objekt erstellt
+        if 'shared_document_ids' in data and isinstance(data['shared_document_ids'], str):
+            import json
+            try:
+                parsed = json.loads(data['shared_document_ids'])
+                data['shared_document_ids'] = parsed if isinstance(parsed, list) else []
+            except (json.JSONDecodeError, TypeError):
+                data['shared_document_ids'] = []
+        elif 'shared_document_ids' not in data or data['shared_document_ids'] is None:
+            data['shared_document_ids'] = []
+            
         super().__init__(**data)
         
     @classmethod

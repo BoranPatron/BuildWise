@@ -27,7 +27,8 @@ async def create_milestone(
     milestone_in: MilestoneCreate,
     created_by: int,
     documents: List[UploadFile] = None,
-    shared_document_ids: List[int] = None
+    shared_document_ids: List[int] = None,
+    document_ids: List[int] = None
 ) -> Milestone:
     """
     Erstellt ein neues Milestone/Gewerk
@@ -42,19 +43,33 @@ async def create_milestone(
         # Entferne documents aus den Daten, da es nicht direkt in der DB gespeichert wird
         milestone_data.pop('documents', None)
         
+        # Füge shared_document_ids als JSON-String hinzu
+        if shared_document_ids:
+            import json
+            milestone_data['shared_document_ids'] = json.dumps(shared_document_ids)
+            print(f"✅ Shared document IDs gespeichert: {shared_document_ids}")
+        else:
+            milestone_data['shared_document_ids'] = None
+            print("ℹ️  Keine shared document IDs")
+        
         milestone = Milestone(**milestone_data)
+        
+        # Setze document_ids nach der Erstellung des Objekts
+        if document_ids:
+            import json
+            milestone.documents = json.dumps(document_ids)
+            print(f"✅ Document IDs gespeichert: {document_ids}")
+        else:
+            milestone.documents = None
+            print("ℹ️  Keine document IDs")
         db.add(milestone)
         await db.flush()  # Um die ID zu bekommen
         
         print(f"✅ Milestone erstellt mit ID: {milestone.id}")
         
-        # TODO: Dokument-Upload und -Verknüpfung implementieren
+        # TODO: Dokument-Upload implementieren
         # if documents:
         #     # Upload und Verknüpfung der Dokumente
-        #     pass
-        
-        # if shared_document_ids:
-        #     # Verknüpfung mit geteilten Dokumenten
         #     pass
         
         await db.commit()

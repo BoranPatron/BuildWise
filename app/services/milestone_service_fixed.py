@@ -75,3 +75,6 @@ def _generate_milestone_template_data(category: str) -> dict:
     
     return templates.get(category, templates["eigene"])
 
+
+
+

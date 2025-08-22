@@ -115,7 +115,7 @@ async def create_milestone_with_documents(
         
         # Erstelle Milestone mit Dokumenten und geteilten Dokument-IDs
         from ..services.milestone_service import create_milestone
-        milestone = await create_milestone(db, milestone_in, user_id, documents, parsed_shared_document_ids)
+        milestone = await create_milestone(db, milestone_in, user_id, documents, parsed_shared_document_ids, parsed_document_ids)
         print(f"✅ [API] Milestone erfolgreich erstellt: {milestone.id}")
         
         # Explizite Konvertierung über Schema um JSON-String zu Liste zu konvertieren
@@ -773,4 +773,138 @@ async def archive_milestone(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Fehler beim Archivieren: {str(e)}"
+        ) 
+
+
+async def get_all_active_milestones(db: AsyncSession):
+    """
+    Holt alle aktiven Gewerke (Ausschreibungen) für Dienstleister
+    """
+    try:
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+        
+        # Hole alle Gewerke die noch nicht abgeschlossen sind und für Ausschreibung freigegeben wurden
+        stmt = (
+            select(Milestone)
+            .where(
+                Milestone.completion_status.in_(["in_progress", "completion_requested", "under_review"]),
+                Milestone.archived == False
+            )
+            .options(
+                selectinload(Milestone.project),
+                selectinload(Milestone.quotes)
+            )
+            .order_by(Milestone.created_at.desc())
+        )
+        
+        result = await db.execute(stmt)
+        milestones = result.scalars().all()
+        
+        active_milestones = []
+        for milestone in milestones:
+            # Zähle vorhandene Angebote
+            quote_count = len(milestone.quotes) if milestone.quotes else 0
+            
+            # Prüfe ob der aktuelle Dienstleister bereits ein Angebot abgegeben hat
+            # (Diese Information wird später im Frontend gefiltert)
+            
+            active_milestone = {
+                'id': milestone.id,
+                'title': milestone.title,
+                'description': milestone.description or '',
+                'category': milestone.category or 'Allgemein',
+                'priority': milestone.priority,
+                'planned_date': milestone.planned_date.isoformat() if milestone.planned_date else None,
+                'completion_status': milestone.completion_status,
+                'project_name': milestone.project.title if milestone.project else 'Unbekanntes Projekt',
+                'project_id': milestone.project_id,
+                'quote_count': quote_count,
+                'created_at': milestone.created_at.isoformat() if milestone.created_at else None,
+                'requires_inspection': milestone.requires_inspection,
+                'construction_phase': milestone.construction_phase,
+                'budget': milestone.budget,
+                'documents': milestone.documents,
+                'shared_document_ids': milestone.shared_document_ids
+            }
+            
+            active_milestones.append(active_milestone)
+        
+        print(f"✅ {len(active_milestones)} aktive Gewerke für Dienstleister gefunden")
+        return active_milestones
+        
+    except Exception as e:
+        print(f"❌ Fehler beim Laden aktiver Gewerke: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Laden aktiver Gewerke: {str(e)}"
+        )
+
+
+async def get_all_milestones_for_user(db: AsyncSession, user_id: int):
+    """
+    Holt alle Gewerke für einen bestimmten Bauträger
+    """
+    try:
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+        
+        # Hole alle Gewerke die vom Bauträger erstellt wurden
+        stmt = (
+            select(Milestone)
+            .where(Milestone.created_by == user_id)
+            .options(
+                selectinload(Milestone.project),
+                selectinload(Milestone.quotes)
+            )
+            .order_by(Milestone.created_at.desc())
+        )
+        
+        result = await db.execute(stmt)
+        milestones = result.scalars().all()
+        
+        user_milestones = []
+        for milestone in milestones:
+            # Zähle vorhandene Angebote
+            quote_count = len(milestone.quotes) if milestone.quotes else 0
+            
+            # Finde akzeptiertes Angebot
+            accepted_quote = None
+            if milestone.quotes:
+                for quote in milestone.quotes:
+                    if quote.status == 'accepted':
+                        accepted_quote = quote
+                        break
+            
+            user_milestone = {
+                'id': milestone.id,
+                'title': milestone.title,
+                'description': milestone.description or '',
+                'category': milestone.category or 'Allgemein',
+                'priority': milestone.priority,
+                'planned_date': milestone.planned_date.isoformat() if milestone.planned_date else None,
+                'completion_status': milestone.completion_status,
+                'project_name': milestone.project.title if milestone.project else 'Unbekanntes Projekt',
+                'project_id': milestone.project_id,
+                'quote_count': quote_count,
+                'accepted_quote_amount': accepted_quote.total_amount if accepted_quote else None,
+                'accepted_quote_currency': accepted_quote.currency if accepted_quote else None,
+                'created_at': milestone.created_at.isoformat() if milestone.created_at else None,
+                'requires_inspection': milestone.requires_inspection,
+                'construction_phase': milestone.construction_phase,
+                'budget': milestone.budget,
+                'archived': milestone.archived,
+                'invoice_generated': milestone.invoice_generated
+            }
+            
+            user_milestones.append(user_milestone)
+        
+        print(f"✅ {len(user_milestones)} Gewerke für Benutzer {user_id} gefunden")
+        return user_milestones
+        
+    except Exception as e:
+        print(f"❌ Fehler beim Laden der Gewerke für Benutzer {user_id}: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Laden der Gewerke: {str(e)}"
         ) 
