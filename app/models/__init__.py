@@ -28,6 +28,7 @@ from .invoice import Invoice, InvoiceStatus, InvoiceType
 from .milestone_progress import MilestoneProgress, ProgressUpdateType
 from .service_provider_rating import ServiceProviderRating
 from .visualization import Visualization, VisualizationCategory, VisualizationStatus
+from .notification import Notification, NotificationType, NotificationPriority
 
 __all__ = [
     "Base",
@@ -102,5 +103,8 @@ __all__ = [
     "DefectSeverity",
     "Invoice",
     "InvoiceStatus", 
-    "InvoiceType"
+    "InvoiceType",
+    "Notification",
+    "NotificationType",
+    "NotificationPriority"
 ]

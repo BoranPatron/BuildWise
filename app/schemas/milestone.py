@@ -118,10 +118,26 @@ class MilestoneRead(MilestoneBase):
                 print(f"⚠️ [SCHEMA] Fehler beim Parsen von documents: {e}")
                 documents = []
         
-        # Hinweis: Geteilte Dokumente werden nicht im Schema geladen, 
-        # sondern über separate API-Endpunkte, um echte Dokument-Details zu erhalten
+        # Sichere JSON-Deserialisierung für shared_document_ids
+        shared_document_ids = []
+        if hasattr(obj, 'shared_document_ids') and obj.shared_document_ids:
+            try:
+                if isinstance(obj.shared_document_ids, str):
+                    # JSON-String parsen
+                    parsed = json.loads(obj.shared_document_ids)
+                    shared_document_ids = parsed if isinstance(parsed, list) else []
+                elif isinstance(obj.shared_document_ids, list):
+                    # Bereits eine Liste
+                    shared_document_ids = obj.shared_document_ids
+                else:
+                    # Fallback für andere Typen
+                    shared_document_ids = []
+            except (json.JSONDecodeError, TypeError, AttributeError) as e:
+                print(f"⚠️ [SCHEMA] Fehler beim Parsen von shared_document_ids: {e}")
+                shared_document_ids = []
         
         print(f"🔧 [SCHEMA] Documents parsed: {documents} (type: {type(documents)})")
+        print(f"🔧 [SCHEMA] Shared Document IDs parsed: {shared_document_ids} (type: {type(shared_document_ids)})")
         
         data = {
             'id': obj.id,
@@ -145,6 +161,7 @@ class MilestoneRead(MilestoneBase):
             'project_id': obj.project_id,
             'created_by': obj.created_by,
             'documents': documents,  # Sichere Liste-Konvertierung
+            'shared_document_ids': shared_document_ids,  # Sichere Liste-Konvertierung
             'created_at': obj.created_at,
             'updated_at': obj.updated_at,
             'completed_at': obj.completed_at,

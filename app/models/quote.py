@@ -56,11 +56,30 @@ class Quote(Base):
     contact_released_at = Column(DateTime(timezone=True), nullable=True)
     
     # Zusätzliche Felder für Dienstleister-Angebote
+    quote_number = Column(String, nullable=True)  # Angebotsnummer
     company_name = Column(String, nullable=True)  # Firmenname des Dienstleisters
     contact_person = Column(String, nullable=True)  # Ansprechpartner
     phone = Column(String, nullable=True)  # Telefonnummer
     email = Column(String, nullable=True)  # E-Mail
     website = Column(String, nullable=True)  # Website
+    
+    # Qualifikationen und Referenzen
+    qualifications = Column(Text, nullable=True)  # Qualifikationen & Zertifizierungen
+    references = Column(Text, nullable=True)  # Referenzen
+    certifications = Column(Text, nullable=True)  # Zertifizierungen
+    
+    # Technische Details
+    technical_approach = Column(Text, nullable=True)  # Technischer Ansatz
+    quality_standards = Column(Text, nullable=True)  # Qualitätsstandards
+    safety_measures = Column(Text, nullable=True)  # Sicherheitsmaßnahmen
+    environmental_compliance = Column(Text, nullable=True)  # Umweltcompliance
+    
+    # Risiko-Bewertung
+    risk_assessment = Column(Text, nullable=True)  # Risikobewertung
+    contingency_plan = Column(Text, nullable=True)  # Notfallplan
+    
+    # Zusätzliche Informationen
+    additional_notes = Column(Text, nullable=True)  # Zusätzliche Notizen
     
     # Dokumente
     pdf_upload_path = Column(String, nullable=True)  # Pfad zum hochgeladenen PDF

@@ -20,11 +20,30 @@ class QuoteBase(BaseModel):
     payment_terms: Optional[str] = None
     warranty_period: Optional[int] = None
     # Neue Felder für Dienstleister-Angebote
+    quote_number: Optional[str] = None
     company_name: Optional[str] = None
     contact_person: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
     website: Optional[str] = None
+    
+    # Qualifikationen und Referenzen
+    qualifications: Optional[str] = None
+    references: Optional[str] = None
+    certifications: Optional[str] = None
+    
+    # Technische Details
+    technical_approach: Optional[str] = None
+    quality_standards: Optional[str] = None
+    safety_measures: Optional[str] = None
+    environmental_compliance: Optional[str] = None
+    
+    # Risiko-Bewertung
+    risk_assessment: Optional[str] = None
+    contingency_plan: Optional[str] = None
+    
+    # Zusätzliche Informationen
+    additional_notes: Optional[str] = None
     pdf_upload_path: Optional[str] = None
     additional_documents: Optional[str] = None
     rating: Optional[float] = None
@@ -53,11 +72,30 @@ class QuoteUpdate(BaseModel):
     payment_terms: Optional[str] = None
     warranty_period: Optional[int] = None
     # Neue Felder für Dienstleister-Angebote
+    quote_number: Optional[str] = None
     company_name: Optional[str] = None
     contact_person: Optional[str] = None
     phone: Optional[str] = None
     email: Optional[str] = None
     website: Optional[str] = None
+    
+    # Qualifikationen und Referenzen
+    qualifications: Optional[str] = None
+    references: Optional[str] = None
+    certifications: Optional[str] = None
+    
+    # Technische Details
+    technical_approach: Optional[str] = None
+    quality_standards: Optional[str] = None
+    safety_measures: Optional[str] = None
+    environmental_compliance: Optional[str] = None
+    
+    # Risiko-Bewertung
+    risk_assessment: Optional[str] = None
+    contingency_plan: Optional[str] = None
+    
+    # Zusätzliche Informationen
+    additional_notes: Optional[str] = None
     pdf_upload_path: Optional[str] = None
     additional_documents: Optional[str] = None
     rating: Optional[float] = None

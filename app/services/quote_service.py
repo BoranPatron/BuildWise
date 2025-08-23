@@ -9,6 +9,7 @@ from ..models import Quote, QuoteStatus, User, Project, Milestone, CostPosition
 from ..schemas.quote import QuoteCreate, QuoteUpdate, QuoteRead
 from ..core.exceptions import QuoteNotFoundException, InvalidQuoteStatusException
 from ..services.cost_position_service import get_cost_position_by_quote_id
+from ..services.notification_service import NotificationService
 
 
 async def create_quote(db: AsyncSession, quote_in: QuoteCreate, service_provider_id: int) -> Quote:
@@ -31,11 +32,27 @@ async def create_quote(db: AsyncSession, quote_in: QuoteCreate, service_provider
         completion_date=quote_in.completion_date,
         payment_terms=quote_in.payment_terms,
         warranty_period=quote_in.warranty_period,
+        # Kontakt-Informationen
+        quote_number=quote_in.quote_number,
         company_name=quote_in.company_name,
         contact_person=quote_in.contact_person,
         phone=quote_in.phone,
         email=quote_in.email,
         website=quote_in.website,
+        # Qualifikationen und Referenzen
+        qualifications=quote_in.qualifications,
+        references=quote_in.references,
+        certifications=quote_in.certifications,
+        # Technische Details
+        technical_approach=quote_in.technical_approach,
+        quality_standards=quote_in.quality_standards,
+        safety_measures=quote_in.safety_measures,
+        environmental_compliance=quote_in.environmental_compliance,
+        # Risiko-Bewertung
+        risk_assessment=quote_in.risk_assessment,
+        contingency_plan=quote_in.contingency_plan,
+        # Zusätzliche Informationen
+        additional_notes=quote_in.additional_notes,
         pdf_upload_path=quote_in.pdf_upload_path,
         additional_documents=quote_in.additional_documents,
         rating=quote_in.rating,
@@ -44,6 +61,27 @@ async def create_quote(db: AsyncSession, quote_in: QuoteCreate, service_provider
     db.add(db_quote)
     await db.commit()
     await db.refresh(db_quote)
+    
+    # Erstelle Benachrichtigung für den Bauträger, wenn das Angebot eingereicht wurde
+    if db_quote.status == 'SUBMITTED' and db_quote.project_id:
+        try:
+            # Finde den Bauträger (Projektbesitzer)
+            project_result = await db.execute(
+                select(Project).where(Project.id == db_quote.project_id)
+            )
+            project = project_result.scalar_one_or_none()
+            
+            if project and project.owner_id:
+                await NotificationService.create_quote_submitted_notification(
+                    db=db,
+                    quote_id=db_quote.id,
+                    recipient_id=project.owner_id
+                )
+                print(f"✅ Benachrichtigung für Quote {db_quote.id} an Bauträger {project.owner_id} erstellt")
+        except Exception as e:
+            print(f"⚠️ Fehler beim Erstellen der Benachrichtigung: {e}")
+            # Fehler bei Benachrichtigung soll Quote-Erstellung nicht blockieren
+    
     return db_quote
 
 

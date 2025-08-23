@@ -53,6 +53,10 @@ from .invoice import (
     InvoiceBase, InvoiceCreate, InvoiceUpdate, InvoiceRead, InvoiceSummary,
     InvoiceUpload, InvoicePayment, InvoiceRating, InvoiceStats
 )
+from .notification import (
+    NotificationBase, NotificationCreate, NotificationUpdate, NotificationRead,
+    NotificationStats, NotificationBulkAction, QuoteNotificationData, AppointmentNotificationData
+)
 
 __all__ = [
     # User schemas
@@ -98,4 +102,7 @@ __all__ = [
     # Invoice schemas
     "InvoiceBase", "InvoiceCreate", "InvoiceUpdate", "InvoiceRead", "InvoiceSummary",
     "InvoiceUpload", "InvoicePayment", "InvoiceRating", "InvoiceStats",
+    # Notification schemas
+    "NotificationBase", "NotificationCreate", "NotificationUpdate", "NotificationRead",
+    "NotificationStats", "NotificationBulkAction", "QuoteNotificationData", "AppointmentNotificationData",
 ]
