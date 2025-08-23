@@ -74,20 +74,30 @@ class ProjectRead(ProjectBase):
 class ProjectSummary(BaseModel):
     id: int
     name: str
+    description: Optional[str] = None
     project_type: ProjectType
     status: ProjectStatus
     progress_percentage: float
     budget: Optional[float] = None
     current_costs: float
     address: Optional[str] = None
+    address_street: Optional[str] = None
+    address_zip: Optional[str] = None
+    address_city: Optional[str] = None
+    address_country: Optional[str] = None
     address_latitude: Optional[float] = None
     address_longitude: Optional[float] = None
+    property_size: Optional[float] = None
+    construction_area: Optional[float] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
+    estimated_duration: Optional[int] = None
+    is_public: bool
+    allow_quotes: bool
     created_at: datetime
+    updated_at: datetime
     # Neue Felder für Bauphasen
     construction_phase: Optional[str] = None
-    address_country: Optional[str] = None
 
     class Config:
         from_attributes = True
