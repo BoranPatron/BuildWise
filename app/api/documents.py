@@ -724,6 +724,32 @@ async def read_document(
     return document
 
 
+@router.get("/{document_id}/info")
+async def get_document_info(
+    document_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lightweight endpoint für Dokumentennamen ohne file_path Probleme"""
+    document = await get_document_by_id(db, document_id)
+    if not document:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dokument nicht gefunden"
+        )
+    
+    return {
+        "id": document.id,
+        "title": document.title,
+        "file_name": document.file_name,
+        "mime_type": document.mime_type,
+        "file_size": document.file_size,
+        "category": document.category,
+        "subcategory": document.subcategory,
+        "created_at": document.created_at
+    }
+
+
 @router.put("/{document_id}", response_model=Document)
 async def update_document_endpoint(
     document_id: int,
@@ -980,7 +1006,12 @@ async def read_service_provider_documents(
             )
         
         # Lade Dienstleister-spezifische Dokumente (vereinfacht)
-        stmt = select(Document).where(
+        stmt = select(Document).options(
+            selectinload(Document.versions),
+            selectinload(Document.status_history),
+            selectinload(Document.shares),
+            selectinload(Document.access_logs)
+        ).where(
             Document.uploaded_by == current_user.id
         ).order_by(Document.created_at.desc()).limit(100)
         

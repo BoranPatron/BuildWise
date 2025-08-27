@@ -45,14 +45,21 @@ class Inspection(Base):
     
     # Ort
     location_address = Column(String, nullable=True)  # Spezifische Adresse (falls abweichend vom Projekt)
-    location_notes = Column(Text, nullable=True)  # Zusätzliche Ortsangaben
+    location_notes = Column(Text, nullable=True)  # Ortshinweise
+    additional_location_info = Column(Text, nullable=True)  # Zusätzliche Ortsangaben
+    parking_info = Column(String, nullable=True)  # Parkmöglichkeiten
+    access_instructions = Column(Text, nullable=True)  # Zugangshinweise
     
     # Kontakt
     contact_person = Column(String, nullable=True)  # Ansprechpartner vor Ort
     contact_phone = Column(String, nullable=True)   # Telefonnummer
+    contact_email = Column(String, nullable=True)   # E-Mail-Adresse
+    alternative_contact_person = Column(String, nullable=True)  # Alternativer Ansprechpartner
+    alternative_contact_phone = Column(String, nullable=True)   # Alternative Telefonnummer
     
     # Notizen
     preparation_notes = Column(Text, nullable=True)  # Was sollen Dienstleister mitbringen/vorbereiten
+    special_requirements = Column(Text, nullable=True)  # Besondere Anforderungen
     completion_notes = Column(Text, nullable=True)   # Notizen nach der Besichtigung
     
     # Absage

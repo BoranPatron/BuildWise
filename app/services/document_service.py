@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, func, text
+from sqlalchemy.orm import selectinload
 from typing import List, Optional
 from datetime import datetime
 import os
@@ -76,13 +77,28 @@ async def create_document(db: AsyncSession, document_in: DocumentCreate, uploade
 
 
 async def get_document_by_id(db: AsyncSession, document_id: int) -> Document | None:
-    result = await db.execute(select(Document).where(Document.id == document_id))
+    result = await db.execute(
+        select(Document)
+        .options(
+            selectinload(Document.versions),
+            selectinload(Document.status_history),
+            selectinload(Document.shares),
+            selectinload(Document.access_logs)
+        )
+        .where(Document.id == document_id)
+    )
     return result.scalars().first()
 
 
 async def get_documents_for_project(db: AsyncSession, project_id: int) -> List[Document]:
     result = await db.execute(
         select(Document)
+        .options(
+            selectinload(Document.versions),
+            selectinload(Document.status_history),
+            selectinload(Document.shares),
+            selectinload(Document.access_logs)
+        )
         .where(Document.project_id == project_id)
         .order_by(Document.created_at.desc())
     )
@@ -205,7 +221,12 @@ async def create_document_version(db: AsyncSession, document_id: int, new_file_p
 
 
 async def search_documents(db: AsyncSession, search_term: str, project_id: Optional[int] = None, document_type: Optional[DocumentTypeEnum] = None) -> List[Document]:
-    query = select(Document)
+    query = select(Document).options(
+        selectinload(Document.versions),
+        selectinload(Document.status_history),
+        selectinload(Document.shares),
+        selectinload(Document.access_logs)
+    )
     
     if project_id:
         query = query.where(Document.project_id == project_id)

@@ -251,40 +251,33 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
     )
     
     # Erstelle Kostenposition für das akzeptierte Angebot
-    cost_position_created = await create_cost_position_from_quote(db, quote)
+    cost_position = await create_cost_position_from_quote(db, quote)
     
     # Erstelle BuildWise Gebühr für das akzeptierte Angebot
-    if cost_position_created:
+    if cost_position:
         try:
             from ..services.buildwise_fee_service import BuildWiseFeeService
             from ..core.config import settings, get_fee_percentage
             
-            # Hole die erstellte Kostenposition
-            cost_position = await get_cost_position_by_quote_id(db, quote.id)
+            print(f"🔧 Erstelle BuildWise Gebühr für akzeptiertes Angebot {quote.id}")
+            print(f"   - Quote ID: {quote.id}")
+            print(f"   - Cost Position ID: {cost_position.id}")
+            print(f"   - Quote Amount: {quote.total_amount} {quote.currency}")
+            print(f"   - Environment Mode: {settings.environment_mode}")
+            print(f"   - Fee Percentage: {get_fee_percentage()}%")
             
-            if cost_position:
-                print(f"🔧 Erstelle BuildWise Gebühr für akzeptiertes Angebot {quote.id}")
-                print(f"   - Quote ID: {quote.id}")
-                print(f"   - Cost Position ID: {cost_position.id}")
-                print(f"   - Quote Amount: {quote.total_amount} {quote.currency}")
-                print(f"   - Environment Mode: {settings.environment_mode}")
-                print(f"   - Fee Percentage: {get_fee_percentage()}%")
-                
-                # Erstelle BuildWise Gebühr
-                buildwise_fee = await BuildWiseFeeService.create_fee_from_quote(
-                    db=db,
-                    quote_id=quote.id,
-                    cost_position_id=cost_position.id,
-                    fee_percentage=None  # Verwende automatisch den aktuellen Modus
-                )
-                
-                print(f"✅ BuildWise Gebühr erfolgreich erstellt (ID: {buildwise_fee.id})")
-                print(f"   - Fee Amount: {buildwise_fee.fee_amount} {buildwise_fee.currency}")
-                print(f"   - Fee Percentage: {buildwise_fee.fee_percentage}%")
-                
-            else:
-                print(f"⚠️  Kostenposition für Quote {quote.id} nicht gefunden - BuildWise Gebühr wird nicht erstellt")
-                
+            # Erstelle BuildWise Gebühr
+            buildwise_fee = await BuildWiseFeeService.create_fee_from_quote(
+                db=db,
+                quote_id=quote.id,
+                cost_position_id=cost_position.id,
+                fee_percentage=None  # Verwende automatisch den aktuellen Modus
+            )
+            
+            print(f"✅ BuildWise Gebühr erfolgreich erstellt (ID: {buildwise_fee.id})")
+            print(f"   - Fee Amount: {buildwise_fee.fee_amount} {buildwise_fee.currency}")
+            print(f"   - Fee Percentage: {buildwise_fee.fee_percentage}%")
+            
         except Exception as e:
             print(f"❌ Fehler beim Erstellen der BuildWise Gebühr: {e}")
             # Fehler beim Erstellen der Gebühr sollte nicht die Quote-Akzeptierung blockieren
@@ -385,7 +378,7 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
     return quote
 
 
-async def create_cost_position_from_quote(db: AsyncSession, quote: Quote) -> bool:
+async def create_cost_position_from_quote(db: AsyncSession, quote: Quote):
     """Erstellt eine Kostenposition aus einem akzeptierten Angebot (Legacy-Funktion)"""
     try:
         print(f"🔄 Erstelle Kostenposition aus Quote {quote.id} für Projekt {quote.project_id}")
@@ -417,14 +410,26 @@ async def create_cost_position_from_quote(db: AsyncSession, quote: Quote) -> boo
 
         # 3) Rechnung anlegen, falls nicht vorhanden
         if not existing_invoice:
+            from datetime import datetime, timedelta
+            
+            # Setze due_date auf 30 Tage ab heute
+            invoice_date = datetime.utcnow()
+            due_date = invoice_date + timedelta(days=30)
+            
             invoice = Invoice(
                 project_id=milestone.project_id,
                 milestone_id=milestone_id,
                 service_provider_id=quote.service_provider_id,
                 invoice_number=f"AUTO-{quote.id}",
+                invoice_date=invoice_date,
+                due_date=due_date,
+                net_amount=0.0,  # Wird später berechnet
+                vat_rate=19.0,   # Standard MwSt-Satz
+                vat_amount=0.0,  # Wird später berechnet
                 total_amount=quote.total_amount or 0,
                 status=InvoiceStatus.SENT,
                 type=InvoiceType.MANUAL,
+                created_by=quote.service_provider_id,  # Ersteller ist der Dienstleister
                 notes="Automatisch aus Angebotsannahme erstellt"
             )
             db.add(invoice)
@@ -434,10 +439,12 @@ async def create_cost_position_from_quote(db: AsyncSession, quote: Quote) -> boo
             invoice = existing_invoice
 
         # 4) Kostenposition aus dem angenommenen Angebot anlegen, sofern noch keine Position existiert
-        existing_cp = await db.execute(
+        existing_cp_result = await db.execute(
             select(CostPosition).where(CostPosition.invoice_id == invoice.id)
         )
-        if not existing_cp.scalars().first():
+        existing_cp = existing_cp_result.scalar_one_or_none()
+        
+        if not existing_cp:
             cp = CostPosition(
                 invoice_id=invoice.id,
                 project_id=milestone.project_id,
@@ -450,12 +457,18 @@ async def create_cost_position_from_quote(db: AsyncSession, quote: Quote) -> boo
             )
             db.add(cp)
             await db.commit()
+            await db.refresh(cp)
+            cost_position = cp
+        else:
+            cost_position = existing_cp
         
         print(f"✅ Kostenposition/Rechnung erstellt oder vorhanden – Projekt {milestone.project_id}, Invoice {invoice.id}")
-        return True
+        return cost_position
         
     except Exception as e:
         print(f"❌ Fehler beim Erstellen der Kostenposition: {e}")
+        # Rollback bei Fehlern
+        await db.rollback()
         # Fehler weiterwerfen, damit er im Frontend sichtbar wird
         raise Exception(f"Fehler beim Erstellen der Kostenposition für Quote {quote.id}: {str(e)}")
 

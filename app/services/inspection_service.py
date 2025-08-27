@@ -35,9 +35,16 @@ class InspectionService:
         duration_minutes: int = 120,
         location_address: Optional[str] = None,
         location_notes: Optional[str] = None,
+        additional_location_info: Optional[str] = None,
+        parking_info: Optional[str] = None,
+        access_instructions: Optional[str] = None,
         contact_person: Optional[str] = None,
         contact_phone: Optional[str] = None,
-        preparation_notes: Optional[str] = None
+        contact_email: Optional[str] = None,
+        alternative_contact_person: Optional[str] = None,
+        alternative_contact_phone: Optional[str] = None,
+        preparation_notes: Optional[str] = None,
+        special_requirements: Optional[str] = None
     ) -> Optional[Inspection]:
         """
         Erstellt eine neue Besichtigung für ein Gewerk
@@ -86,9 +93,16 @@ class InspectionService:
                 duration_minutes=duration_minutes,
                 location_address=location_address,
                 location_notes=location_notes,
+                additional_location_info=additional_location_info,
+                parking_info=parking_info,
+                access_instructions=access_instructions,
                 contact_person=contact_person,
                 contact_phone=contact_phone,
+                contact_email=contact_email,
+                alternative_contact_person=alternative_contact_person,
+                alternative_contact_phone=alternative_contact_phone,
                 preparation_notes=preparation_notes,
+                special_requirements=special_requirements,
                 status=InspectionStatus.PLANNED
             )
             

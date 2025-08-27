@@ -46,6 +46,10 @@ class MilestoneProgress(Base):
     # Sichtbarkeit
     is_internal = Column(Boolean, default=False)  # Nur für Bauträger sichtbar
     
+    # Neue Felder für Ausschreibungs-Kommunikation
+    is_tender_communication = Column(Boolean, default=False)  # Kennzeichnet Ausschreibungs-Kommunikation
+    visible_to_all_bidders = Column(Boolean, default=True)  # Sichtbar für alle Bieter (vor Vergabe)
+    
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

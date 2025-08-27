@@ -34,8 +34,57 @@ async def create_new_quote(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    # Prüfe ob User ein Dienstleister ist (sowohl user_type als auch user_role)
+    from ..models.user import UserRole, UserType
+    
+    # Debug: Zeige User-Informationen
+    print(f"🔍 [QUOTE-CREATE] User ID: {current_user.id}")
+    print(f"🔍 [QUOTE-CREATE] User Type: {current_user.user_type}")
+    print(f"🔍 [QUOTE-CREATE] User Role: {getattr(current_user, 'user_role', 'N/A')}")
+    print(f"🔍 [QUOTE-CREATE] User Email: {current_user.email}")
+    
+    is_service_provider = (
+        current_user.user_type == UserType.SERVICE_PROVIDER or
+        (hasattr(current_user, 'user_role') and current_user.user_role == UserRole.DIENSTLEISTER) or
+        (current_user.email and "dienstleister" in current_user.email.lower())
+    )
+    
+    print(f"🔍 [QUOTE-CREATE] Is Service Provider: {is_service_provider}")
+    
+    # TEMPORÄRE LÖSUNG: Wenn User noch keine Rolle hat, setze automatisch Dienstleister-Rolle
+    if not is_service_provider and (not hasattr(current_user, 'user_role') or current_user.user_role is None):
+        print(f"🔧 [QUOTE-CREATE] User hat keine Rolle - setze automatisch auf DIENSTLEISTER")
+        from sqlalchemy import update
+        from datetime import datetime
+        await db.execute(
+            update(User)
+            .where(User.id == current_user.id)
+            .values(
+                user_role=UserRole.DIENSTLEISTER,
+                role_selected=True,
+                role_selected_at=datetime.utcnow()
+            )
+        )
+        await db.commit()
+        # Aktualisiere current_user
+        current_user.user_role = UserRole.DIENSTLEISTER
+        is_service_provider = True
+    
+    if not is_service_provider:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Nur Dienstleister können Angebote erstellen. User-Type: {current_user.user_type}, User-Role: {getattr(current_user, 'user_role', 'N/A')}"
+        )
+    
     user_id = getattr(current_user, 'id', 0)
     quote = await create_quote(db, quote_in, user_id)
+    
+    # Setze Status auf SUBMITTED (da das Angebot direkt eingereicht wird)
+    from ..schemas.quote import QuoteUpdate
+    from ..models.quote import QuoteStatus
+    quote_update = QuoteUpdate(status=QuoteStatus.SUBMITTED)
+    quote = await update_quote(db, quote.id, quote_update)
+    
     return quote
 
 
@@ -216,6 +265,18 @@ async def accept_quote_endpoint(
             print(f"⚠️ Warnung: Kostenposition für Angebot {quote.id} konnte nicht erstellt werden")
     except Exception as e:
         print(f"⚠️ Fehler beim Erstellen der Kostenposition: {e}")
+    
+    # Aktualisiere Kommunikationszugriff nach Angebotsannahme
+    try:
+        from ..services.milestone_progress_service import milestone_progress_service
+        await milestone_progress_service.update_communication_access_after_award(
+            db=db,
+            milestone_id=quote.milestone_id,
+            accepted_service_provider_id=quote.service_provider_id
+        )
+        print(f"✅ Kommunikationszugriff für Milestone {quote.milestone_id} aktualisiert")
+    except Exception as e:
+        print(f"⚠️ Fehler beim Aktualisieren des Kommunikationszugriffs: {e}")
     
     return accepted_quote
 

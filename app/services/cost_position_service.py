@@ -89,11 +89,30 @@ async def get_cost_position_statistics(db: AsyncSession, invoice_id: int) -> dic
 
 
 async def get_cost_position_by_quote_id(db: AsyncSession, quote_id: int):
-    """Holt Kostenpositionen für ein Angebot (Legacy-Funktion für Abwärtskompatibilität)"""
-    # Diese Funktion ist für die Abwärtskompatibilität mit dem alten System
-    # Da wir jetzt einfache Kostenpositionen für Rechnungen haben,
-    # geben wir eine leere Liste zurück
-    return [] 
+    """Holt Kostenposition für ein Angebot über die verknüpfte Rechnung"""
+    from sqlalchemy import select
+    from ..models.cost_position import CostPosition
+    from ..models.invoice import Invoice
+    from ..models.quote import Quote
+    
+    # Finde die Rechnung, die zu diesem Angebot gehört
+    result = await db.execute(
+        select(Invoice)
+        .join(Quote, Quote.milestone_id == Invoice.milestone_id)
+        .where(Quote.id == quote_id)
+    )
+    invoice = result.scalar_one_or_none()
+    
+    if not invoice:
+        return None
+    
+    # Finde die Kostenposition für diese Rechnung
+    cp_result = await db.execute(
+        select(CostPosition).where(CostPosition.invoice_id == invoice.id)
+    )
+    cost_position = cp_result.scalar_one_or_none()
+    
+    return cost_position 
 
 
 async def get_cost_positions_for_project(db: AsyncSession, project_id: int) -> List[CostPositionListItem]:

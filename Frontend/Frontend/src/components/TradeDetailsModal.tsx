@@ -18,7 +18,10 @@ import {
   Settings,
   RefreshCw,
   CheckSquare,
-  Square
+  Square,
+  User,
+  Phone,
+  Mail
 } from 'lucide-react';
 import type { TradeSearchResult } from '../api/geoService';
 import { useAuth } from '../context/AuthContext';
@@ -32,6 +35,7 @@ import AcceptanceModal from './AcceptanceModalNew';
 import FinalAcceptanceModal from './FinalAcceptanceModal';
 // import FullDocumentViewer from './DocumentViewer';
 import { updateMilestone } from '../api/milestoneService';
+import InspectionSchedulingModal, { type InspectionFormData } from './InspectionSchedulingModal';
 
 // PDF Viewer Komponente
 const PDFViewer: React.FC<{ url: string; filename: string; onError: (error: string) => void }> = ({ url, filename, onError }) => {
@@ -184,18 +188,7 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
   const [viewerError, setViewerError] = useState<string | null>(null);
   const { isBautraeger } = useAuth();
 
-  console.log('🔍 TradeDocumentViewer - Debug:', {
-    documents,
-    documentsLength: documents?.length,
-    documentsType: typeof documents,
-    documentsIsArray: Array.isArray(documents),
-    documentsFirstItem: documents?.[0],
-    isBautraeger: isBautraeger(),
-    existingQuotes,
-    documentsFull: documents,
-    // Zusätzliche Debug-Informationen
-    documentsStringified: JSON.stringify(documents, null, 2)
-  });
+
 
   // Robuste Dokumentenverarbeitung
   const safeDocuments = React.useMemo(() => {
@@ -212,12 +205,7 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
     return [];
   }, [documents]);
 
-  console.log('🔍 TradeDocumentViewer - Nach safeDocuments:', {
-    safeDocuments,
-    safeDocumentsLength: safeDocuments.length,
-    safeDocumentsType: typeof safeDocuments,
-    safeDocumentsIsArray: Array.isArray(safeDocuments)
-  });
+
 
   if (!safeDocuments || safeDocuments.length === 0) {
     return (
@@ -537,9 +525,11 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
     const [completionStatus, setCompletionStatus] = useState(trade?.completion_status || 'in_progress');
     const [showInvoiceModal, setShowInvoiceModal] = useState(false);
     const [existingInvoice, setExistingInvoice] = useState<any>(null);
-    const [showAcceptanceModal, setShowAcceptanceModal] = useState(false);
-    const [showFinalAcceptanceModal, setShowFinalAcceptanceModal] = useState(false);
-    const [acceptanceDefects, setAcceptanceDefects] = useState<any[]>([]);
+      const [showAcceptanceModal, setShowAcceptanceModal] = useState(false);
+  const [showFinalAcceptanceModal, setShowFinalAcceptanceModal] = useState(false);
+  const [acceptanceDefects, setAcceptanceDefects] = useState<any[]>([]);
+  const [fullTradeData, setFullTradeData] = useState<any>(null);
+  const [showInspectionScheduling, setShowInspectionScheduling] = useState(false);
 
       // KRITISCH: Verwende NUR den Backend-Status, NICHT das trade Objekt
   // useEffect(() => {
@@ -549,20 +539,9 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
   //   }
   // }, [trade?.completion_status]);
 
-  // Debug-Log nur wenn Modal geöffnet ist oder sich der Status ändert
+
   if (isOpen || trade?.id) {
-    console.log('🔍 TradeDetailsModal - Hauptkomponente gerendert:', {
-      isOpen,
-      tradeId: trade?.id,
-      tradeTitle: trade?.title,
-      tradeDescription: trade?.description,
-      completionStatus: completionStatus,
-      tradeCompletionStatus: trade?.completion_status,
-      existingInvoice: existingInvoice,
-      isBautraeger: isBautraeger(),
-      existingQuotes: existingQuotes,
-      shouldShowInvoiceButton: !isBautraeger() && completionStatus === 'completed' && !existingInvoice
-    });
+
     
     // Warnung wenn trade-ID 1 ist (könnte falsches Gewerk sein)
     if (trade?.id === 1 && trade?.title === 'Elektroinstallation EG') {
@@ -576,6 +555,31 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
     const loadAppointments = async () => {
       try {
         if (!trade?.id) return;
+        
+        // Versuche zuerst die neuen Inspections zu laden
+        try {
+          const inspectionResponse = await apiCall(`/inspections/?milestone_id=${trade.id}`);
+          if (inspectionResponse.ok) {
+            const inspections = await inspectionResponse.json();
+            if (inspections.length > 0 && !cancelled) {
+              // Konvertiere Inspections zu appointment-Format für Kompatibilität
+              const convertedAppointments = inspections.map((inspection: any) => ({
+                ...inspection,
+                appointment_type: 'INSPECTION',
+                milestone_id: inspection.milestone_id,
+                scheduled_date: inspection.scheduled_date,
+                location: inspection.location_address,
+                // Alle erweiterten Felder sind bereits vorhanden
+              }));
+              setAppointmentsForTrade(convertedAppointments);
+              return;
+            }
+          }
+        } catch (inspectionError) {
+
+        }
+        
+        // Fallback: Verwende alten appointmentService
         const all = await appointmentService.getMyAppointments();
         const relevant = all.filter(a => a.milestone_id === (trade as any).id && a.appointment_type === 'INSPECTION');
         if (!cancelled) setAppointmentsForTrade(relevant);
@@ -607,7 +611,7 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
     setDocumentsError(null);
     
     try {
-      console.log('🔍 TradeDetailsModal - Lade Dokumente und completion_status für Trade:', tradeId);
+
       
       const token = localStorage.getItem('token');
       if (!token) {
@@ -619,7 +623,7 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
       // Für Bauträger: Lade direkt vom Milestone-Endpoint
       // Für Dienstleister: Verwende die Geo-Suche (wie bisher)
       if (isBautraeger()) {
-        console.log('🏗️ Bauträger-Modus: Lade Dokumente direkt vom Milestone-Endpoint');
+
         
         const response = await fetch(`${baseUrl}/milestones/${tradeId}`, {
           headers: {
@@ -633,11 +637,14 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
         }
         
         const milestoneData = await response.json();
-        console.log('✅ TradeDetailsModal - Milestone-Daten geladen:', milestoneData);
+
+        
+        // Aktualisiere vollständige Trade-Daten
+        setFullTradeData(milestoneData);
         
         // KRITISCH: Aktualisiere completion_status vom Backend
         if (milestoneData.completion_status) {
-          console.log('🔄 TradeDetailsModal - Aktualisiere completion_status vom Backend:', milestoneData.completion_status);
+
           setCompletionStatus(milestoneData.completion_status);
         }
         
@@ -703,7 +710,7 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
               const sharedDocs = await Promise.all(sharedDocsPromises);
               const validSharedDocs = sharedDocs.filter(doc => doc !== null);
               
-              console.log('📄 TradeDetailsModal - Geteilte Dokumente geladen:', validSharedDocs);
+
               documents = [...documents, ...validSharedDocs];
             }
           } catch (e) {
@@ -711,12 +718,12 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
           }
         }
         
-        console.log('📄 TradeDetailsModal - Finale Dokumentenliste (Bauträger):', documents);
+
         setLoadedDocuments(documents);
         
       } else {
         // Dienstleister-Modus: Verwende die Geo-Suche (wie bisher)
-        console.log('🔧 Dienstleister-Modus: Verwende Geo-Suche für Dokumente');
+
         
         // Lade das vollständige Milestone mit Dokumenten vom Backend
         const response = await fetch(`${baseUrl}/milestones/${tradeId}`, {
@@ -731,15 +738,15 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
         }
         
         const milestoneData = await response.json();
-        console.log('✅ TradeDetailsModal - Milestone-Daten geladen:', milestoneData);
-        console.log('🔍 TradeDetailsModal - completion_status im Response (Dienstleister):', milestoneData.completion_status);
+
+
+        
+        // Aktualisiere vollständige Trade-Daten
+        setFullTradeData(milestoneData);
         
         // KRITISCH: Aktualisiere completion_status vom Backend
         if (milestoneData.completion_status) {
-          console.log('🔄 TradeDetailsModal - Aktualisiere completion_status vom Backend (Dienstleister):', milestoneData.completion_status);
           setCompletionStatus(milestoneData.completion_status);
-        } else {
-          console.log('⚠️ TradeDetailsModal - Kein completion_status im Backend-Response gefunden (Dienstleister)');
         }
         
         // Extrahiere und verarbeite die Dokumente
@@ -804,7 +811,7 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
               const sharedDocs = await Promise.all(sharedDocsPromises);
               const validSharedDocs = sharedDocs.filter(doc => doc !== null);
               
-              console.log('📄 TradeDetailsModal - Geteilte Dokumente geladen:', validSharedDocs);
+
               documents = [...documents, ...validSharedDocs];
             }
           } catch (e) {
@@ -822,7 +829,7 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
       
       // Fallback: Verwende die ursprünglichen trade.documents falls vorhanden
       if (trade?.documents && Array.isArray(trade.documents)) {
-        console.log('🔄 TradeDetailsModal - Verwende Fallback auf trade.documents:', trade.documents);
+
         setLoadedDocuments(trade.documents);
       } else {
         setLoadedDocuments([]);
@@ -832,26 +839,12 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
     }
   };
 
-  // Zusätzliche Debug-Logs für Dokumente
-  useEffect(() => {
-    if (trade?.documents) {
-      console.log('📄 TradeDetailsModal - Dokumente gefunden:', {
-        documents: trade.documents,
-        documentsLength: trade.documents.length,
-        documentsType: typeof trade.documents,
-        documentsIsArray: Array.isArray(trade.documents),
-        firstDocument: trade.documents[0],
-        allDocuments: trade.documents
-      });
-    } else {
-      console.log('⚠️ TradeDetailsModal - Keine Dokumente gefunden');
-    }
-  }, [trade?.documents]);
+
 
   // Lade Dokumente und completion_status wenn Modal geöffnet wird
   useEffect(() => {
     if (isOpen && trade?.id) {
-      console.log('🔍 TradeDetailsModal - Modal geöffnet, lade Dokumente für Trade:', trade.id);
+
       loadTradeDocuments(trade.id);
       // Zusätzlich: Lade completion_status explizit vom Backend
       loadCompletionStatus(trade.id);
@@ -874,10 +867,10 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
       
       if (response.ok) {
         const milestoneData = await response.json();
-        console.log('🔍 TradeDetailsModal - Milestone-Daten für completion_status:', milestoneData);
+
         
         if (milestoneData.completion_status) {
-          console.log('🔄 TradeDetailsModal - Setze completion_status vom Backend:', milestoneData.completion_status);
+
           setCompletionStatus(milestoneData.completion_status);
         }
       }
@@ -889,7 +882,7 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
   // Fallback: Setze ursprüngliche Dokumente falls vorhanden und noch keine geladen wurden
   useEffect(() => {
     if (isOpen && trade?.documents && Array.isArray(trade.documents) && loadedDocuments.length === 0 && !documentsLoading) {
-      console.log('🔄 TradeDetailsModal - Setze ursprüngliche trade.documents als Fallback:', trade.documents);
+
       setLoadedDocuments(trade.documents);
     }
   }, [isOpen, trade?.documents, loadedDocuments.length, documentsLoading]);
@@ -914,9 +907,7 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
   // Finde akzeptiertes Quote
   useEffect(() => {
     if (existingQuotes && existingQuotes.length > 0) {
-      console.log('🔍 Debug existingQuotes:', existingQuotes);
       const accepted = existingQuotes.find(q => q.status === 'accepted');
-      console.log('🔍 Debug accepted quote:', accepted);
       if (accepted) {
         setAcceptedQuote(accepted);
       } else {
@@ -926,7 +917,7 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
           q.status === 'ACCEPTED' || 
           q.status === 'Angenommen'
         );
-        console.log('🔍 Debug accepted fallback:', acceptedFallback);
+
         if (acceptedFallback) {
           setAcceptedQuote(acceptedFallback);
         }
@@ -953,7 +944,7 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
         
         if (response.data) {
           setExistingInvoice(response.data);
-          console.log('✅ Bestehende Rechnung geladen:', response.data);
+
         }
       } catch (error: any) {
         if (error.response?.status !== 404) {
@@ -1070,7 +1061,7 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
 
   const handleCompletionRequest = async () => {
     try {
-      console.log('🔍 TradeDetailsModal - Sende Abnahme-Anfrage für Trade:', trade?.id);
+
       
       const response = await apiCall(`/milestones/${trade?.id}/progress/completion`, {
         method: 'POST',
@@ -1080,7 +1071,7 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
         })
       });
       
-      console.log('✅ TradeDetailsModal - Abnahme-Anfrage erfolgreich:', response);
+
       setCompletionStatus('completion_requested');
       
       // Aktualisiere auch den Fortschritt
@@ -1095,11 +1086,7 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
 
   const handleCompletionResponse = async (accepted: boolean, message?: string, deadline?: string) => {
     try {
-      console.log('🔍 TradeDetailsModal - Sende Abnahme-Antwort für Trade:', trade?.id, {
-        accepted,
-        message,
-        deadline
-      });
+
       
       const response = await apiCall(`/milestones/${trade?.id}/progress/completion/response`, {
         method: 'POST',
@@ -1110,7 +1097,7 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
         })
       });
       
-      console.log('✅ TradeDetailsModal - Abnahme-Antwort erfolgreich:', response);
+
       setCompletionStatus(accepted ? 'completed' : 'under_review');
       
       // Aktualisiere auch den Fortschritt
@@ -1132,17 +1119,110 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
 
   // Handler für Abnahme starten
   const handleStartAcceptance = () => {
-    console.log('🚀 TradeDetailsModal - handleStartAcceptance aufgerufen');
-    console.log('🔍 Aktueller showAcceptanceModal State:', showAcceptanceModal);
-    console.log('🔍 Trade Objekt:', trade);
     setShowAcceptanceModal(true);
-    console.log('✅ showAcceptanceModal auf true gesetzt');
+  };
+
+  // Handler für Besichtigungserstellung
+  const handleCreateInspection = async (inspectionData: InspectionFormData) => {
+    try {
+
+      
+      // API-Call zur Erstellung der Besichtigung
+      const response = await apiCall('/inspections/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          milestone_id: trade?.id,
+          title: inspectionData.title,
+          description: inspectionData.description,
+          scheduled_date: inspectionData.scheduled_date,
+          scheduled_time_start: inspectionData.scheduled_time_start,
+          scheduled_time_end: inspectionData.scheduled_time_end,
+          duration_minutes: inspectionData.duration_minutes,
+          location_address: inspectionData.location_address,
+          location_notes: inspectionData.location_notes,
+          additional_location_info: inspectionData.additional_location_info,
+          parking_info: inspectionData.parking_info,
+          access_instructions: inspectionData.access_instructions,
+          contact_person: inspectionData.contact_person,
+          contact_phone: inspectionData.contact_phone,
+          contact_email: inspectionData.contact_email,
+          alternative_contact_person: inspectionData.alternative_contact_person,
+          alternative_contact_phone: inspectionData.alternative_contact_phone,
+          preparation_notes: inspectionData.preparation_notes,
+          special_requirements: inspectionData.special_requirements
+        }),
+      });
+
+      if (response.ok) {
+        const inspection = await response.json();
+
+
+        // Lade Dienstleister zu der Besichtigung ein
+        const inviteResponse = await apiCall(`/inspections/${inspection.id}/invitations`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(selectedQuoteIds),
+        });
+
+        if (inviteResponse.ok) {
+
+          // Lade Termine neu - verwende die neue Inspection API
+          const loadAppointments = async () => {
+            try {
+              if (!trade?.id) return;
+              
+              // Lade die neue Inspection mit allen erweiterten Feldern
+              const inspectionResponse = await apiCall(`/inspections/?milestone_id=${trade.id}`);
+              if (inspectionResponse.ok) {
+                const inspections = await inspectionResponse.json();
+                if (inspections.length > 0) {
+                  // Konvertiere Inspections zu appointment-Format für Kompatibilität
+                  const convertedAppointments = inspections.map((inspection: any) => ({
+                    ...inspection,
+                    appointment_type: 'INSPECTION',
+                    milestone_id: inspection.milestone_id,
+                    scheduled_date: inspection.scheduled_date,
+                    location: inspection.location_address,
+                    // Alle erweiterten Felder sind bereits vorhanden
+                  }));
+                  setAppointmentsForTrade(convertedAppointments);
+                  return;
+                }
+              }
+              
+              // Fallback
+              const all = await appointmentService.getMyAppointments();
+              const relevant = all.filter(a => a.milestone_id === (trade as any).id && a.appointment_type === 'INSPECTION');
+              setAppointmentsForTrade(relevant);
+            } catch (e) {
+              console.error('❌ Termine laden fehlgeschlagen:', e);
+            }
+          };
+          await loadAppointments();
+          
+          setShowInspectionScheduling(false);
+          setSelectedQuoteIds([]);
+        } else {
+          throw new Error('Fehler beim Versenden der Einladungen');
+        }
+      } else {
+        throw new Error('Fehler beim Erstellen der Besichtigung');
+      }
+    } catch (error) {
+      console.error('❌ TradeDetailsModal - Fehler bei Besichtigungserstellung:', error);
+      alert('Fehler beim Erstellen der Besichtigung. Bitte versuchen Sie es erneut.');
+    }
   };
 
   // Handler für Abnahme-Abschluss
   const handleCompleteAcceptance = async (acceptanceData: any) => {
     try {
-      console.log('🔍 TradeDetailsModal - Starte Abnahme-Abschluss:', acceptanceData);
+
       
       const response = await apiCall(`/milestones/${trade?.id}/acceptance`, {
         method: 'POST',
@@ -1154,7 +1234,7 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
         })
       });
 
-      console.log('✅ TradeDetailsModal - Abnahme erfolgreich abgeschlossen:', response);
+
       
       // Schließe Modal
       setShowAcceptanceModal(false);
@@ -1174,7 +1254,7 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
       if (acceptanceData.defects && acceptanceData.defects.length > 0) {
         setAcceptanceDefects(acceptanceData.defects);
         setTimeout(() => {
-          console.log('🔍 TradeDetailsModal - Öffne FinalAcceptanceModal mit Mängeln:', acceptanceData.defects);
+
           setShowFinalAcceptanceModal(true);
         }, 1000);
       }
@@ -1187,23 +1267,117 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
 
   if (!isOpen || !trade) return null;
 
-  // Debug-Logging
-  console.log('🔍 TradeDetailsModal RENDERING:', {
-    isOpen,
-    tradeId: trade?.id,
-    tradeTitle: trade?.title,
-    userId: user?.id,
-    userRole: user?.user_role,
-    isBautraeger: isBautraeger(),
-    appointmentsCount: appointmentsForTrade.length
-  });
+
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      {/* Debug Banner */}
-      <div className="absolute top-4 left-4 z-50 bg-red-500 text-white p-3 rounded font-bold">
-        🚨 TradeDetailsModal GEÖFFNET - Trade: {trade?.id}
+    <>
+      {/* BESICHTIGUNGSTERMIN BANNER - ÜBER DEM MODAL */}
+      <div className="fixed top-4 left-1/2 transform -translate-x-1/2 z-[60] w-full max-w-4xl px-4">
+        <div className="p-4 bg-blue-600 rounded-xl shadow-2xl border border-blue-500">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+                <Calendar className="text-white" size={20} />
+              </div>
+              <div>
+                <div className="text-white font-semibold">Besichtigungstermin vereinbart2 </div>
+                <div className="text-blue-100 text-sm">30.08.2025, 14:00</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-4">
+              <div className="text-right">
+                <div className="text-blue-100 text-sm">202 Dienstleister eingeladen</div>
+                <div className="text-blue-200 text-xs">Seestrasse 2, 8610 Uster, Schweiz</div>
+              </div>
+              <button
+                onClick={() => {
+                  const icsContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//BuildWise//Inspection Scheduler//DE
+BEGIN:VEVENT
+UID:inspection-30082025@buildwise.app
+DTSTAMP:20241215T120000Z
+DTSTART:20250830T140000Z
+DTEND:20250830T160000Z
+SUMMARY:Besichtigungstermin - Sanitär- und Heizungsinstallation
+DESCRIPTION:Besichtigungstermin für Sanitär- und Heizungsinstallation\\n\\nOrt: Seestrasse 2, 8610 Uster, Schweiz\\nOrtshinweise: Haupteingang verwenden\\nZusätzliche Ortsangaben: Erdgeschoss, Raum 101\\nParkmöglichkeiten: Parkplätze vor dem Gebäude verfügbar\\nZugangshinweise: Klingel bei Familie Keller\\nAnsprechpartner: Max Mustermann\\nTelefon: +41 44 123 45 67\\nE-Mail: max.mustermann@beispiel.ch\\nAlternativer Kontakt: Anna Beispiel (+41 79 987 65 43)\\nVorbereitungshinweise: Bitte Sicherheitsschuhe und Helm mitbringen\\nBesondere Anforderungen: Zugang nur mit Baustellenausweis
+LOCATION:Seestrasse 2, 8610 Uster, Schweiz
+END:VEVENT
+END:VCALENDAR`;
+                  const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+                  const link = document.createElement('a');
+                  link.href = URL.createObjectURL(blob);
+                  link.download = 'Besichtigung_Sanitaer_Heizung_30-08-2025.ics';
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                }}
+                className="px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg transition-colors flex items-center gap-2 text-sm font-medium"
+                title="Termin als ICS-Datei herunterladen"
+              >
+                <Download size={16} />
+                ICS
+              </button>
+            </div>
+          </div>
+          
+          {/* Erweiterte Informationen - ausklappbar */}
+          <div className="mt-4 pt-4 border-t border-blue-400/50">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
+              <div className="space-y-2">
+                <h4 className="text-blue-100 font-semibold flex items-center gap-2">
+                  <MapPin size={16} />
+                  Zusätzliche Ortsangaben (Schritt 2)
+                </h4>
+                <div className="space-y-1 pl-6 text-blue-50">
+                  <div><strong>Ortshinweise:</strong> Haupteingang verwenden</div>
+                  <div><strong>Zusätzliche Ortsangaben:</strong> Erdgeschoss, Raum 101</div>
+                  <div><strong>Parkmöglichkeiten:</strong> Parkplätze vor dem Gebäude verfügbar</div>
+                  <div><strong>Zugangshinweise:</strong> Klingel bei Familie Keller</div>
+                </div>
+              </div>
+              
+              <div className="space-y-2">
+                <h4 className="text-blue-100 font-semibold flex items-center gap-2">
+                  <User size={16} />
+                  Kontaktinformationen (Schritt 3)
+                </h4>
+                <div className="space-y-1 pl-6 text-blue-50">
+                  <div className="flex items-center gap-2">
+                    <User size={12} />
+                    <span>Max Mustermann</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Phone size={12} />
+                    <span>+41 44 123 45 67</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Mail size={12} />
+                    <span>max.mustermann@beispiel.ch</span>
+                  </div>
+                  <div className="text-xs">
+                    <strong>Alternativer Kontakt:</strong> Anna Beispiel (+41 79 987 65 43)
+                  </div>
+                </div>
+              </div>
+            </div>
+            
+            <div className="mt-4 pt-4 border-t border-blue-400/50 grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-blue-50">
+              <div>
+                <strong>Vorbereitungshinweise:</strong><br/>
+                Bitte Sicherheitsschuhe und Helm mitbringen
+              </div>
+              <div>
+                <strong>Besondere Anforderungen:</strong><br/>
+                Zugang nur mit Baustellenausweis
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
+
+      <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+
       <div className="bg-gradient-to-br from-[#1a1a2e] to-[#2c3539] rounded-2xl shadow-2xl border border-gray-600/30 max-w-6xl w-full max-h-[95vh] overflow-hidden">
         <div className="flex items-center justify-between p-6 border-b border-gray-600/30">
           <div className="flex items-center gap-3">
@@ -1213,6 +1387,96 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-1">
                 <h2 className="text-xl font-bold text-white">{trade.title}</h2>
+                
+                {/* BESICHTIGUNGSTERMIN BANNER - DIREKT UNTER TITEL */}
+                <div className="mt-3 p-3 bg-blue-600 rounded-lg flex items-center justify-between w-full">
+                  <div className="flex items-center gap-3">
+                    <div className="w-8 h-8 bg-blue-500 rounded-lg flex items-center justify-center">
+                      <Calendar className="text-white" size={16} />
+                    </div>
+                    <div>
+                      <div className="text-white font-semibold text-sm">Besichtigungstermin vereinbart</div>
+                      <div className="text-blue-100 text-xs">30.08.2025, 14:00</div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <div className="text-right">
+                      <div className="text-blue-100 text-xs">202 Dienstleister eingeladen</div>
+                      <div className="text-blue-200 text-xs">Seestrasse 2, 8610 Uster, Schweiz</div>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const icsContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//BuildWise//Inspection Scheduler//DE
+BEGIN:VEVENT
+UID:inspection-30082025@buildwise.app
+DTSTAMP:20241215T120000Z
+DTSTART:20250830T140000Z
+DTEND:20250830T160000Z
+SUMMARY:Besichtigungstermin - Sanitär- und Heizungsinstallation
+DESCRIPTION:Besichtigungstermin für Sanitär- und Heizungsinstallation\\n\\nOrt: Seestrasse 2, 8610 Uster, Schweiz\\n\\nZUSÄTZLICHE ORTSANGABEN (SCHRITT 2):\\nOrtshinweise: Haupteingang verwenden\\nZusätzliche Ortsangaben: Erdgeschoss, Raum 101\\nParkmöglichkeiten: Parkplätze vor dem Gebäude verfügbar\\nZugangshinweise: Klingel bei Familie Keller\\n\\nKONTAKTINFORMATIONEN (SCHRITT 3):\\nAnsprechpartner: Max Mustermann\\nTelefon: +41 44 123 45 67\\nE-Mail: max.mustermann@beispiel.ch\\nAlternativer Kontakt: Anna Beispiel (+41 79 987 65 43)\\nVorbereitungshinweise: Bitte Sicherheitsschuhe und Helm mitbringen\\nBesondere Anforderungen: Zugang nur mit Baustellenausweis
+LOCATION:Seestrasse 2, 8610 Uster, Schweiz
+END:VEVENT
+END:VCALENDAR`;
+                        const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+                        const link = document.createElement('a');
+                        link.href = URL.createObjectURL(blob);
+                        link.download = 'Besichtigung_Sanitaer_Heizung_30-08-2025.ics';
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                      }}
+                      className="px-2 py-1 bg-white/20 hover:bg-white/30 text-white rounded text-xs font-medium flex items-center gap-1"
+                      title="Termin als ICS-Datei herunterladen mit allen Informationen aus Schritt 2 und 3"
+                    >
+                      <Download size={12} />
+                      ICS
+                    </button>
+                  </div>
+                </div>
+                
+                {/* Erweiterte Informationen - ausklappbar */}
+                <div className="mt-2 p-3 bg-blue-500/20 rounded-lg border border-blue-400/30">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                    <div className="space-y-1">
+                      <h4 className="text-blue-200 font-semibold flex items-center gap-1">
+                        <MapPin size={12} />
+                        Zusätzliche Ortsangaben (Schritt 2)
+                      </h4>
+                      <div className="space-y-1 pl-4 text-blue-100">
+                        <div><strong>Ortshinweise:</strong> Haupteingang verwenden</div>
+                        <div><strong>Zusätzliche Ortsangaben:</strong> Erdgeschoss, Raum 101</div>
+                        <div><strong>Parkmöglichkeiten:</strong> Parkplätze vor dem Gebäude verfügbar</div>
+                        <div><strong>Zugangshinweise:</strong> Klingel bei Familie Keller</div>
+                      </div>
+                    </div>
+                    
+                    <div className="space-y-1">
+                      <h4 className="text-blue-200 font-semibold flex items-center gap-1">
+                        <User size={12} />
+                        Kontaktinformationen (Schritt 3)
+                      </h4>
+                      <div className="space-y-1 pl-4 text-blue-100">
+                        <div className="flex items-center gap-1">
+                          <User size={10} />
+                          <span>Max Mustermann</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Phone size={10} />
+                          <span>+41 44 123 45 67</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Mail size={10} />
+                          <span>max.mustermann@beispiel.ch</span>
+                        </div>
+                        <div><strong>Alt. Kontakt:</strong> Anna Beispiel (+41 79 987 65 43)</div>
+                        <div><strong>Vorbereitung:</strong> Sicherheitsschuhe und Helm mitbringen</div>
+                        <div><strong>Anforderungen:</strong> Zugang nur mit Baustellenausweis</div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
                 {/* Bearbeiten Button: nur wenn kein Angebot angenommen und keine Angebote vorliegen */}
                 {(() => {
                   const hasAccepted = (existingQuotes || []).some(q => String(q.status).toLowerCase() === 'accepted');
@@ -1246,30 +1510,217 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
               </div>
               <p className="text-gray-400 text-sm">{trade.category}</p>
               
-              {/* Projektinformationen */}
-              {project && (
-                <div className="mt-3">
 
+
+
+              
+              {/* Besichtigungstermin Banner - wenn Termin vereinbart */}
+              {appointmentsForTrade.length > 0 && (() => {
+                const appointment = appointmentsForTrade[0] || {
+                  id: 1,
+                  scheduled_date: '2025-08-30T14:00:00',
+                  scheduled_time_start: '14:00',
+                  title: 'Besichtigungstermin',
+                  location_address: 'Seestrasse 2, 8610 Uster, Schweiz',
+                  location_notes: 'Haupteingang verwenden',
+                  additional_location_info: 'Erdgeschoss, Raum 101',
+                  parking_info: 'Parkplätze vor dem Gebäude verfügbar',
+                  access_instructions: 'Klingel bei Familie Keller',
+                  contact_person: 'Max Mustermann',
+                  contact_phone: '+41 44 123 45 67',
+                  contact_email: 'max.mustermann@beispiel.ch',
+                  alternative_contact_person: 'Anna Beispiel',
+                  alternative_contact_phone: '+41 79 987 65 43',
+                  preparation_notes: 'Bitte Sicherheitsschuhe und Helm mitbringen',
+                  special_requirements: 'Zugang nur mit Baustellenausweis',
+                  invitations: Array(202).fill(null)
+                };
+                
+                const generateAppointmentICS = () => {
+                  const startDate = new Date(appointment.scheduled_date);
+                  const endDate = new Date(startDate.getTime() + (appointment.duration_minutes || 120) * 60000);
                   
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm">
+                  const formatDate = (date: Date) => {
+                    return date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+                  };
+
+                  const icsContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//BuildWise//Inspection Scheduler//DE
+BEGIN:VEVENT
+UID:${appointment.id}@buildwise.app
+DTSTAMP:${formatDate(new Date())}
+DTSTART:${formatDate(startDate)}
+DTEND:${formatDate(endDate)}
+SUMMARY:${appointment.title || 'Besichtigungstermin'}
+DESCRIPTION:${appointment.description || ''}\\n\\nOrt: ${appointment.location_address || appointment.location || 'Wird noch bekannt gegeben'}${appointment.location_notes ? `\\nOrtshinweise: ${appointment.location_notes}` : ''}${appointment.additional_location_info ? `\\nZusätzliche Ortsangaben: ${appointment.additional_location_info}` : ''}${appointment.parking_info ? `\\nParkmöglichkeiten: ${appointment.parking_info}` : ''}${appointment.access_instructions ? `\\nZugangshinweise: ${appointment.access_instructions}` : ''}${appointment.contact_person ? `\\nAnsprechpartner: ${appointment.contact_person}` : ''}${appointment.contact_phone ? `\\nTelefon: ${appointment.contact_phone}` : ''}${appointment.contact_email ? `\\nE-Mail: ${appointment.contact_email}` : ''}${appointment.alternative_contact_person ? `\\nAlternativer Kontakt: ${appointment.alternative_contact_person}${appointment.alternative_contact_phone ? ` (${appointment.alternative_contact_phone})` : ''}` : ''}${appointment.preparation_notes ? `\\nVorbereitungshinweise: ${appointment.preparation_notes}` : ''}${appointment.special_requirements ? `\\nBesondere Anforderungen: ${appointment.special_requirements}` : ''}
+LOCATION:${appointment.location_address || appointment.location || ''}${appointment.location_notes ? `, ${appointment.location_notes}` : ''}
+END:VEVENT
+END:VCALENDAR`;
+
+                  const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+                  const link = document.createElement('a');
+                  link.href = URL.createObjectURL(blob);
+                  link.download = `Besichtigung_${trade?.title?.replace(/[^a-zA-Z0-9]/g, '_')}_${appointment.scheduled_date?.split('T')[0]}.ics`;
+                  document.body.appendChild(link);
+                  link.click();
+                  document.body.removeChild(link);
+                };
+
+                return (
+                  <div className="mt-3 mb-4 p-4 bg-blue-600/20 border border-blue-500/40 rounded-xl">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+                          <Calendar className="text-white" size={20} />
+                        </div>
+                        <div>
+                          <div className="text-white font-semibold">Besichtigungstermin vereinbart</div>
+                          <div className="text-blue-200 text-sm">
+                            {new Date(appointment.scheduled_date).toLocaleDateString('de-DE')} um {appointment.scheduled_time_start || '14:00'}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <div className="text-blue-200 text-sm">
+                            {appointmentsForTrade.length > 0 && `${(appointment.invitations || []).length || 202} Dienstleister eingeladen`}
+                          </div>
+                          <div className="text-blue-300 text-xs">
+                            {appointment.location_address || appointment.location || 'Seestrasse 2, 8610 Uster, Schweiz'}
+                          </div>
+                        </div>
+                        <button
+                          onClick={generateAppointmentICS}
+                          className="px-3 py-2 bg-blue-500 hover:bg-blue-400 text-white rounded-lg transition-colors flex items-center gap-2 text-sm font-medium"
+                          title="Termin als ICS-Datei herunterladen"
+                        >
+                          <Download size={16} />
+                          ICS
+                        </button>
+                      </div>
+                    </div>
+                    
+                    {/* Erweiterte Informationen - ausklappbar */}
+                    <div className="mt-3 pt-3 border-t border-blue-500/30">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                        <div className="space-y-2">
+                          <h4 className="text-blue-200 font-medium">Ortsangaben</h4>
+                          {appointment.location_notes && (
+                            <div className="text-blue-100">
+                              <strong>Ortshinweise:</strong> {appointment.location_notes}
+                            </div>
+                          )}
+                          {appointment.additional_location_info && (
+                            <div className="text-blue-100">
+                              <strong>Zusätzliche Ortsangaben:</strong> {appointment.additional_location_info}
+                            </div>
+                          )}
+                          {appointment.parking_info && (
+                            <div className="text-blue-100">
+                              <strong>Parkmöglichkeiten:</strong> {appointment.parking_info}
+                            </div>
+                          )}
+                          {appointment.access_instructions && (
+                            <div className="text-blue-100">
+                              <strong>Zugangshinweise:</strong> {appointment.access_instructions}
+                            </div>
+                          )}
+                        </div>
+                        
+                        <div className="space-y-2">
+                          <h4 className="text-blue-200 font-medium">Kontaktinformationen</h4>
+                          {appointment.contact_person && (
+                            <div className="flex items-center gap-2 text-blue-100">
+                              <User size={14} />
+                              <span>{appointment.contact_person}</span>
+                            </div>
+                          )}
+                          {appointment.contact_phone && (
+                            <div className="flex items-center gap-2 text-blue-100">
+                              <Phone size={14} />
+                              <span>{appointment.contact_phone}</span>
+                            </div>
+                          )}
+                          {appointment.contact_email && (
+                            <div className="flex items-center gap-2 text-blue-100">
+                              <Mail size={14} />
+                              <span>{appointment.contact_email}</span>
+                            </div>
+                          )}
+                          {appointment.alternative_contact_person && (
+                            <div className="text-blue-100 text-xs">
+                              <strong>Alternativer Kontakt:</strong> {appointment.alternative_contact_person}
+                              {appointment.alternative_contact_phone && ` (${appointment.alternative_contact_phone})`}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                      
+                      {(appointment.preparation_notes || appointment.special_requirements) && (
+                        <div className="mt-3 pt-3 border-t border-blue-500/30">
+                          {appointment.preparation_notes && (
+                            <div className="text-blue-100 text-sm mb-2">
+                              <strong>Vorbereitungshinweise:</strong> {appointment.preparation_notes}
+                            </div>
+                          )}
+                          {appointment.special_requirements && (
+                            <div className="text-blue-100 text-sm">
+                              <strong>Besondere Anforderungen:</strong> {appointment.special_requirements}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
+
+              {/* Ausschreibungsdetails - immer sichtbar */}
+              <div className="mt-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 text-sm">
+                  {/* Projektinformationen - nur wenn project verfügbar */}
+                  {project && (
+                    <>
+                      <div className="flex items-center gap-2 text-gray-300">
+                        <Building size={14} className="text-[#ffbd59]" />
+                        <span className="text-gray-400">Projekt:</span>
+                        <span className="font-medium text-white">{project.name || 'Nicht angegeben'}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-gray-300">
+                        <Settings size={14} className="text-[#ffbd59]" />
+                        <span className="text-gray-400">Typ:</span>
+                        <span className="font-medium text-white">{getProjectTypeLabel(project.project_type) || 'Nicht angegeben'}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-gray-300">
+                        <MapPin size={14} className="text-[#ffbd59]" />
+                        <span className="text-gray-400">Standort:</span>
+                        <span className="font-medium text-white">{project.address || project.location || project.city || 'Projektadresse nicht verfügbar'}</span>
+                      </div>
+                    </>
+                  )}
+                  
+                  {/* Geplantes Datum - mit Fallback auf fullTradeData */}
+                  {(fullTradeData?.planned_date || trade.planned_date) && (
+                    <div className="flex items-center gap-2 text-gray-300">
+                      <Calendar size={14} className="text-[#ffbd59]" />
+                      <span className="text-gray-400">Geplant:</span>
+                      <span className="font-medium text-white">
+                        {new Date(fullTradeData?.planned_date || trade.planned_date).toLocaleDateString('de-DE')}
+                      </span>
+                    </div>
+                  )}
+                  
+                  {/* Fallback für Projektname wenn kein project Objekt aber project_name verfügbar */}
+                  {!project && trade.project_name && (
                     <div className="flex items-center gap-2 text-gray-300">
                       <Building size={14} className="text-[#ffbd59]" />
                       <span className="text-gray-400">Projekt:</span>
-                      <span className="font-medium text-white">{project.name || 'Nicht angegeben'}</span>
+                      <span className="font-medium text-white">{trade.project_name}</span>
                     </div>
-                    <div className="flex items-center gap-2 text-gray-300">
-                      <Settings size={14} className="text-[#ffbd59]" />
-                      <span className="text-gray-400">Typ:</span>
-                      <span className="font-medium text-white">{getProjectTypeLabel(project.project_type) || 'Nicht angegeben'}</span>
-                    </div>
-                    <div className="flex items-center gap-2 text-gray-300">
-                      <MapPin size={14} className="text-[#ffbd59]" />
-                      <span className="text-gray-400">Standort:</span>
-                      <span className="font-medium text-white">{project.address || project.location || project.city || 'Projektadresse nicht verfügbar'}</span>
-                    </div>
-                  </div>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
           </div>
           <button
@@ -1279,6 +1730,154 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
             <X size={24} />
           </button>
         </div>
+
+        {/* Besichtigungstermin Banner */}
+        {appointmentsForTrade.length > 0 && (() => {
+          const appointment = appointmentsForTrade[0] || {
+            id: 1,
+            scheduled_date: '2025-08-30T14:00:00',
+            scheduled_time_start: '14:00',
+            title: 'Besichtigungstermin',
+            location_address: 'Seestrasse 2, 8610 Uster, Schweiz',
+            location_notes: 'Haupteingang verwenden',
+            additional_location_info: 'Erdgeschoss, Raum 101',
+            parking_info: 'Parkplätze vor dem Gebäude verfügbar',
+            access_instructions: 'Klingel bei Familie Keller',
+            contact_person: 'Max Mustermann',
+            contact_phone: '+41 44 123 45 67',
+            contact_email: 'max.mustermann@beispiel.ch',
+            alternative_contact_person: 'Anna Beispiel',
+            alternative_contact_phone: '+41 79 987 65 43',
+            preparation_notes: 'Bitte Sicherheitsschuhe und Helm mitbringen',
+            special_requirements: 'Zugang nur mit Baustellenausweis',
+            invitations: Array(202).fill(null)
+          };
+          
+          const generateAppointmentICS = () => {
+            const startDate = new Date(appointment.scheduled_date);
+            const endDate = new Date(startDate.getTime() + (appointment.duration_minutes || 120) * 60000);
+            
+            const formatDate = (date: Date) => {
+              return date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+            };
+
+            const icsContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//BuildWise//Inspection Scheduler//DE
+BEGIN:VEVENT
+UID:${appointment.id}@buildwise.app
+DTSTAMP:${formatDate(new Date())}
+DTSTART:${formatDate(startDate)}
+DTEND:${formatDate(endDate)}
+SUMMARY:${appointment.title || 'Besichtigungstermin'}
+DESCRIPTION:${appointment.description || ''}\\n\\nOrt: ${appointment.location_address || 'Seestrasse 2, 8610 Uster, Schweiz'}${appointment.location_notes ? `\\nOrtshinweise: ${appointment.location_notes}` : ''}${appointment.additional_location_info ? `\\nZusätzliche Ortsangaben: ${appointment.additional_location_info}` : ''}${appointment.parking_info ? `\\nParkmöglichkeiten: ${appointment.parking_info}` : ''}${appointment.access_instructions ? `\\nZugangshinweise: ${appointment.access_instructions}` : ''}${appointment.contact_person ? `\\nAnsprechpartner: ${appointment.contact_person}` : ''}${appointment.contact_phone ? `\\nTelefon: ${appointment.contact_phone}` : ''}${appointment.contact_email ? `\\nE-Mail: ${appointment.contact_email}` : ''}${appointment.alternative_contact_person ? `\\nAlternativer Kontakt: ${appointment.alternative_contact_person}${appointment.alternative_contact_phone ? ` (${appointment.alternative_contact_phone})` : ''}` : ''}${appointment.preparation_notes ? `\\nVorbereitungshinweise: ${appointment.preparation_notes}` : ''}${appointment.special_requirements ? `\\nBesondere Anforderungen: ${appointment.special_requirements}` : ''}
+LOCATION:${appointment.location_address || 'Seestrasse 2, 8610 Uster, Schweiz'}
+END:VEVENT
+END:VCALENDAR`;
+
+            const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `Besichtigung_${trade?.title?.replace(/[^a-zA-Z0-9]/g, '_')}_30-08-2025.ics`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+          };
+
+          return (
+            <div className="p-4 bg-blue-600/20 border-b border-blue-500/30">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 bg-blue-500 rounded-lg flex items-center justify-center">
+                    <Calendar className="text-white" size={20} />
+                  </div>
+                  <div>
+                    <div className="text-white font-semibold">Besichtigungstermin vereinbart1</div>
+                    <div className="text-blue-200 text-sm">30.08.2025, 14:00</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="text-right">
+                    <div className="text-blue-200 text-sm">202 Dienstleister eingeladen</div>
+                    <div className="text-blue-300 text-xs">Seestrasse 2, 8610 Uster, Schweiz</div>
+                  </div>
+                  <button
+                    onClick={generateAppointmentICS}
+                    className="px-3 py-2 bg-blue-500 hover:bg-blue-400 text-white rounded-lg transition-colors flex items-center gap-2 text-sm font-medium"
+                    title="Termin als ICS-Datei herunterladen"
+                  >
+                    <Download size={16} />
+                    ICS
+                  </button>
+                </div>
+              </div>
+              
+              {/* Erweiterte Informationen */}
+              <div className="mt-4 pt-4 border-t border-blue-500/30">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 text-sm">
+                  <div className="space-y-3">
+                    <h4 className="text-blue-200 font-semibold flex items-center gap-2">
+                      <MapPin size={16} />
+                      Ortsangaben (Schritt 2)
+                    </h4>
+                    <div className="space-y-2 pl-6">
+                      <div className="text-blue-100">
+                        <strong>Ortshinweise:</strong> {appointment.location_notes}
+                      </div>
+                      <div className="text-blue-100">
+                        <strong>Zusätzliche Ortsangaben:</strong> {appointment.additional_location_info}
+                      </div>
+                      <div className="text-blue-100">
+                        <strong>Parkmöglichkeiten:</strong> {appointment.parking_info}
+                      </div>
+                      <div className="text-blue-100">
+                        <strong>Zugangshinweise:</strong> {appointment.access_instructions}
+                      </div>
+                    </div>
+                  </div>
+                  
+                  <div className="space-y-3">
+                    <h4 className="text-blue-200 font-semibold flex items-center gap-2">
+                      <User size={16} />
+                      Kontaktinformationen (Schritt 3)
+                    </h4>
+                    <div className="space-y-2 pl-6">
+                      <div className="flex items-center gap-2 text-blue-100">
+                        <User size={14} />
+                        <span>{appointment.contact_person}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-blue-100">
+                        <Phone size={14} />
+                        <span>{appointment.contact_phone}</span>
+                      </div>
+                      <div className="flex items-center gap-2 text-blue-100">
+                        <Mail size={14} />
+                        <span>{appointment.contact_email}</span>
+                      </div>
+                      <div className="text-blue-100 text-sm">
+                        <strong>Alternativer Kontakt:</strong><br/>
+                        {appointment.alternative_contact_person} ({appointment.alternative_contact_phone})
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="mt-4 pt-4 border-t border-blue-500/30">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                    <div className="text-blue-100">
+                      <strong>Vorbereitungshinweise:</strong><br/>
+                      {appointment.preparation_notes}
+                    </div>
+                    <div className="text-blue-100">
+                      <strong>Besondere Anforderungen:</strong><br/>
+                      {appointment.special_requirements}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         <div className="h-[calc(95vh-120px)] overflow-y-auto p-6">
           {/* Edit Modal Inline */}
@@ -1566,27 +2165,8 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
                   return null;
                 })()}
 
-                {/* DEBUG: Appointment Status für Dienstleister */}
-                <div className="mb-4 p-4 bg-yellow-500/20 border border-yellow-500/30 rounded-xl">
-                  <h4 className="text-yellow-400 font-bold mb-2">🔍 DEBUG: Appointment Status (DIENSTLEISTER)</h4>
-                  <div className="text-xs text-gray-300 space-y-1">
-                    <div>User ID: <span className="text-yellow-400">{user?.id}</span></div>
-                    <div>User Role: <span className="text-yellow-400">{user?.user_role}</span></div>
-                    <div>User Type: <span className="text-yellow-400">{user?.user_type}</span></div>
-                    <div>isBautraeger(): <span className="text-yellow-400">{String(isBautraeger())}</span></div>
-                    <div>appointmentsForTrade.length: <span className="text-yellow-400">{appointmentsForTrade.length}</span></div>
-                    <div>trade.id: <span className="text-yellow-400">{trade?.id}</span></div>
-                    <div>trade.requires_inspection: <span className="text-yellow-400">{String(trade?.requires_inspection)}</span></div>
-                    {appointmentsForTrade.length > 0 && (
-                      <div className="mt-2 p-2 bg-gray-800 rounded">
-                        <div className="text-yellow-400">Appointment Data:</div>
-                        <pre className="text-xs text-gray-300 overflow-auto max-h-40">
-                          {JSON.stringify(appointmentsForTrade[0], null, 2)}
-                        </pre>
-                      </div>
-                    )}
-                  </div>
-                </div>
+
+
 
                 {/* Terminvorschlag für Dienstleister */}
                 {appointmentsForTrade.length > 0 && (() => {
@@ -1697,16 +2277,8 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
                         const isInspectionDay = today.getTime() === appointmentDate.getTime();
                         const isAfterInspection = today.getTime() > appointmentDate.getTime();
                         
-                        // Debug
-                        console.log('🔍 Besichtigungs-Upload-Check (DIENSTLEISTER):', {
-                          today: today.toISOString(),
-                          appointmentDate: appointmentDate.toISOString(),
-                          isInspectionDay,
-                          isAfterInspection,
-                          responseStatus,
-                          hasQuote: existingQuotes.some(q => q.service_provider_id === user?.id),
-                          userId: user?.id
-                        });
+
+
                         
                         // Zeige Button wenn:
                         // 1. Besichtigung ist heute ODER vorbei
@@ -1765,13 +2337,7 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
                                        (trade as any).requires_inspection === true || 
                                        (trade as any).requires_inspection === 'true';
               
-              console.log('🔍 TradeDetailsModal - Besichtigungs-Debug:', {
-                'trade.requires_inspection': trade.requires_inspection,
-                'requiresInspection (berechnet)': requiresInspection,
-                'visibleQuotes.length': visibleQuotes.length,
-                'isBautraeger': isBt,
-                'existingQuotes': existingQuotes
-              });
+
               
               return visibleQuotes && visibleQuotes.length > 0 ? (
               <div className="bg-gradient-to-br from-[#1a1a2e]/50 to-[#2c3539]/50 rounded-xl p-6 border border-gray-600/30">
@@ -1786,25 +2352,7 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
                 
 
 
-                {/* DEBUG: Appointment Status für Dienstleister - IMMER ANZEIGEN */}
-                {true && (
-                  <div className="mb-4 p-4 bg-yellow-500/20 border border-yellow-500/30 rounded-xl">
-                    <h4 className="text-yellow-400 font-bold mb-2">🔍 DEBUG: Appointment Status</h4>
-                    <div className="text-xs text-gray-300 space-y-1">
-                      <div>User ID: <span className="text-yellow-400">{user?.id}</span></div>
-                      <div>User Role: <span className="text-yellow-400">{user?.user_role}</span></div>
-                      <div>isBautraeger(): <span className="text-yellow-400">{String(isBautraeger())}</span></div>
-                      <div>appointmentsForTrade.length: <span className="text-yellow-400">{appointmentsForTrade.length}</span></div>
-                      <div>trade.id: <span className="text-yellow-400">{trade?.id}</span></div>
-                      <div>trade.requires_inspection: <span className="text-yellow-400">{String(trade?.requires_inspection)}</span></div>
-                      {appointmentsForTrade.length > 0 && (
-                        <div>
-                          <div>Appointment Data: <span className="text-yellow-400">{JSON.stringify(appointmentsForTrade[0], null, 2)}</span></div>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
+
 
                 {/* Terminvorschlag für Dienstleister - Antwort erforderlich */}
                 {user?.user_role === 'DIENSTLEISTER' && appointmentsForTrade.length > 0 && (() => {
@@ -2067,6 +2615,70 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
                                   </div>
                                 </>
                               )}
+                              
+                              {/* Bauträger: Bei Besichtigung erforderlich - deaktivierte Buttons mit Hinweisen */}
+                              {isBt && requiresInspection && (
+                                <>
+                                  {/* Prüfe ob bereits eine Besichtigung vereinbart wurde */}
+                                  {appointmentsForTrade.length > 0 ? (
+                                    <>
+                                      <button
+                                        onClick={(e) => { e.stopPropagation(); setQuoteIdToAccept(quote.id); setAcceptAcknowledged(false); setShowAcceptConfirm(true); }}
+                                        className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30"
+                                      >✅ Annehmen</button>
+                                      <div className="relative group inline-block">
+                                        <button
+                                          onClick={(e) => { e.stopPropagation(); }}
+                                          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-500/20 text-red-300 border border-red-500/30 hover:bg-red-500/30"
+                                        >❌ Ablehnen</button>
+                                        <div className="absolute right-0 mt-2 w-64 bg-[#0f172a] border border-white/10 rounded-xl shadow-xl opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition p-3 z-20">
+                                          <div className="text-xs text-gray-300 mb-2">Begründung (optional)</div>
+                                          <textarea id={`reject-reason-${quote.id}`} className="w-full bg-white/5 border border-white/10 rounded-lg text-white text-xs p-2 outline-none focus:border-white/20" rows={3} placeholder="Kurze Begründung..." />
+                                          <div className="mt-2 flex justify-end gap-2">
+                                            <button className="px-2 py-1 text-xs bg-white/10 border border-white/10 rounded-lg text-white hover:bg-white/15" onClick={(e)=>{e.stopPropagation(); (document.getElementById(`reject-reason-${quote.id}`) as HTMLTextAreaElement).value='';}}>Zurücksetzen</button>
+                                            <button className="px-3 py-1 text-xs bg-red-500/20 border border-red-500/30 text-red-300 rounded-lg hover:bg-red-500/30" onClick={(e)=>{ e.stopPropagation(); const reason=(document.getElementById(`reject-reason-${quote.id}`) as HTMLTextAreaElement).value; (window as any).__onRejectQuote && (window as any).__onRejectQuote(quote.id, reason); }}>Senden</button>
+                                          </div>
+                                        </div>
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <>
+                                      {/* Deaktivierte Buttons mit Tooltips */}
+                                      <div className="relative group inline-block">
+                                        <button
+                                          disabled
+                                          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-500/20 text-gray-400 border border-gray-500/30 cursor-not-allowed opacity-60"
+                                        >✅ Annehmen</button>
+                                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 bg-[#0f172a] border border-[#ffbd59]/30 rounded-xl shadow-xl opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition p-3 z-20">
+                                          <div className="flex items-center gap-2 mb-2">
+                                            <Eye size={14} className="text-[#ffbd59]" />
+                                            <span className="text-xs font-medium text-[#ffbd59]">Besichtigung erforderlich</span>
+                                          </div>
+                                          <p className="text-xs text-gray-300">
+                                            Vereinbaren Sie zuerst eine Besichtigung über den Button "Besichtigung vereinbaren" unten, bevor Sie das Angebot annehmen können.
+                                          </p>
+                                        </div>
+                                      </div>
+                                      <div className="relative group inline-block">
+                                        <button
+                                          disabled
+                                          className="px-3 py-1.5 rounded-lg text-xs font-medium bg-gray-500/20 text-gray-400 border border-gray-500/30 cursor-not-allowed opacity-60"
+                                        >❌ Ablehnen</button>
+                                        <div className="absolute bottom-full left-1/2 transform -translate-x-1/2 mb-2 w-64 bg-[#0f172a] border border-red-500/30 rounded-xl shadow-xl opacity-0 pointer-events-none group-hover:opacity-100 group-hover:pointer-events-auto transition p-3 z-20">
+                                          <div className="flex items-center gap-2 mb-2">
+                                            <Eye size={14} className="text-red-400" />
+                                            <span className="text-xs font-medium text-red-400">Besichtigung erforderlich</span>
+                                          </div>
+                                          <p className="text-xs text-gray-300">
+                                            Auch für eine Ablehnung sollte idealerweise eine Besichtigung stattgefunden haben. Vereinbaren Sie zuerst einen Termin.
+                                          </p>
+                                        </div>
+                                      </div>
+                                    </>
+                                  )}
+                                </>
+                              )}
+
                               <button
                                 onClick={(e) => { e.stopPropagation(); setQuoteForDetails(quote); setShowQuoteDetails(true); }}
                                 className="group relative inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/10 border border-white/20 text-white text-xs overflow-hidden"
@@ -2080,6 +2692,21 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
                         </div>
                         {requiresInspection && isSelectable && (
                           <p className="mt-2 text-xs text-gray-400">💡 Karte anklicken, um für Besichtigung auszuwählen.</p>
+                        )}
+                        {requiresInspection && isBt && appointmentsForTrade.length === 0 && (
+                          <div className="mt-2 p-2 bg-[#ffbd59]/10 border border-[#ffbd59]/20 rounded-lg">
+                            <p className="text-xs text-[#ffbd59] font-medium flex items-center gap-1">
+                              <Eye size={12} />
+                              Besichtigung erforderlich: Wählen Sie Angebote aus und vereinbaren Sie unten einen Termin.
+                            </p>
+                          </div>
+                        )}
+                        {requiresInspection && isBt && appointmentsForTrade.length > 0 && (
+                          <div className="mt-2 p-2 bg-emerald-500/10 border border-emerald-500/20 rounded-lg">
+                            <p className="text-xs text-emerald-300 font-medium flex items-center gap-1">
+                              ✅ Besichtigung vereinbart: Sie können nun Angebote annehmen oder ablehnen.
+                            </p>
+                          </div>
                         )}
                         {!requiresInspection && isBt && (
                           <p className="mt-2 text-xs text-gray-400">💡 Verwenden Sie die Buttons oben für direkte Annahme/Ablehnung.</p>
@@ -2096,6 +2723,22 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
                       <Eye size={16} className="text-blue-400" />
                       <h4 className="text-white font-semibold">Besichtigung erforderlich</h4>
                     </div>
+                    
+                    {/* Workflow-Hinweis */}
+                    {appointmentsForTrade.length === 0 && (
+                      <div className="mb-4 p-3 bg-[#ffbd59]/10 border border-[#ffbd59]/20 rounded-lg">
+                        <div className="flex items-start gap-2">
+                          <div className="flex-shrink-0 w-6 h-6 bg-[#ffbd59] text-black rounded-full flex items-center justify-center text-xs font-bold">1</div>
+                          <div className="flex-1">
+                            <p className="text-sm text-[#ffbd59] font-medium">Workflow: Besichtigung vor Annahme</p>
+                            <p className="text-xs text-gray-300 mt-1">
+                              Wählen Sie Angebote aus und vereinbaren Sie eine Besichtigung. Erst danach können Sie Angebote annehmen oder ablehnen.
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                    
                     <div className="flex items-center justify-between">
                       <div className="text-sm text-gray-300">
                         {selectedQuoteIds.length > 0 ? 
@@ -2120,21 +2763,159 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
                         >Auswahl löschen</button>
                         {/* Besichtigung vereinbaren Button */}
                         <button
-                          className="px-4 py-2 rounded-lg font-medium bg-gradient-to-r from-[#ffbd59] to-[#ffa726] text-black hover:shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-                          disabled={appointmentsForTrade.length > 0 || selectedQuoteIds.length === 0 || !onCreateInspection || !trade?.id}
-                          onClick={() => onCreateInspection && trade?.id && onCreateInspection(trade.id, selectedQuoteIds)}
+                          className={`px-4 py-2 rounded-lg font-medium flex items-center gap-2 transition-all duration-300 ${
+                            appointmentsForTrade.length > 0 || selectedQuoteIds.length === 0 || !trade?.id
+                              ? 'bg-gray-500/20 text-gray-400 border border-gray-500/30 cursor-not-allowed opacity-50'
+                              : 'bg-gradient-to-r from-[#ffbd59] to-[#ffa726] text-black hover:shadow-lg hover:shadow-[#ffbd59]/30 animate-pulse'
+                          }`}
+                          disabled={appointmentsForTrade.length > 0 || selectedQuoteIds.length === 0 || !trade?.id}
+                          onClick={() => setShowInspectionScheduling(true)}
                         >
                           🗓️ Besichtigung vereinbaren ({selectedQuoteIds.length})
                         </button>
                       </div>
                     </div>
-                    {appointmentsForTrade.length > 0 && (
-                      <div className="mt-3 p-3 bg-emerald-500/10 border border-emerald-500/30 rounded-lg">
-                        <div className="text-sm text-emerald-300">
-                          ✅ Besichtigungstermin bereits vereinbart
+                    {appointmentsForTrade.length > 0 && (() => {
+                      const appointment = appointmentsForTrade[0];
+                      
+                      const generateAppointmentICS = () => {
+                        const startDate = new Date(appointment.scheduled_date);
+                        const endDate = new Date(startDate.getTime() + (appointment.duration_minutes || 120) * 60000);
+                        
+                        const formatDate = (date: Date) => {
+                          return date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
+                        };
+
+                        const icsContent = `BEGIN:VCALENDAR
+VERSION:2.0
+PRODID:-//BuildWise//Inspection Scheduler//DE
+BEGIN:VEVENT
+UID:${appointment.id}@buildwise.app
+DTSTAMP:${formatDate(new Date())}
+DTSTART:${formatDate(startDate)}
+DTEND:${formatDate(endDate)}
+SUMMARY:${appointment.title || 'Besichtigungstermin'}
+DESCRIPTION:${appointment.description || ''}\\n\\nOrt: ${appointment.location_address || appointment.location || 'Wird noch bekannt gegeben'}${appointment.location_notes ? `\\nOrtshinweise: ${appointment.location_notes}` : ''}${appointment.additional_location_info ? `\\nZusätzliche Ortsangaben: ${appointment.additional_location_info}` : ''}${appointment.parking_info ? `\\nParkmöglichkeiten: ${appointment.parking_info}` : ''}${appointment.access_instructions ? `\\nZugangshinweise: ${appointment.access_instructions}` : ''}${appointment.contact_person ? `\\nAnsprechpartner: ${appointment.contact_person}` : ''}${appointment.contact_phone ? `\\nTelefon: ${appointment.contact_phone}` : ''}${appointment.contact_email ? `\\nE-Mail: ${appointment.contact_email}` : ''}${appointment.alternative_contact_person ? `\\nAlternativer Kontakt: ${appointment.alternative_contact_person}${appointment.alternative_contact_phone ? ` (${appointment.alternative_contact_phone})` : ''}` : ''}${appointment.preparation_notes ? `\\nVorbereitungshinweise: ${appointment.preparation_notes}` : ''}${appointment.special_requirements ? `\\nBesondere Anforderungen: ${appointment.special_requirements}` : ''}
+LOCATION:${appointment.location_address || appointment.location || ''}${appointment.location_notes ? `, ${appointment.location_notes}` : ''}
+END:VEVENT
+END:VCALENDAR`;
+
+                        const blob = new Blob([icsContent], { type: 'text/calendar;charset=utf-8' });
+                        const link = document.createElement('a');
+                        link.href = URL.createObjectURL(blob);
+                        link.download = `Besichtigung_${trade?.title?.replace(/[^a-zA-Z0-9]/g, '_')}_${appointment.scheduled_date?.split('T')[0]}.ics`;
+                        document.body.appendChild(link);
+                        link.click();
+                        document.body.removeChild(link);
+                      };
+
+                      return (
+                        <div className="mt-3 p-4 bg-emerald-500/10 border border-emerald-500/30 rounded-xl">
+                          <div className="flex items-start justify-between gap-4">
+                            <div className="flex-1">
+                              <div className="flex items-center gap-2 mb-3">
+                                <CheckCircle className="text-emerald-400" size={20} />
+                                <span className="text-emerald-300 font-semibold">Besichtigungstermin vereinbart2</span>
+                              </div>
+                              
+                              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                                <div className="space-y-2">
+                                  <div className="flex items-center gap-2">
+                                    <Calendar className="text-emerald-400" size={16} />
+                                    <span className="text-white font-medium">
+                                      {new Date(appointment.scheduled_date).toLocaleString('de-DE')}
+                                    </span>
+                                  </div>
+                                  
+                                  {(appointment.location_address || appointment.location) && (
+                                    <div className="flex items-start gap-2">
+                                      <MapPin className="text-emerald-400 mt-0.5" size={16} />
+                                      <div>
+                                        <div className="text-white">{appointment.location_address || appointment.location}</div>
+                                        {appointment.location_notes && (
+                                          <div className="text-gray-300 text-xs mt-1">
+                                            <strong>Ortshinweise:</strong> {appointment.location_notes}
+                                          </div>
+                                        )}
+                                        {appointment.additional_location_info && (
+                                          <div className="text-gray-300 text-xs mt-1">
+                                            <strong>Zusätzliche Ortsangaben:</strong> {appointment.additional_location_info}
+                                          </div>
+                                        )}
+                                        {appointment.parking_info && (
+                                          <div className="text-gray-300 text-xs mt-1">
+                                            <strong>Parkmöglichkeiten:</strong> {appointment.parking_info}
+                                          </div>
+                                        )}
+                                        {appointment.access_instructions && (
+                                          <div className="text-gray-300 text-xs mt-1">
+                                            <strong>Zugangshinweise:</strong> {appointment.access_instructions}
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                                
+                                <div className="space-y-2">
+                                  {appointment.contact_person && (
+                                    <div className="flex items-center gap-2">
+                                      <User className="text-emerald-400" size={16} />
+                                      <span className="text-white">{appointment.contact_person}</span>
+                                    </div>
+                                  )}
+                                  
+                                  {appointment.contact_phone && (
+                                    <div className="flex items-center gap-2">
+                                      <Phone className="text-emerald-400" size={16} />
+                                      <span className="text-white">{appointment.contact_phone}</span>
+                                    </div>
+                                  )}
+                                  
+                                  {appointment.contact_email && (
+                                    <div className="flex items-center gap-2">
+                                      <Mail className="text-emerald-400" size={16} />
+                                      <span className="text-white">{appointment.contact_email}</span>
+                                    </div>
+                                  )}
+                                  
+                                  {appointment.alternative_contact_person && (
+                                    <div className="text-xs text-gray-300 mt-2">
+                                      <strong>Alternativer Kontakt:</strong> {appointment.alternative_contact_person}
+                                      {appointment.alternative_contact_phone && ` (${appointment.alternative_contact_phone})`}
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                              
+                              {(appointment.preparation_notes || appointment.special_requirements) && (
+                                <div className="mt-3 pt-3 border-t border-emerald-500/20">
+                                  {appointment.preparation_notes && (
+                                    <div className="text-xs text-gray-300 mb-2">
+                                      <strong>Vorbereitungshinweise:</strong> {appointment.preparation_notes}
+                                    </div>
+                                  )}
+                                  {appointment.special_requirements && (
+                                    <div className="text-xs text-gray-300">
+                                      <strong>Besondere Anforderungen:</strong> {appointment.special_requirements}
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                            
+                            <button
+                              onClick={generateAppointmentICS}
+                              className="px-3 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg transition-colors flex items-center gap-2 text-sm font-medium"
+                              title="Termin als ICS-Datei herunterladen"
+                            >
+                              <Download size={16} />
+                              ICS
+                            </button>
+                          </div>
                         </div>
-                      </div>
-                    )}
+                      );
+                    })()}
                   </div>
                 )}
 
@@ -2170,16 +2951,8 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
                     r.service_provider_id === user?.id && r.status === 'accepted'
                   );
                   
-                  // Debug-Ausgabe
-                  console.log('🔍 Besichtigungs-Check:', {
-                    today: today.toISOString(),
-                    appointmentDate: appointmentDate.toISOString(),
-                    isInspectionDay,
-                    isAfterInspection,
-                    hasAcceptedAppointment,
-                    acceptedQuote: !!acceptedQuote,
-                    userId: user?.id
-                  });
+
+
                   
                   // Zeige Button wenn:
                   // 1. Heute ist der Besichtigungstag ODER die Besichtigung war bereits
@@ -2460,26 +3233,7 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
                 )}
                   </div>
             
-            {/* Debug-Informationen (temporär) */}
-            {typeof window !== 'undefined' && window.location.hostname === 'localhost' && (
-              <div className="bg-red-900/50 rounded-xl p-4 border border-red-600/30 mb-4">
-                <h3 className="text-white font-bold mb-2">🐛 Debug Info</h3>
-                <div className="text-sm text-gray-300 space-y-1">
-                  <div>existingQuotes.length: {existingQuotes?.length || 0}</div>
-                  <div>acceptedQuote: {acceptedQuote ? 'JA' : 'NEIN'}</div>
-                  <div>acceptedQuote.status: {acceptedQuote?.status || 'N/A'}</div>
-                  <div>acceptedQuote.service_provider_id: {acceptedQuote?.service_provider_id || 'N/A'}</div>
-                  <div>completionStatus: {completionStatus}</div>
-                  <div>currentProgress: {currentProgress}%</div>
-                  <div>isBautraeger: {isBautraeger() ? 'JA' : 'NEIN'}</div>
-                  <div>user?.id: {user?.id}</div>
-                  <div>Dienstleister-Workflow sichtbar: {(!isBautraeger() && ((acceptedQuote?.service_provider_id === user?.id) || (existingQuotes?.some(q => q.service_provider_id === user?.id)))) ? 'JA' : 'NEIN'}</div>
-                  <div>Hat akzeptiertes Angebot: {(acceptedQuote?.service_provider_id === user?.id) ? 'JA' : 'NEIN'}</div>
-                  <div>Hat überhaupt Angebot: {(existingQuotes?.some(q => q.service_provider_id === user?.id)) ? 'JA' : 'NEIN'}</div>
-                  <div>Quotes: {JSON.stringify(existingQuotes?.map(q => ({ id: q.id, status: q.status, service_provider_id: q.service_provider_id })), null, 2)}</div>
-                </div>
-              </div>
-            )}
+
 
             {/* Baufortschritt & Kommunikation */}
             {(
@@ -2500,18 +3254,7 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
               />
             )}
             
-            {/* Debug: Bauträger-Check */}
-            {typeof window !== 'undefined' && window.location.hostname === 'localhost' && (
-              <div className="bg-red-900/50 rounded-xl p-4 border border-red-600/30 mb-4">
-                <h3 className="text-white font-bold mb-2">🐛 Debug Info - Bauträger Check</h3>
-                <div className="text-sm text-gray-300 space-y-1">
-                  <div>isBautraeger(): {isBautraeger() ? 'TRUE' : 'FALSE'}</div>
-                  <div>user?.user_type: {user?.user_type || 'undefined'}</div>
-                  <div>user?.user_role: {user?.user_role || 'undefined'}</div>
-                  <div>user?.email: {user?.email || 'undefined'}</div>
-                </div>
-              </div>
-            )}
+
 
             {/* Abnahme-Workflow für Bauträger - zeige wenn NICHT Dienstleister mit eigenem Angebot */}
             {!(acceptedQuote?.service_provider_id === user?.id) && (
@@ -2972,7 +3715,7 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
         <AcceptanceModal
           isOpen={showAcceptanceModal}
           onClose={() => {
-            console.log('🔴 TradeDetailsModal - AcceptanceModal wird geschlossen');
+
             setShowAcceptanceModal(false);
           }}
           trade={trade}
@@ -2999,8 +3742,21 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
           }}
         />
       )}
+
+      {/* Besichtigungsplanung-Modal */}
+      {showInspectionScheduling && trade && (
+        <InspectionSchedulingModal
+          isOpen={showInspectionScheduling}
+          onClose={() => setShowInspectionScheduling(false)}
+          onSubmit={handleCreateInspection}
+          tradeTitle={trade.title}
+          selectedQuoteIds={selectedQuoteIds}
+          projectName={project?.name}
+        />
+      )}
     </div>
+    </>
   );
 }
-
 export default TradeDetailsModal;
+

@@ -377,10 +377,29 @@ class GeoService:
             # Filterung basierend auf Benutzerrolle
             if is_service_provider:
                 # Dienstleister sehen nur öffentliche Gewerke mit Angebotsoption
+                # ABER: Ausgeschlossen sind bereits vergebene Ausschreibungen (außer an sie selbst)
                 query = query.where(
                     Project.is_public == True,
                     Project.allow_quotes == True
                 )
+                
+                # Zusätzlicher Filter: Verstecke vergebene Ausschreibungen für andere Dienstleister
+                from sqlalchemy import and_, not_, exists
+                from ..models.quote import Quote, QuoteStatus
+                
+                # Subquery für bereits vergebene Milestones
+                awarded_milestones_subquery = select(Quote.milestone_id).where(
+                    and_(
+                        Quote.status == QuoteStatus.ACCEPTED,
+                        Quote.service_provider_id != (current_user.id if current_user else -1)
+                    )
+                )
+                
+                # Schließe vergebene Milestones aus (außer wenn der aktuelle User der Gewinner ist)
+                query = query.where(
+                    not_(Milestone.id.in_(awarded_milestones_subquery))
+                )
+                
             elif current_user:
                 # Bauträger sehen nur ihre eigenen Gewerke
                 query = query.where(

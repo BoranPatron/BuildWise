@@ -175,6 +175,9 @@ class QuoteForMilestone(BaseModel):
     rating: Optional[float] = None
     feedback: Optional[str] = None
     rejection_reason: Optional[str] = None
+    # Dokumente
+    pdf_upload_path: Optional[str] = None
+    additional_documents: Optional[str] = None
     created_at: datetime
     submitted_at: Optional[datetime] = None
     accepted_at: Optional[datetime] = None

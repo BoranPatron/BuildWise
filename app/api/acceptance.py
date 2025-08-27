@@ -647,6 +647,63 @@ async def complete_final_acceptance(
         )
 
 
+@router.get("/milestone/{milestone_id}")
+async def get_acceptances_for_milestone(
+    milestone_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Lade alle Abnahmen für einen Milestone"""
+    try:
+        print(f"🔍 Lade Abnahmen für Milestone {milestone_id}")
+        
+        # Berechtigung prüfen - nur Bauträger und betroffene Dienstleister
+        from ..models.user import UserRole, UserType
+        is_bautraeger = (
+            current_user.user_role == UserRole.BAUTRAEGER or 
+            current_user.user_type in [UserType.PROFESSIONAL, 'bautraeger', 'developer', 'PROFESSIONAL', 'professional']
+        )
+        
+        if not is_bautraeger and current_user.user_type != 'service_provider':
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Nur Bauträger und Dienstleister können Abnahmen einsehen"
+            )
+        
+        # Lade Abnahmen für diesen Milestone
+        from sqlalchemy import select
+        
+        acceptance_stmt = select(Acceptance).where(Acceptance.milestone_id == milestone_id)
+        acceptance_result = await db.execute(acceptance_stmt)
+        acceptances = acceptance_result.scalars().all()
+        
+        print(f"✅ {len(acceptances)} Abnahmen für Milestone {milestone_id} gefunden")
+        
+        # Konvertiere zu Dictionary-Format
+        acceptance_list = []
+        for acceptance in acceptances:
+            acceptance_list.append({
+                'id': acceptance.id,
+                'milestone_id': acceptance.milestone_id,
+                'accepted': acceptance.accepted,
+                'acceptance_notes': acceptance.acceptance_notes,
+                'completion_date': acceptance.completion_date.isoformat() if acceptance.completion_date else None,
+                'inspector_name': acceptance.inspector_name,
+                'created_at': acceptance.created_at.isoformat() if acceptance.created_at else None
+            })
+        
+        return acceptance_list
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Fehler beim Laden der Abnahmen: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Laden der Abnahmen: {str(e)}"
+        )
+
+
 @router.get("/milestone/{milestone_id}/defects")
 async def get_acceptance_defects_for_milestone(
     milestone_id: int,

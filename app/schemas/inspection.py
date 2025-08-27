@@ -21,32 +21,46 @@ class InspectionBase(BaseModel):
     title: str = Field(..., description="Titel der Besichtigung")
     description: Optional[str] = Field(None, description="Beschreibung der Besichtigung")
     scheduled_date: datetime = Field(..., description="Geplanter Besichtigungstermin")
+    scheduled_time_start: Optional[str] = Field(None, description="Startzeit")
+    scheduled_time_end: Optional[str] = Field(None, description="Endzeit")
     duration_minutes: int = Field(60, description="Dauer in Minuten")
-    location: str = Field(..., description="Ort der Besichtigung")
+    location_address: str = Field(..., description="Adresse der Besichtigung")
+    location_notes: Optional[str] = Field(None, description="Ortshinweise")
+    additional_location_info: Optional[str] = Field(None, description="Zusätzliche Ortsangaben")
+    parking_info: Optional[str] = Field(None, description="Parkmöglichkeiten")
+    access_instructions: Optional[str] = Field(None, description="Zugangshinweise")
     contact_person: Optional[str] = Field(None, description="Ansprechpartner")
     contact_phone: Optional[str] = Field(None, description="Telefonnummer")
     contact_email: Optional[str] = Field(None, description="E-Mail-Adresse")
-    special_instructions: Optional[str] = Field(None, description="Besondere Anweisungen")
-    required_equipment: Optional[str] = Field(None, description="Erforderliche Ausrüstung")
+    alternative_contact_person: Optional[str] = Field(None, description="Alternativer Ansprechpartner")
+    alternative_contact_phone: Optional[str] = Field(None, description="Alternative Telefonnummer")
+    preparation_notes: Optional[str] = Field(None, description="Vorbereitungshinweise")
+    special_requirements: Optional[str] = Field(None, description="Besondere Anforderungen")
 
 
 class InspectionCreate(InspectionBase):
     milestone_id: int = Field(..., description="ID des Gewerks")
-    project_id: int = Field(..., description="ID des Projekts")
-    invited_quote_ids: List[int] = Field(..., description="IDs der eingeladenen Angebote")
 
 
 class InspectionUpdate(BaseModel):
     title: Optional[str] = None
     description: Optional[str] = None
     scheduled_date: Optional[datetime] = None
+    scheduled_time_start: Optional[str] = None
+    scheduled_time_end: Optional[str] = None
     duration_minutes: Optional[int] = None
-    location: Optional[str] = None
+    location_address: Optional[str] = None
+    location_notes: Optional[str] = None
+    additional_location_info: Optional[str] = None
+    parking_info: Optional[str] = None
+    access_instructions: Optional[str] = None
     contact_person: Optional[str] = None
     contact_phone: Optional[str] = None
     contact_email: Optional[str] = None
-    special_instructions: Optional[str] = None
-    required_equipment: Optional[str] = None
+    alternative_contact_person: Optional[str] = None
+    alternative_contact_phone: Optional[str] = None
+    preparation_notes: Optional[str] = None
+    special_requirements: Optional[str] = None
     status: Optional[InspectionStatus] = None
     inspection_notes: Optional[str] = None
     completion_notes: Optional[str] = None

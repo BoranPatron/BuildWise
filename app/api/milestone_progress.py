@@ -84,7 +84,7 @@ async def debug_progress_update(
 @router.post("/", response_model=MilestoneProgressResponse)
 async def create_progress_update(
     milestone_id: int,
-    data: MilestoneProgressCreate,
+    data: dict = Body(...),
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> MilestoneProgressResponse:
@@ -92,14 +92,57 @@ async def create_progress_update(
     
     print(f"🔍 [PROGRESS] Milestone ID: {milestone_id}")
     print(f"🔍 [PROGRESS] User ID: {current_user.id}")
-    print(f"🔍 [PROGRESS] Data: {data.model_dump()}")
+    print(f"🔍 [PROGRESS] Raw Data: {data}")
     
-    progress_update = await milestone_progress_service.create_progress_update(
-        db=db,
-        milestone_id=milestone_id,
-        user_id=current_user.id,
-        data=data
-    )
+    try:
+        # Prüfe ob User ein Dienstleister ist (sowohl user_type als auch user_role)
+        from ..models.user import UserRole
+        is_service_provider = (
+            current_user.user_type == UserType.SERVICE_PROVIDER or
+            (hasattr(current_user, 'user_role') and current_user.user_role == UserRole.DIENSTLEISTER)
+        )
+        is_bautraeger = not is_service_provider
+        print(f"🔍 [PROGRESS] Is Bauträger: {is_bautraeger}")
+        
+        # Prüfe Zugriff auf Kommunikation
+        has_access = await milestone_progress_service.check_communication_access(
+            db=db,
+            milestone_id=milestone_id,
+            user_id=current_user.id,
+            is_bautraeger=is_bautraeger
+        )
+        
+        if not has_access:
+            print(f"❌ [PROGRESS] Zugriff verweigert für User {current_user.id} auf Milestone {milestone_id}")
+            raise HTTPException(
+                status_code=403,
+                detail="Zugriff auf diese Kommunikation nicht mehr möglich. Die Ausschreibung wurde bereits vergeben."
+            )
+        
+        # Validiere und konvertiere die Daten zu MilestoneProgressCreate
+        validated_data = MilestoneProgressCreate(**data)
+        print(f"🔍 [PROGRESS] Validated Data: {validated_data.model_dump()}")
+        
+        progress_update = await milestone_progress_service.create_progress_update(
+            db=db,
+            milestone_id=milestone_id,
+            user_id=current_user.id,
+            data=validated_data
+        )
+    except ValidationError as e:
+        print(f"❌ [PROGRESS] Validation Error: {e}")
+        raise HTTPException(
+            status_code=400,
+            detail=f"Ungültige Daten: {e}"
+        )
+    except Exception as e:
+        print(f"❌ [PROGRESS] Unexpected Error: {e}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500,
+            detail=f"Interner Serverfehler: {str(e)}"
+        )
     
     # Lade User-Daten für Response
     await db.refresh(progress_update, ['user', 'replies'])
@@ -113,14 +156,19 @@ async def get_progress_updates(
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ) -> List[MilestoneProgressResponse]:
-    """Holt alle Progress Updates für ein Milestone"""
+    """Holt alle Progress Updates für ein Milestone mit Zugriffskontrolle"""
     
     print(f"🔍 [GET_PROGRESS] Milestone ID: {milestone_id}")
     print(f"🔍 [GET_PROGRESS] User ID: {current_user.id}")
     print(f"🔍 [GET_PROGRESS] User Type: {current_user.user_type}")
     
-    # Bauträger sind PRIVATE oder PROFESSIONAL User (nicht SERVICE_PROVIDER)
-    is_bautraeger = current_user.user_type != UserType.SERVICE_PROVIDER
+    # Prüfe ob User ein Dienstleister ist (sowohl user_type als auch user_role)
+    from ..models.user import UserRole
+    is_service_provider = (
+        current_user.user_type == UserType.SERVICE_PROVIDER or
+        (hasattr(current_user, 'user_role') and current_user.user_role == UserRole.DIENSTLEISTER)
+    )
+    is_bautraeger = not is_service_provider
     print(f"🔍 [GET_PROGRESS] Is Bauträger: {is_bautraeger}")
     
     # Debug: Prüfe ob Milestone existiert
@@ -131,6 +179,20 @@ async def get_progress_updates(
         print(f"🔍 [GET_PROGRESS] Milestone gefunden: ID={milestone.id}, Title='{milestone.title}', Project={milestone.project_id}")
     else:
         print(f"❌ [GET_PROGRESS] Milestone mit ID {milestone_id} nicht gefunden!")
+    
+    # Prüfe Zugriff auf Kommunikation
+    has_access = await milestone_progress_service.check_communication_access(
+        db=db,
+        milestone_id=milestone_id,
+        user_id=current_user.id,
+        is_bautraeger=is_bautraeger
+    )
+    
+    if not has_access:
+        raise HTTPException(
+            status_code=403,
+            detail="Zugriff auf diese Kommunikation nicht mehr möglich. Die Ausschreibung wurde bereits vergeben."
+        )
     
     updates = await milestone_progress_service.get_progress_updates(
         db=db,
@@ -226,7 +288,14 @@ async def request_completion(
 ) -> MilestoneProgressResponse:
     """Meldet Gewerk als fertiggestellt (nur Dienstleister)"""
     
-    if current_user.user_type != UserType.SERVICE_PROVIDER:
+    # Prüfe ob User ein Dienstleister ist (sowohl user_type als auch user_role)
+    from ..models.user import UserRole
+    is_service_provider = (
+        current_user.user_type == UserType.SERVICE_PROVIDER or
+        (hasattr(current_user, 'user_role') and current_user.user_role == UserRole.DIENSTLEISTER)
+    )
+    
+    if not is_service_provider:
         raise HTTPException(
             status_code=403,
             detail="Nur Dienstleister können Fertigstellung melden"
@@ -270,8 +339,14 @@ async def respond_to_completion(
 ) -> MilestoneProgressResponse:
     """Antwortet auf Fertigstellungsmeldung (nur Bauträger)"""
     
-    # Nur Bauträger können Fertigstellung bestätigen (PRIVATE oder PROFESSIONAL, nicht SERVICE_PROVIDER)
-    if current_user.user_type == UserType.SERVICE_PROVIDER:
+    # Nur Bauträger können Fertigstellung bestätigen (nicht Dienstleister)
+    from ..models.user import UserRole
+    is_service_provider = (
+        current_user.user_type == UserType.SERVICE_PROVIDER or
+        (hasattr(current_user, 'user_role') and current_user.user_role == UserRole.DIENSTLEISTER)
+    )
+    
+    if is_service_provider:
         raise HTTPException(
             status_code=403,
             detail="Nur Bauträger können auf Fertigstellung antworten"
