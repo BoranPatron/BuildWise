@@ -47,6 +47,10 @@ class AppointmentBase(BaseModel):
     duration_minutes: int = Field(default=60, ge=15, le=480)
     location: Optional[str] = None
     location_details: Optional[str] = None
+    # Erweiterte Besichtigungsdetails
+    contact_person: Optional[str] = None
+    contact_phone: Optional[str] = None
+    preparation_notes: Optional[str] = None
 
 
 class AppointmentCreate(AppointmentBase):
@@ -84,6 +88,10 @@ class AppointmentResponse(BaseModel):
     duration_minutes: int
     location: Optional[str]
     location_details: Optional[str]
+    # Erweiterte Besichtigungsdetails
+    contact_person: Optional[str]
+    contact_phone: Optional[str]
+    preparation_notes: Optional[str]
     invited_service_providers: Optional[List[ServiceProviderInvite]]
     responses: Optional[List[ServiceProviderResponse]]
     inspection_completed: bool

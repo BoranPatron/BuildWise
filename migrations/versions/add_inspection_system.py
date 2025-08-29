@@ -1,7 +1,7 @@
 """Add inspection system tables
 
 Revision ID: add_inspection_system
-Revises: add_technical_fields_migration
+Revises: fix_buildwise_fees_datetime_columns
 Create Date: 2025-01-27 12:00:00.000000
 
 """
@@ -11,7 +11,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision = 'add_inspection_system'
-down_revision = 'add_technical_fields_migration'  # Anpassen an die letzte Migration
+down_revision = 'fix_buildwise_fees_datetime_columns'  # Referenziere die korrekte letzte Migration
 branch_labels = None
 depends_on = None
 

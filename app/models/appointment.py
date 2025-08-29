@@ -55,6 +55,11 @@ class Appointment(Base):
     location = Column(String, nullable=True)
     location_details = Column(Text, nullable=True)
     
+    # Erweiterte Besichtigungsdetails
+    contact_person = Column(String, nullable=True)
+    contact_phone = Column(String, nullable=True)
+    preparation_notes = Column(Text, nullable=True)
+    
     # Antworten und Vorschläge
     responses = Column(JSON, nullable=True)  # [{"service_provider_id": 1, "status": "accepted", "message": "...", "suggested_date": "..."}]
     

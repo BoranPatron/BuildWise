@@ -24,6 +24,10 @@ class AppointmentService:
         """Erstelle einen neuen Besichtigungstermin"""
         try:
             print(f"🔧 Erstelle Appointment für Projekt {appointment_data.project_id}, Milestone {appointment_data.milestone_id}")
+            print(f"📝 DEBUG: Empfangene Kontaktdaten:")
+            print(f"   - contact_person: '{appointment_data.contact_person}'")
+            print(f"   - contact_phone: '{appointment_data.contact_phone}'") 
+            print(f"   - preparation_notes: '{appointment_data.preparation_notes}'")
             
             # Lade Service Provider Informationen in einer effizienten Abfrage
             invited_providers = []
@@ -46,6 +50,11 @@ class AppointmentService:
                 print(f"✅ {len(invited_providers)} Service Provider geladen")
             
             # Erstelle Appointment
+            print(f"💾 DEBUG: Erstelle Appointment-Objekt mit Kontaktdaten:")
+            print(f"   - contact_person: '{appointment_data.contact_person}'")
+            print(f"   - contact_phone: '{appointment_data.contact_phone}'") 
+            print(f"   - preparation_notes: '{appointment_data.preparation_notes}'")
+            
             appointment = Appointment(
                 project_id=appointment_data.project_id,
                 milestone_id=appointment_data.milestone_id,
@@ -57,10 +66,19 @@ class AppointmentService:
                 duration_minutes=appointment_data.duration_minutes,
                 location=appointment_data.location,
                 location_details=appointment_data.location_details,
+                # Erweiterte Besichtigungsdetails
+                contact_person=appointment_data.contact_person,
+                contact_phone=appointment_data.contact_phone,
+                preparation_notes=appointment_data.preparation_notes,
                 invited_service_providers=invited_providers,
                 status=AppointmentStatus.SCHEDULED,
                 follow_up_notification_date=appointment_data.scheduled_date + timedelta(days=1)
             )
+            
+            print(f"🔍 DEBUG: Appointment-Objekt erstellt mit:")
+            print(f"   - appointment.contact_person: '{appointment.contact_person}'")
+            print(f"   - appointment.contact_phone: '{appointment.contact_phone}'") 
+            print(f"   - appointment.preparation_notes: '{appointment.preparation_notes}'")
             
             print(f"💾 Speichere Appointment in Datenbank")
             db.add(appointment)
