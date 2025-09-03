@@ -373,6 +373,44 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
         print(f"❌ Fehler bei Credit-Zuordnung: {e}")
         # Fehler bei Credit-Zuordnung sollte nicht die Quote-Akzeptierung blockieren
     
+    # Erstelle Benachrichtigung für den Dienstleister
+    try:
+        from ..services.notification_service import NotificationService
+        from ..models import Milestone
+        from ..schemas.notification import NotificationCreate
+        from ..models.notification import NotificationType, NotificationPriority
+        
+        # Hole Milestone-Informationen für die Benachrichtigung
+        milestone_result = await db.execute(
+            select(Milestone).where(Milestone.id == quote.milestone_id)
+        )
+        milestone = milestone_result.scalar_one_or_none()
+        
+        if milestone:
+            notification_data = NotificationCreate(
+                recipient_id=quote.service_provider_id or quote.user_id,
+                type=NotificationType.QUOTE_ACCEPTED,
+                title='Angebot angenommen',
+                message=f'Ihr Angebot für "{milestone.title}" wurde vom Bauträger angenommen. Sie können nun mit der Ausführung beginnen.',
+                priority=NotificationPriority.HIGH,
+                related_quote_id=quote.id,
+                related_project_id=quote.project_id,
+                related_milestone_id=quote.milestone_id
+            )
+            
+            notification = await NotificationService.create_notification(
+                db=db,
+                notification_data=notification_data
+            )
+            
+            print(f"✅ Benachrichtigung für Dienstleister {quote.service_provider_id or quote.user_id} erstellt: Angebot {quote.id} angenommen")
+        else:
+            print(f"⚠️ Milestone {quote.milestone_id} nicht gefunden - Benachrichtigung übersprungen")
+            
+    except Exception as e:
+        print(f"❌ Fehler beim Erstellen der Benachrichtigung: {e}")
+        # Fehler bei Benachrichtigung sollte nicht die Quote-Akzeptierung blockieren
+    
     await db.commit()
     await db.refresh(quote)
     return quote
@@ -427,10 +465,10 @@ async def create_cost_position_from_quote(db: AsyncSession, quote: Quote):
                 vat_rate=19.0,   # Standard MwSt-Satz
                 vat_amount=0.0,  # Wird später berechnet
                 total_amount=quote.total_amount or 0,
-                status=InvoiceStatus.SENT,
+                status=InvoiceStatus.DRAFT,  # DRAFT statt SENT - Rechnung ist noch nicht vom Dienstleister abgeschickt
                 type=InvoiceType.MANUAL,
                 created_by=quote.service_provider_id,  # Ersteller ist der Dienstleister
-                notes="Automatisch aus Angebotsannahme erstellt"
+                notes="Automatisch als Entwurf aus Angebotsannahme erstellt - muss vom Dienstleister finalisiert werden"
             )
             db.add(invoice)
             await db.commit()

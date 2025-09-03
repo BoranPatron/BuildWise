@@ -12,6 +12,7 @@ class NotificationType(enum.Enum):
     APPOINTMENT_REQUEST = "appointment_request"  # Terminanfrage
     APPOINTMENT_CONFIRMED = "appointment_confirmed"  # Termin bestätigt
     MILESTONE_COMPLETED = "milestone_completed"  # Meilenstein abgeschlossen
+    DEFECTS_RESOLVED = "defects_resolved"  # Mängelbehebung gemeldet
     INVOICE_SUBMITTED = "invoice_submitted"  # Rechnung eingereicht
     PAYMENT_RECEIVED = "payment_received"  # Zahlung erhalten
     DOCUMENT_UPLOADED = "document_uploaded"  # Dokument hochgeladen

@@ -602,6 +602,43 @@ async def complete_final_acceptance(
                     # Dienstleister meldet Mängelbehebung - Bauträger muss finale Abnahme durchführen
                     milestone.completion_status = 'defects_resolved'
                     print(f"✅ Milestone {milestone_id} Status auf 'defects_resolved' gesetzt (Mängelbehebung gemeldet)")
+                    
+                    # Erstelle Benachrichtigung für den Bauträger
+                    try:
+                        from ..services.notification_service import NotificationService
+                        from ..schemas.notification import NotificationCreate
+                        from ..models.notification import NotificationType, NotificationPriority
+                        from ..models.project import Project
+                        
+                        # Hole Projekt-Informationen für Bauträger-ID
+                        project_stmt = select(Project).where(Project.id == milestone.project_id)
+                        project_result = await db.execute(project_stmt)
+                        project = project_result.scalar_one_or_none()
+                        
+                        if project and project.owner_id:
+                            notification_data = NotificationCreate(
+                                recipient_id=project.owner_id,
+                                type=NotificationType.DEFECTS_RESOLVED,
+                                title='Mängelbehebung gemeldet',
+                                message=f'Der Dienstleister hat die Mängelbehebung für "{milestone.title}" gemeldet. Sie können nun die finale Abnahme durchführen.',
+                                priority=NotificationPriority.HIGH,
+                                related_milestone_id=milestone_id,
+                                related_project_id=milestone.project_id
+                            )
+                            
+                            notification = await NotificationService.create_notification(
+                                db=db,
+                                notification_data=notification_data
+                            )
+                            
+                            print(f"✅ Benachrichtigung für Bauträger {project.owner_id} erstellt: Mängelbehebung gemeldet für Milestone {milestone_id}")
+                        else:
+                            print(f"⚠️ Projekt oder Projekt-Owner nicht gefunden - Benachrichtigung übersprungen")
+                            
+                    except Exception as e:
+                        print(f"❌ Fehler beim Erstellen der Mängelbehebung-Benachrichtigung: {e}")
+                        # Fehler bei Benachrichtigung sollte nicht die Mängelbehebung blockieren
+                        
                 else:
                     # Bauträger führt finale Abnahme durch - Gewerk ist vollständig abgeschlossen
                     milestone.completion_status = 'completed'

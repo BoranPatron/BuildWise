@@ -471,6 +471,33 @@ async def get_my_appointments_simple(
         return {"appointments": [], "count": 0, "error": str(e)}
 
 
+@router.post("/", response_model=AppointmentResponse)
+async def create_appointment(
+    appointment_data: AppointmentCreate,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Erstelle einen neuen Termin"""
+    try:
+        print(f"📅 Creating appointment: {appointment_data}")
+        
+        appointment = await AppointmentService.create_appointment(
+            db=db,
+            appointment_data=appointment_data,
+            created_by=current_user.id
+        )
+        
+        print(f"✅ Appointment created successfully: {appointment.id}")
+        return appointment
+        
+    except Exception as e:
+        print(f"❌ Error creating appointment: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Fehler beim Erstellen des Termins: {str(e)}"
+        )
+
+
 @router.get("/follow-ups/pending", response_model=List[AppointmentResponse])
 async def get_pending_follow_ups(
     db: AsyncSession = Depends(get_db),
