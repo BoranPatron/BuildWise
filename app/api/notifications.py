@@ -137,10 +137,18 @@ async def create_notification(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Erstellt eine neue Benachrichtigung (nur für Administratoren)"""
-    # Prüfe Admin-Berechtigung
+    """Erstellt eine neue Benachrichtigung"""
+    # Erweiterte Berechtigung: 
+    # - Admins können alle Benachrichtigungen erstellen
+    # - Benutzer können Benachrichtigungen für sich selbst erstellen
+    # - Bei quote_submitted: Dienstleister können Benachrichtigungen für Bauträger erstellen
     if current_user.user_type not in ["admin", "superuser"]:
-        raise HTTPException(status_code=403, detail="Keine Berechtigung")
+        if notification_data.user_id != current_user.id:
+            # Erlaube quote_submitted Benachrichtigungen zwischen Dienstleister und Bauträger
+            if notification_data.type not in ["quote_submitted", "completion_request", "defects_resolved"]:
+                raise HTTPException(status_code=403, detail="Keine Berechtigung für diesen Benachrichtigungstyp")
+        
+    print(f"📢 Creating notification: {notification_data.type} for user {notification_data.user_id} by {current_user.id}")
     
     notification = await NotificationService.create_notification(
         db=db,
