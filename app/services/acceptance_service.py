@@ -634,7 +634,7 @@ class AcceptanceService:
                 created_by_user_id=completed_by_user_id
             )
             
-            print(f"✅ Abnahme abgeschlossen: {task_result['defect_tasks_created']} Mangel-Tasks, {'1' if task_result['review_task_created'] else '0'} Wiedervorlage-Task erstellt")
+            print(f"✅ Abnahme abgeschlossen: {task_result['defect_tasks_created']} Mangel-Tasks (Dienstleister), {task_result.get('monitoring_tasks_created', 0)} Überwachungs-Tasks (Bauträger), {'1' if task_result['review_task_created'] else '0'} Wiedervorlage-Task erstellt")
             
             return acceptance
             

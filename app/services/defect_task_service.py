@@ -100,7 +100,7 @@ async def create_defect_task_for_service_provider(
 🔗 **Abnahme-ID:** {acceptance.id}
 """
 
-    # Erstelle Task
+    # Erstelle Task für Dienstleister
     task = Task(
         project_id=acceptance.project_id,
         milestone_id=acceptance.milestone_id,
@@ -108,7 +108,7 @@ async def create_defect_task_for_service_provider(
         created_by=created_by_user_id,
         title=task_title,
         description=task_description,
-        status=TaskStatus.TODO,
+        status=TaskStatus.TODO,  # Dienstleister-Task in "Zu erledigen"
         priority=priority,
         due_date=due_date,
         is_milestone=False
@@ -125,9 +125,108 @@ async def create_defect_task_for_service_provider(
     await db.commit()
     await db.refresh(task)
     
-    print(f"✅ Task für Mangel '{defect.title}' erstellt (ID: {task.id}) - Zugewiesen an User {assigned_to}")
+    print(f"✅ Task für Mangel '{defect.title}' erstellt (ID: {task.id}) - Zugewiesen an Dienstleister {assigned_to}")
     
     return task
+
+
+async def create_defect_monitoring_task_for_bautraeger(
+    db: AsyncSession,
+    defect: AcceptanceDefect,
+    acceptance: Acceptance,
+    created_by_user_id: int
+) -> Task:
+    """
+    Erstellt automatisch eine Überwachungs-Task für den Bauträger zur Kontrolle der Mangelbehebung
+    
+    Args:
+        db: Database Session
+        defect: Der dokumentierte Mangel
+        acceptance: Die zugehörige Abnahme
+        created_by_user_id: User-ID des Bauträgers der die Abnahme durchführt
+    
+    Returns:
+        Task: Die erstellte Überwachungs-Task für den Bauträger
+    """
+    
+    # Bestimme Priorität basierend auf Schweregrad
+    priority_mapping = {
+        'MINOR': TaskPriority.MEDIUM,
+        'MAJOR': TaskPriority.HIGH,
+        'CRITICAL': TaskPriority.URGENT
+    }
+    priority = priority_mapping.get(defect.severity.value, TaskPriority.MEDIUM)
+    
+    # Bestimme Frist basierend auf Schweregrad (etwas länger als für Dienstleister)
+    deadline_days = {
+        'MINOR': 16,    # 2 Wochen + 2 Tage für Kontrolle
+        'MAJOR': 9,     # 1 Woche + 2 Tage für Kontrolle
+        'CRITICAL': 5   # 3 Tage + 2 Tage für Kontrolle
+    }
+    days = deadline_days.get(defect.severity.value, 16)
+    due_date = (datetime.now() + timedelta(days=days)).date()
+    
+    # Hole Milestone (Gewerk) Details
+    milestone = await db.execute(select(Milestone).where(Milestone.id == acceptance.milestone_id))
+    milestone = milestone.scalars().first()
+    
+    # Erstelle Task-Titel und Beschreibung für Bauträger
+    task_title = f"Mangelbehebung überwachen: {defect.title}"
+    if milestone:
+        task_title = f"[{milestone.title}] {task_title}"
+    
+    # Erstelle detaillierte Beschreibung für Bauträger
+    photo_count = len(defect.photos or [])
+    photo_info = ""
+    if photo_count > 0:
+        photo_info = f"\n📸 **Dokumentierte Fotos:** {photo_count} Foto(s)\n"
+    
+    task_description = f"""👁️ MANGELBEHEBUNG ÜBERWACHEN
+
+📋 **Mangel-Details:**
+- **Schweregrad:** {defect.severity.value} ({'Geringfügig' if defect.severity.value == 'MINOR' else 'Erheblich' if defect.severity.value == 'MAJOR' else 'Kritisch'})
+- **Ort:** {defect.location or 'Nicht angegeben'}
+- **Raum:** {defect.room or 'Nicht angegeben'}
+
+📝 **Beschreibung:**
+{defect.description}
+
+📅 **Kontrollfrist:** {due_date.strftime('%d.%m.%Y')} ({days} Tage)
+{photo_info}
+🏗️ **Gewerk:** {milestone.title if milestone else 'Unbekannt'}
+
+🔍 **Ihre Aufgaben als Bauträger:**
+- Überwachen Sie den Fortschritt der Mangelbehebung
+- Kontaktieren Sie den Dienstleister bei Verzögerungen
+- Prüfen Sie die Qualität der Behebung vor Ort
+- Dokumentieren Sie den aktuellen Status
+- Führen Sie die finale Abnahme durch, wenn behoben
+
+🔗 **Abnahme-ID:** {acceptance.id}
+"""
+
+    # Erstelle Task für Bauträger
+    monitoring_task = Task(
+        project_id=acceptance.project_id,
+        milestone_id=acceptance.milestone_id,
+        assigned_to=created_by_user_id,  # Bauträger überwacht
+        created_by=created_by_user_id,
+        title=task_title,
+        description=task_description,
+        status=TaskStatus.REVIEW,  # Bauträger-Task in "Überprüfung"
+        priority=priority,
+        due_date=due_date,
+        is_milestone=False
+    )
+    
+    db.add(monitoring_task)
+    await db.flush()
+    await db.commit()
+    await db.refresh(monitoring_task)
+    
+    print(f"✅ Überwachungs-Task für Mangel '{defect.title}' erstellt (ID: {monitoring_task.id}) - Zugewiesen an Bauträger {created_by_user_id}")
+    
+    return monitoring_task
 
 
 async def create_review_task_for_bautraeger(
@@ -231,8 +330,10 @@ async def process_acceptance_completion(
     
     result = {
         'defect_tasks_created': 0,
+        'monitoring_tasks_created': 0,
         'review_task_created': False,
         'defect_tasks': [],
+        'monitoring_tasks': [],
         'review_task': None
     }
     
@@ -241,16 +342,28 @@ async def process_acceptance_completion(
         for defect in acceptance.defects:
             if not defect.resolved and not defect.task_id:  # Nur für ungelöste Mängel ohne bestehende Task
                 try:
-                    task = await create_defect_task_for_service_provider(
+                    # 1a. Erstelle Mangel-Task für Dienstleister (TODO)
+                    defect_task = await create_defect_task_for_service_provider(
                         db=db,
                         defect=defect,
                         acceptance=acceptance,
                         created_by_user_id=created_by_user_id
                     )
-                    result['defect_tasks'].append(task)
+                    result['defect_tasks'].append(defect_task)
                     result['defect_tasks_created'] += 1
+                    
+                    # 1b. Erstelle Überwachungs-Task für Bauträger (REVIEW)
+                    monitoring_task = await create_defect_monitoring_task_for_bautraeger(
+                        db=db,
+                        defect=defect,
+                        acceptance=acceptance,
+                        created_by_user_id=created_by_user_id
+                    )
+                    result['monitoring_tasks'].append(monitoring_task)
+                    result['monitoring_tasks_created'] += 1
+                    
                 except Exception as e:
-                    print(f"❌ Fehler beim Erstellen der Mangel-Task für '{defect.title}': {e}")
+                    print(f"❌ Fehler beim Erstellen der Mangel-Tasks für '{defect.title}': {e}")
     
     # 2. Erstelle Wiedervorlage-Task wenn Abnahme unter Vorbehalt
     if not acceptance.accepted and acceptance.review_date and not acceptance.review_task_id:
@@ -265,7 +378,7 @@ async def process_acceptance_completion(
         except Exception as e:
             print(f"❌ Fehler beim Erstellen der Wiedervorlage-Task: {e}")
     
-    print(f"📊 Acceptance-Verarbeitung abgeschlossen: {result['defect_tasks_created']} Mangel-Tasks, {'1' if result['review_task_created'] else '0'} Wiedervorlage-Task")
+    print(f"📊 Acceptance-Verarbeitung abgeschlossen: {result['defect_tasks_created']} Mangel-Tasks (Dienstleister), {result['monitoring_tasks_created']} Überwachungs-Tasks (Bauträger), {'1' if result['review_task_created'] else '0'} Wiedervorlage-Task")
     
     return result
 

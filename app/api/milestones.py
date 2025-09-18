@@ -841,6 +841,124 @@ async def get_all_active_milestones(db: AsyncSession):
         )
 
 
+async def update_milestone(db: AsyncSession, milestone_id: int, milestone_update: MilestoneUpdate) -> MilestoneRead:
+    """
+    Aktualisiert ein bestehendes Milestone/Gewerk
+    """
+    try:
+        from sqlalchemy import select, update
+        from datetime import datetime
+        
+        print(f"🔧 [DEBUG] Starting update for milestone {milestone_id}")
+        
+        # Hole das bestehende Milestone
+        result = await db.execute(
+            select(Milestone).where(Milestone.id == milestone_id)
+        )
+        milestone = result.scalar_one_or_none()
+        
+        if not milestone:
+            print(f"❌ Milestone {milestone_id} nicht gefunden")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Meilenstein nicht gefunden"
+            )
+        
+        print(f"✅ Milestone {milestone_id} gefunden: {milestone.title}")
+        
+        # Aktualisiere nur die übergebenen Felder
+        try:
+            update_data = milestone_update.model_dump(exclude_unset=True, exclude_none=True)
+        except AttributeError:
+            # Fallback für ältere Pydantic-Versionen
+            update_data = milestone_update.dict(exclude_unset=True, exclude_none=True)
+        
+        # Entferne leere Strings und None-Werte
+        update_data = {k: v for k, v in update_data.items() if v is not None and v != "" and v != "undefined"}
+        update_data['updated_at'] = datetime.utcnow()
+        
+        # Spezielle Behandlung für Boolean-Felder
+        if 'requires_inspection' in update_data:
+            update_data['requires_inspection'] = bool(update_data['requires_inspection'])
+        
+        print(f"🔧 [DEBUG] Update data for milestone {milestone_id}: {update_data}")
+        
+        # Führe das Update durch
+        stmt = update(Milestone).where(Milestone.id == milestone_id).values(**update_data)
+        await db.execute(stmt)
+        await db.commit()
+        
+        print(f"✅ Milestone {milestone_id} erfolgreich aktualisiert")
+        
+        # Hole das aktualisierte Milestone
+        result = await db.execute(
+            select(Milestone).where(Milestone.id == milestone_id)
+        )
+        updated_milestone = result.scalar_one()
+        
+        # Erstelle Response
+        try:
+            return MilestoneRead.model_validate(updated_milestone)
+        except AttributeError:
+            # Fallback für ältere Pydantic-Versionen
+            return MilestoneRead.from_orm(updated_milestone)
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        print(f"❌ Fehler beim Aktualisieren des Milestones {milestone_id}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Aktualisieren des Gewerks: {str(e)}"
+        )
+
+
+async def delete_milestone(db: AsyncSession, milestone_id: int) -> bool:
+    """
+    Löscht ein Milestone/Gewerk
+    """
+    try:
+        from sqlalchemy import select, delete
+        
+        # Prüfe ob das Milestone existiert
+        result = await db.execute(
+            select(Milestone).where(Milestone.id == milestone_id)
+        )
+        milestone = result.scalar_one_or_none()
+        
+        if not milestone:
+            return False
+        
+        # Prüfe ob bereits Angebote vorliegen
+        if milestone.quotes and len(milestone.quotes) > 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Gewerk kann nicht gelöscht werden, da bereits Angebote vorliegen"
+            )
+        
+        # Lösche das Milestone
+        await db.execute(
+            delete(Milestone).where(Milestone.id == milestone_id)
+        )
+        
+        await db.commit()
+        print(f"✅ Milestone {milestone_id} erfolgreich gelöscht")
+        return True
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        print(f"❌ Fehler beim Löschen des Milestones {milestone_id}: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Löschen des Gewerks: {str(e)}"
+        )
+
+
 async def get_all_milestones_for_user(db: AsyncSession, user_id: int):
     """
     Holt alle Gewerke für einen bestimmten Bauträger

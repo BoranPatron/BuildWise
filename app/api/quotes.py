@@ -1,7 +1,12 @@
 from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status, Query
+from fastapi import APIRouter, Depends, HTTPException, status, Query, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
+import os
+import shutil
+from pathlib import Path
+import uuid
+from datetime import datetime
 
 from ..core.database import get_db
 from ..api.deps import get_current_user
@@ -455,3 +460,154 @@ async def withdraw_quote_endpoint(
         )
     
     return None
+
+
+@router.post("/{quote_id}/upload-document", response_model=QuoteRead)
+async def upload_quote_document(
+    quote_id: int,
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Lädt ein Dokument für ein Angebot hoch und speichert es im strukturierten Storage.
+    Nur der Dienstleister, der das Angebot erstellt hat, kann Dokumente hochladen.
+    """
+    # Hole das Angebot
+    quote = await get_quote_by_id(db, quote_id)
+    if not quote:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Angebot nicht gefunden"
+        )
+    
+    # Prüfe Berechtigung - nur der Dienstleister kann Dokumente hochladen
+    if quote.service_provider_id != current_user.id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Keine Berechtigung für dieses Angebot"
+        )
+    
+    # Prüfe Dateityp
+    allowed_types = ['application/pdf', 'image/jpeg', 'image/png', 'application/msword', 
+                     'application/vnd.openxmlformats-officedocument.wordprocessingml.document']
+    if file.content_type not in allowed_types:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Nicht unterstützter Dateityp. Erlaubt sind: PDF, JPEG, PNG, DOC, DOCX"
+        )
+    
+    # Prüfe Dateigröße (max 10MB)
+    max_size = 10 * 1024 * 1024  # 10MB
+    file_content = await file.read()
+    if len(file_content) > max_size:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Datei zu groß. Maximum: 10MB"
+        )
+    
+    # Erstelle Storage-Struktur: /storage/projects/{project_id}/quotes/{quote_id}/
+    storage_base = Path("storage")
+    quote_dir = storage_base / "projects" / str(quote.project_id) / "quotes" / str(quote_id)
+    quote_dir.mkdir(parents=True, exist_ok=True)
+    
+    # Generiere eindeutigen Dateinamen
+    file_extension = Path(file.filename).suffix if file.filename else ".pdf"
+    unique_filename = f"{uuid.uuid4()}{file_extension}"
+    file_path = quote_dir / unique_filename
+    
+    # Speichere Datei
+    try:
+        with open(file_path, "wb") as buffer:
+            buffer.write(file_content)
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Speichern der Datei: {str(e)}"
+        )
+    
+    # Relativer Pfad für Datenbank (ohne "storage/" Präfix)
+    relative_path = str(file_path.relative_to(storage_base))
+    
+    # Aktualisiere Quote in Datenbank
+    if file.content_type == 'application/pdf':
+        # Hauptdokument (PDF)
+        quote_update = QuoteUpdate(pdf_upload_path=f"/{relative_path}")
+    else:
+        # Zusätzliche Dokumente
+        import json
+        additional_docs = []
+        if quote.additional_documents:
+            try:
+                additional_docs = json.loads(quote.additional_documents)
+            except:
+                additional_docs = []
+        
+        additional_docs.append({
+            "name": file.filename,
+            "path": f"/{relative_path}",
+            "type": file.content_type,
+            "size": len(file_content),
+            "uploaded_at": datetime.utcnow().isoformat()
+        })
+        
+        quote_update = QuoteUpdate(additional_documents=json.dumps(additional_docs))
+    
+    updated_quote = await update_quote(db, quote_id, quote_update)
+    return updated_quote
+
+
+@router.get("/{quote_id}/documents/{filename}")
+async def download_quote_document(
+    quote_id: int,
+    filename: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Lädt ein Dokument eines Angebots herunter.
+    Berechtigung: Dienstleister (Ersteller) oder Bauträger (Projekt-Owner).
+    """
+    from fastapi.responses import FileResponse
+    from ..models import Project
+    from sqlalchemy import select
+    
+    # Hole das Angebot
+    quote = await get_quote_by_id(db, quote_id)
+    if not quote:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Angebot nicht gefunden"
+        )
+    
+    # Hole Projekt für Berechtigungsprüfung
+    project_result = await db.execute(
+        select(Project).where(Project.id == quote.project_id)
+    )
+    project = project_result.scalar_one_or_none()
+    
+    # Prüfe Berechtigung - Dienstleister oder Bauträger
+    is_service_provider = quote.service_provider_id == current_user.id
+    is_project_owner = project and project.owner_id == current_user.id
+    
+    if not (is_service_provider or is_project_owner):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Keine Berechtigung für dieses Dokument"
+        )
+    
+    # Baue Dateipfad
+    storage_base = Path("storage")
+    file_path = storage_base / "projects" / str(quote.project_id) / "quotes" / str(quote_id) / filename
+    
+    if not file_path.exists():
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Dokument nicht gefunden"
+        )
+    
+    return FileResponse(
+        path=str(file_path),
+        filename=filename,
+        media_type='application/octet-stream'
+    )

@@ -775,7 +775,50 @@ async def mark_follow_up_sent(
 ):
     """Markiere Follow-up Benachrichtigung als gesendet"""
     await AppointmentService.mark_follow_up_sent(db, appointment_id)
-    return {"message": "Follow-up als gesendet markiert"} 
+    return {"message": "Follow-up als gesendet markiert"}
+
+
+@router.post("/{appointment_id}/mark-completed")
+async def mark_inspection_completed(
+    appointment_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Markiere Besichtigung als abgeschlossen"""
+    try:
+        # Prüfe ob der Benutzer Zugriff auf diesen Termin hat
+        appointment = await AppointmentService.get_appointment(db, appointment_id)
+        if not appointment:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Termin nicht gefunden"
+            )
+        
+        # Berechtigungsprüfung - nur Bauträger die den Termin erstellt haben
+        from ..models.user import UserRole
+        if current_user.user_role != UserRole.BAUTRAEGER or appointment.created_by != current_user.id:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Keine Berechtigung für diesen Termin"
+            )
+        
+        # Markiere als abgeschlossen
+        appointment.inspection_completed = True
+        appointment.completed_at = datetime.utcnow()
+        appointment.updated_at = datetime.utcnow()
+        
+        await db.commit()
+        await db.refresh(appointment)
+        
+        return {"message": "Besichtigung als abgeschlossen markiert", "appointment_id": appointment_id}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Markieren der Besichtigung: {str(e)}"
+        ) 
 
 
 async def _check_appointment_access(appointment: AppointmentResponse, current_user: User) -> bool:
