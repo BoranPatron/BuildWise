@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { 
   X, 
   Eye, 
@@ -183,10 +183,13 @@ interface DocumentViewerProps {
   existingQuotes: Quote[];
 }
 
+type BuilderTabKey = 'overview' | 'quotes' | 'documents' | 'workflow' | 'inspection';
+
 function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps) {
   const [selectedDoc, setSelectedDoc] = useState<string | null>(null);
   const [viewerError, setViewerError] = useState<string | null>(null);
   const { isBautraeger } = useAuth();
+  const isBautraegerUser = isBautraeger();
 
 
 
@@ -218,13 +221,13 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
           <div className="text-center">
             <FileText size={48} className="text-gray-500 mx-auto mb-3 opacity-50" />
             <p className="text-gray-400 text-sm">
-              {isBautraeger() 
+              {isBautraegerUser 
                 ? 'Keine Dokumente für dieses Gewerk vorhanden' 
                 : 'Keine Dokumente für dieses Gewerk freigegeben'
               }
             </p>
             <p className="text-gray-500 text-xs mt-1">
-              {isBautraeger() 
+              {isBautraegerUser 
                 ? 'Dokumente können über die Projektverwaltung hinzugefügt werden' 
                 : 'Dokumente werden nach Angebotsannahme verfügbar'
               }
@@ -304,7 +307,7 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
         </div>
       )}
       
-      <div className="space-y-3">
+      <div className="space-y-3 max-h-[50vh] overflow-y-auto pr-2 scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800" style={{scrollBehavior: 'smooth'}}>
         {safeDocuments.map((doc) => {
           if (!doc) {
             return null;
@@ -364,12 +367,12 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
                   </button>
                 )}
                   
-                  {(isBautraeger() || existingQuotes.some((quote: Quote) => quote.status === 'accepted')) && (
+                  {(isBautraegerUser || existingQuotes.some((quote: Quote) => quote.status === 'accepted')) && (
                 <a
                       href={getAuthenticatedFileUrl(doc.url || doc.file_path || '')}
                       download={doc.name || doc.title || doc.file_name || 'document'}
                   className="flex items-center gap-1 px-3 py-2 bg-green-600/20 text-green-400 rounded-lg hover:bg-green-600/30 transition-all duration-200 text-sm font-medium"
-                      title={isBautraeger() ? "Dokument herunterladen" : "Dokument herunterladen (nur nach Angebotsannahme)"}
+                      title={isBautraegerUser ? "Dokument herunterladen" : "Dokument herunterladen (nur nach Angebotsannahme)"}
                 >
                   <Download size={14} />
                   Download
@@ -516,6 +519,10 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
   const [showAcceptConfirm, setShowAcceptConfirm] = useState(false);
   const [quoteIdToAccept, setQuoteIdToAccept] = useState<number | null>(null);
   const [acceptAcknowledged, setAcceptAcknowledged] = useState(false);
+
+  const isBautraegerUser = isBautraeger();
+
+  const [activeBuilderTab, setActiveBuilderTab] = useState<BuilderTabKey>('overview');
   
   // States für neue Features
   const [currentProgress, setCurrentProgress] = useState(trade?.progress_percentage || 0);
@@ -530,6 +537,14 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
   const [acceptanceDefects, setAcceptanceDefects] = useState<any[]>([]);
   const [fullTradeData, setFullTradeData] = useState<any>(null);
   const [showInspectionScheduling, setShowInspectionScheduling] = useState(false);
+
+  const formatCurrency = (amount: number, currency: string = 'EUR') => {
+    try {
+      return amount.toLocaleString('de-DE', { style: 'currency', currency });
+    } catch {
+      return `${amount.toLocaleString('de-DE')} EUR`;
+    }
+  };
 
       // KRITISCH: Verwende NUR den Backend-Status, NICHT das trade Objekt
   // useEffect(() => {
@@ -548,6 +563,12 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
       console.warn('⚠️ WARNUNG: TradeDetailsModal verwendet Milestone ID 1 ("Elektroinstallation EG"). Falls dies ein neues Gewerk sein sollte, könnte es ein Problem mit der Milestone-Erstellung geben.');
     }
   }
+
+  useEffect(() => {
+    if (isOpen && isBautraegerUser) {
+      setActiveBuilderTab('overview');
+    }
+  }, [isOpen, isBautraegerUser]);
 
   // Lade Termine für dieses Gewerk, wenn Modal geöffnet
   useEffect(() => {
@@ -593,7 +614,7 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
 
   // Hilfsfunktion: Ist aktueller Nutzer (Dienstleister) zur Besichtigung eingeladen?
   const isUserInvitedForInspection = React.useMemo(() => {
-    if (!user || isBautraeger()) return false;
+    if (!user || isBautraegerUser) return false;
     return Array.isArray(appointmentsForTrade) && appointmentsForTrade.some(ap => {
       const invited = Array.isArray(ap.invited_service_providers) ? ap.invited_service_providers : [];
       const responsesArr = Array.isArray(ap.responses) ? ap.responses : (Array.isArray((ap as any).responses_array) ? (ap as any).responses_array : []);
@@ -601,7 +622,7 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
       const inResponses = responsesArr.some((r: any) => Number(r.service_provider_id) === Number(user.id));
       return inInvites || inResponses;
     });
-  }, [appointmentsForTrade, user, isBautraeger]);
+  }, [appointmentsForTrade, user, isBautraegerUser]);
 
   // Funktion zum dynamischen Laden der Dokumente und completion_status
   const loadTradeDocuments = async (tradeId: number) => {
@@ -622,7 +643,7 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
       
       // Für Bauträger: Lade direkt vom Milestone-Endpoint
       // Für Dienstleister: Verwende die Geo-Suche (wie bisher)
-      if (isBautraeger()) {
+      if (isBautraegerUser) {
 
         
         const response = await fetch(`${baseUrl}/milestones/${tradeId}`, {
@@ -1268,6 +1289,27 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
   if (!isOpen || !trade) return null;
 
 
+
+  const totalQuotes = existingQuotes?.length ?? 0;
+  const builderDocumentsCount = loadedDocuments.length > 0 ? loadedDocuments.length : (Array.isArray(trade.documents) ? trade.documents.length : 0);
+  const requiresInspectionFlag = trade?.requires_inspection === true ||
+    trade?.requires_inspection === 'true' ||
+    (trade as any)?.requires_inspection === true ||
+    (trade as any)?.requires_inspection === 'true';
+  const hasInspectionInfo = requiresInspectionFlag || appointmentsForTrade.length > 0;
+  const builderTabs: Array<{ key: BuilderTabKey; label: string; icon: React.ComponentType<{ size?: number; className?: string }> }> = React.useMemo(() => {
+    if (!isBautraegerUser) return [];
+    const tabs: Array<{ key: BuilderTabKey; label: string; icon: React.ComponentType<{ size?: number; className?: string }> }> = [
+      { key: 'overview', label: '\u00dcbersicht', icon: Eye },
+      { key: 'quotes', label: totalQuotes ? `Angebote (${totalQuotes})` : 'Angebote', icon: Calculator },
+      { key: 'documents', label: builderDocumentsCount ? `Dokumente (${builderDocumentsCount})` : 'Dokumente', icon: FileText },
+      { key: 'workflow', label: 'Fortschritt', icon: CheckSquare },
+    ];
+    if (hasInspectionInfo) {
+      tabs.push({ key: 'inspection', label: 'Besichtigung', icon: Calendar });
+    }
+    return tabs;
+  }, [isBautraegerUser, totalQuotes, builderDocumentsCount, hasInspectionInfo]);
 
   return (
     <>
@@ -1962,6 +2004,28 @@ END:VCALENDAR`;
             </div>
           )}
           <div className="space-y-6">
+            {isBautraegerUser && builderTabs.length > 0 && (
+              <div className="flex flex-wrap items-center gap-2 p-2 bg-[#111827] border border-gray-700/40 rounded-xl">
+                {builderTabs.map((tab) => {
+                  const Icon = tab.icon;
+                  const isActive = activeBuilderTab === tab.key;
+                  return (
+                    <button
+                      key={tab.key}
+                      onClick={() => setActiveBuilderTab(tab.key)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                        isActive ? 'bg-[#ffbd59] text-[#1a1a2e] shadow-lg' : 'bg-[#ffbd59]/10 text-gray-300 hover:bg-[#ffbd59]/20'
+                      }`}
+                    >
+                      <Icon size={16} className={isActive ? 'text-[#1a1a2e]' : 'text-[#ffbd59]'} />
+                      {tab.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            <div className={isBautraegerUser ? (activeBuilderTab === 'overview' ? 'space-y-6' : 'hidden') : 'space-y-6'}>
             {/* Priorität und Phase */}
             <div className="flex items-center gap-4">
               <span className="px-3 py-1 rounded-full text-xs font-medium bg-[#ffbd59]/20 text-[#ffbd59]">
@@ -1985,141 +2049,134 @@ END:VCALENDAR`;
        </div>
             )}
 
-            {/* Debug: Komponentenname */}
-            <div className="mb-3 text-xs text-gray-400">Component: TradeDetailsModal.tsx</div>
-
             {/* Angenommenes Angebot - Details Abschnitt */}
-            {(() => {
-              const isBt = isBautraeger();
-              const acceptedQuote = (existingQuotes || []).find(q => String(q.status).toLowerCase() === 'accepted');
-              
-              if (!acceptedQuote || !isBt) return null;
-              
-              const formatCurrency = (amount: number, currency: string = 'EUR') => {
-                try {
-                  return amount.toLocaleString('de-DE', { style: 'currency', currency });
-                } catch {
-                  return `${amount.toLocaleString('de-DE')} €`;
-                }
-              };
-
-              return (
-                <div className="bg-gradient-to-br from-emerald-500/10 to-green-500/10 rounded-xl p-6 border border-emerald-500/30 mb-6">
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="p-2 bg-emerald-500/20 rounded-lg">
-                      <CheckCircle size={20} className="text-emerald-400" />
-                    </div>
-                    <div>
-                      <h3 className="text-lg font-semibold text-white">Angenommenes Angebot</h3>
-                      <p className="text-emerald-300 text-sm">Verbindlich bestätigt</p>
-                    </div>
+            {isBautraegerUser && acceptedQuote && (
+              <div className="bg-gradient-to-br from-emerald-500/10 to-green-500/10 rounded-xl p-6 border border-emerald-500/30">
+                <div className="flex items-center gap-3 mb-4">
+                  <div className="p-2 bg-emerald-500/20 rounded-lg">
+                    <CheckCircle size={20} className="text-emerald-400" />
                   </div>
-                  
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                    <div className="bg-white/5 rounded-lg p-4">
-                      <div className="text-sm text-gray-400 mb-1">Dienstleister</div>
-                      <div className="text-white font-semibold">
-                        {acceptedQuote.contact_released ? 
-                          (acceptedQuote.company_name || acceptedQuote.service_provider_name || `Angebot #${acceptedQuote.id}`) :
-                          (acceptedQuote.service_provider_name || `Angebot #${acceptedQuote.id}`)}
-                      </div>
-                      {acceptedQuote.contact_person && (
-                        <div className="text-gray-300 text-sm">{acceptedQuote.contact_person}</div>
-                      )}
-                    </div>
-                    
-                    <div className="bg-white/5 rounded-lg p-4">
-                      <div className="text-sm text-gray-400 mb-1">Angebotssumme</div>
-                      <div className="text-emerald-400 font-bold text-xl">
-                        {(() => {
-                          const currency = (acceptedQuote as any).currency || 'EUR';
-                          const amount =
-                            (typeof (acceptedQuote as any).total_amount === 'number' && (acceptedQuote as any).total_amount) ??
-                            (typeof (acceptedQuote as any).total_price === 'number' && (acceptedQuote as any).total_price) ??
-                            (typeof (acceptedQuote as any).labor_cost === 'number' || typeof (acceptedQuote as any).material_cost === 'number' || typeof (acceptedQuote as any).overhead_cost === 'number'
-                              ? ((Number((acceptedQuote as any).labor_cost) || 0) + (Number((acceptedQuote as any).material_cost) || 0) + (Number((acceptedQuote as any).overhead_cost) || 0))
-                              : null);
-                          if (amount == null) return 'N/A';
-                          return formatCurrency(amount, currency);
-                        })()}
-                      </div>
-                    </div>
-                    
-                    <div className="bg-white/5 rounded-lg p-4">
-                      <div className="text-sm text-gray-400 mb-1">Dauer</div>
-                      <div className="text-white font-semibold">
-                        {(acceptedQuote as any).estimated_duration || 'Nicht angegeben'} Tage
-                      </div>
-                      {(acceptedQuote as any).start_date && (
-                        <div className="text-gray-300 text-sm">
-                          Start: {new Date((acceptedQuote as any).start_date).toLocaleDateString('de-DE')}
-                        </div>
-                      )}
-                    </div>
-                    
-                    {acceptedQuote.contact_released && acceptedQuote.phone && (
-                      <div className="bg-white/5 rounded-lg p-4">
-                        <div className="text-sm text-gray-400 mb-1">Kontakt</div>
-                        <div className="text-white font-semibold">{acceptedQuote.phone}</div>
-                        {acceptedQuote.email && (
-                          <div className="text-gray-300 text-sm">{acceptedQuote.email}</div>
-                        )}
-                      </div>
-                    )}
-                    
-                    {((acceptedQuote as any).labor_cost || (acceptedQuote as any).material_cost || (acceptedQuote as any).overhead_cost) && (
-                      <div className="bg-white/5 rounded-lg p-4">
-                        <div className="text-sm text-gray-400 mb-1">Kostenaufschlüsselung</div>
-                        <div className="space-y-1 text-sm">
-                          {(acceptedQuote as any).labor_cost && (
-                            <div className="flex justify-between">
-                              <span className="text-gray-300">Arbeitskosten:</span>
-                              <span className="text-white">{formatCurrency(Number((acceptedQuote as any).labor_cost), (acceptedQuote as any).currency)}</span>
-                            </div>
-                          )}
-                          {(acceptedQuote as any).material_cost && (
-                            <div className="flex justify-between">
-                              <span className="text-gray-300">Materialkosten:</span>
-                              <span className="text-white">{formatCurrency(Number((acceptedQuote as any).material_cost), (acceptedQuote as any).currency)}</span>
-                            </div>
-                          )}
-                          {(acceptedQuote as any).overhead_cost && (
-                            <div className="flex justify-between">
-                              <span className="text-gray-300">Nebenkosten:</span>
-                              <span className="text-white">{formatCurrency(Number((acceptedQuote as any).overhead_cost), (acceptedQuote as any).currency)}</span>
-                            </div>
-                          )}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                  
-                  <div className="mt-4 flex items-center justify-between">
-                    <div className="text-sm text-gray-300">
-                      Angenommen am: {new Date((acceptedQuote as any).updated_at || acceptedQuote.created_at).toLocaleDateString('de-DE')}
-                    </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setQuoteForDetails(acceptedQuote); setShowQuoteDetails(true); }}
-                        className="px-3 py-1.5 text-sm rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30"
-                      >
-                        Vollständige Details
-                      </button>
-                      {(acceptedQuote as any).pdf_upload_path && (
-                        <a
-                          href={getAuthenticatedFileUrl((acceptedQuote as any).pdf_upload_path)}
-                          download
-                          className="px-3 py-1.5 text-sm rounded-lg bg-blue-500/20 text-blue-300 border border-blue-500/30 hover:bg-blue-500/30"
-                        >
-                          PDF herunterladen
-                        </a>
-                      )}
-                    </div>
+                  <div>
+                    <h3 className="text-lg font-semibold text-white">Angenommenes Angebot</h3>
+                    <p className="text-emerald-300 text-sm">Verbindlich best?tigt</p>
                   </div>
                 </div>
-              );
-            })()}
 
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                  <div className="bg-white/5 rounded-lg p-4">
+                    <div className="text-sm text-gray-400 mb-1">Dienstleister</div>
+                    <div className="text-white font-semibold">
+                      {acceptedQuote.contact_released ?
+                        (acceptedQuote.company_name || acceptedQuote.service_provider_name || `Angebot #${acceptedQuote.id}`) :
+                        (acceptedQuote.service_provider_name || `Angebot #${acceptedQuote.id}`)}
+                    </div>
+                    {acceptedQuote.contact_person && (
+                      <div className="text-gray-300 text-sm">{acceptedQuote.contact_person}</div>
+                    )}
+                  </div>
+
+                  <div className="bg-white/5 rounded-lg p-4">
+                    <div className="text-sm text-gray-400 mb-1">Angebotssumme</div>
+                    <div className="text-emerald-400 font-bold text-xl">
+                      {(() => {
+                        const currency = (acceptedQuote as any).currency || 'EUR';
+                        const amount =
+                          (typeof (acceptedQuote as any).total_amount === 'number' && (acceptedQuote as any).total_amount) ??
+                          (typeof (acceptedQuote as any).total_price === 'number' && (acceptedQuote as any).total_price) ??
+                          (typeof (acceptedQuote as any).labor_cost === 'number' || typeof (acceptedQuote as any).material_cost === 'number' || typeof (acceptedQuote as any).overhead_cost === 'number'
+                            ? ((Number((acceptedQuote as any).labor_cost) || 0) + (Number((acceptedQuote as any).material_cost) || 0) + (Number((acceptedQuote as any).overhead_cost) || 0))
+                            : null);
+                        if (amount == null) return 'N/A';
+                        return formatCurrency(amount, currency);
+                      })()}
+                    </div>
+                  </div>
+
+                  <div className="bg-white/5 rounded-lg p-4">
+                    <div className="text-sm text-gray-400 mb-1">Dauer</div>
+                    <div className="text-white font-semibold">
+                      {(acceptedQuote as any).estimated_duration || 'Nicht angegeben'} Tage
+                    </div>
+                    {(acceptedQuote as any).start_date && (
+                      <div className="text-gray-300 text-sm">
+                        Start: {new Date((acceptedQuote as any).start_date).toLocaleDateString('de-DE')}
+                      </div>
+                    )}
+                  </div>
+
+                  {acceptedQuote.contact_released && acceptedQuote.phone && (
+                    <div className="bg-white/5 rounded-lg p-4">
+                      <div className="text-sm text-gray-400 mb-1">Kontakt</div>
+                      <div className="text-white font-semibold">{acceptedQuote.phone}</div>
+                      {acceptedQuote.email && (
+                        <div className="text-gray-300 text-sm">{acceptedQuote.email}</div>
+                      )}
+                    </div>
+                  )}
+
+                  {((acceptedQuote as any).labor_cost || (acceptedQuote as any).material_cost || (acceptedQuote as any).overhead_cost) && (
+                    <div className="bg-white/5 rounded-lg p-4">
+                      <div className="text-sm text-gray-400 mb-1">Kostenaufschl?sselung</div>
+                      <div className="space-y-1 text-sm">
+                        {(acceptedQuote as any).labor_cost && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-300">Arbeitskosten:</span>
+                            <span className="text-white">{formatCurrency(Number((acceptedQuote as any).labor_cost), (acceptedQuote as any).currency)}</span>
+                          </div>
+                        )}
+                        {(acceptedQuote as any).material_cost && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-300">Materialkosten:</span>
+                            <span className="text-white">{formatCurrency(Number((acceptedQuote as any).material_cost), (acceptedQuote as any).currency)}</span>
+                          </div>
+                        )}
+                        {(acceptedQuote as any).overhead_cost && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-300">Nebenkosten:</span>
+                            <span className="text-white">{formatCurrency(Number((acceptedQuote as any).overhead_cost), (acceptedQuote as any).currency)}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {(acceptedQuote as any).notes && (
+                    <div className="bg-white/5 rounded-lg p-4">
+                      <div className="text-sm text-gray-400 mb-1">Notizen</div>
+                      <div className="text-gray-300 text-sm whitespace-pre-line">{(acceptedQuote as any).notes}</div>
+                    </div>
+                  )}
+                </div>
+
+                <div className="mt-4 flex items-center justify-between">
+                  <div className="text-sm text-gray-300">
+                    Angenommen am: {new Date((acceptedQuote as any).updated_at || acceptedQuote.created_at).toLocaleDateString('de-DE')}
+                  </div>
+                  <div className="flex gap-2">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setQuoteForDetails(acceptedQuote); setShowQuoteDetails(true); }}
+                      className="px-3 py-1.5 text-sm rounded-lg bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/30"
+                    >
+                      Vollst?ndige Details
+                    </button>
+                    {(acceptedQuote as any).pdf_upload_path && (
+                      <a
+                        href={getAuthenticatedFileUrl((acceptedQuote as any).pdf_upload_path)}
+                        download
+                        className="px-3 py-1.5 text-sm rounded-lg bg-blue-500/20 text-blue-300 border border-blue-500/30 hover:bg-blue-500/30"
+                      >
+                        PDF herunterladen
+                      </a>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+
+          </div>
+
+            <div className={isBautraegerUser ? (activeBuilderTab === 'quotes' ? 'space-y-6' : 'hidden') : 'space-y-6'}>
             {/* DEBUG UND TERMINE FÜR DIENSTLEISTER - VOR ANGEBOTEN */}
             {(user?.user_role === 'DIENSTLEISTER' || user?.user_role === 'dienstleister' || user?.user_role === 'SERVICE_PROVIDER' || user?.user_role === 'service_provider') && (
               <>
@@ -2326,7 +2383,7 @@ END:VCALENDAR`;
             {/* Angebote - WICHTIG: Direkt nach Beschreibung anzeigen */}
             {(() => {
               // Sichtbare Angebote abhängig von Rolle filtern
-              const isBt = isBautraeger();
+              const isBt = isBautraegerUser;
               const visibleQuotes = isBt
                 ? (existingQuotes || [])
                 : (existingQuotes || []).filter(q => q.service_provider_id === user?.id);
@@ -3128,9 +3185,12 @@ END:VCALENDAR`;
            </div>
          </div>
 
-            {/* Technische Details */}
-            {trade.requires_inspection && (
-              <div className="bg-gradient-to-br from-yellow-500/10 to-orange-500/10 rounded-xl p-6 border border-yellow-500/30">
+          </div>
+
+            <div className={isBautraegerUser ? (activeBuilderTab === 'inspection' ? 'space-y-6' : 'hidden') : 'space-y-6'}>
+              {/* Technische Details */}
+              {trade.requires_inspection && (
+                <div className="bg-gradient-to-br from-yellow-500/10 to-orange-500/10 rounded-xl p-6 border border-yellow-500/30">
                 <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                   <CheckCircle size={18} className="text-yellow-400" />
                   Besichtigung
@@ -3150,6 +3210,9 @@ END:VCALENDAR`;
                      </div>
             )}
 
+          </div>
+
+            <div className={isBautraegerUser ? (activeBuilderTab === 'workflow' ? 'space-y-6' : 'hidden') : 'space-y-6'}>
             {/* Fortschritt */}
             {trade.progress_percentage !== undefined && (
               <div className="bg-gradient-to-br from-[#1a1a2e]/50 to-[#2c3539]/50 rounded-xl p-6 border border-gray-600/30">
@@ -3172,6 +3235,9 @@ END:VCALENDAR`;
 
             
 
+          </div>
+
+            <div className={isBautraegerUser ? (activeBuilderTab === 'documents' ? 'space-y-6' : 'hidden') : 'space-y-6'}>
             {/* Dokumente - Einklappbar */}
             <div className="bg-gradient-to-br from-[#1a1a2e]/50 to-[#2c3539]/50 rounded-xl border border-gray-600/30 overflow-hidden">
               <div className="flex items-center justify-between p-6 cursor-pointer hover:bg-[#1a1a2e]/30 transition-all duration-200" onClick={() => setIsExpanded(!isExpanded)}>
@@ -3193,7 +3259,7 @@ END:VCALENDAR`;
                 </div>
 
               {isExpanded && (
-                <div className="border-t border-gray-600/30">
+                <div className="border-t border-gray-600/30 max-h-[60vh] overflow-y-auto scrollbar-thin scrollbar-thumb-gray-600 scrollbar-track-gray-800" style={{scrollBehavior: 'smooth'}}>
                   {documentsLoading ? (
                     <div className="p-6 text-center">
                       <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-[#ffbd59] mx-auto mb-3"></div>
@@ -3235,19 +3301,22 @@ END:VCALENDAR`;
             
 
 
+          </div>
+
+            <div className={isBautraegerUser ? (activeBuilderTab === 'workflow' ? 'space-y-6' : 'hidden') : 'space-y-6'}>
             {/* Baufortschritt & Kommunikation */}
             {(
               // Für Bauträger: Immer anzeigen (können jederzeit kommentieren)
-              isBautraeger() ||
+              isBautraegerUser ||
               // Für Dienstleister: Immer anzeigen (können kommunizieren und Fortschritt melden)
-              !isBautraeger()
+              !isBautraegerUser
             ) && (
               <TradeProgress
                 milestoneId={trade.id}
                 currentProgress={currentProgress}
                 onProgressChange={handleProgressChange}
-                isBautraeger={isBautraeger()}
-                isServiceProvider={!isBautraeger() && (acceptedQuote?.service_provider_id === user?.id || existingQuotes?.some(q => q.service_provider_id === user?.id))}
+                isBautraeger={isBautraegerUser}
+                isServiceProvider={!isBautraegerUser && (acceptedQuote?.service_provider_id === user?.id || existingQuotes?.some(q => q.service_provider_id === user?.id))}
                 completionStatus={completionStatus}
                 onCompletionRequest={handleCompletionRequest}
                 onCompletionResponse={handleCompletionResponse}
@@ -3256,6 +3325,9 @@ END:VCALENDAR`;
             
 
 
+          </div>
+
+            <div className={isBautraegerUser ? (activeBuilderTab === 'workflow' ? 'space-y-6' : 'hidden') : 'space-y-6'}>
             {/* Abnahme-Workflow für Bauträger - zeige wenn NICHT Dienstleister mit eigenem Angebot */}
             {!(acceptedQuote?.service_provider_id === user?.id) && (
               <div className="bg-gradient-to-br from-[#1a1a2e]/50 to-[#2c3539]/50 rounded-xl p-6 border border-gray-600/30">
@@ -3379,7 +3451,7 @@ END:VCALENDAR`;
             )}
 
             {/* Abnahme-Workflow Buttons für Dienstleister */}
-            {!isBautraeger() && (
+            {!isBautraegerUser && (
               // Zeige für Dienstleister wenn:
               // 1. Er hat ein akzeptiertes Angebot für dieses Gewerk, ODER
               // 2. Er hat überhaupt ein Angebot für dieses Gewerk (auch wenn noch nicht akzeptiert)
@@ -3601,7 +3673,7 @@ END:VCALENDAR`;
 
             
             {/* Rechnungsanzeige für Bauträger */}
-            {isBautraeger() && completionStatus === 'completed' && trade?.invoice_generated && (
+            {isBautraegerUser && completionStatus === 'completed' && trade?.invoice_generated && (
               <div className="bg-gradient-to-br from-[#1a1a2e]/50 to-[#2c3539]/50 rounded-xl p-6 border border-gray-600/30">
                 <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                   <Receipt size={18} className="text-[#ffbd59]" />
@@ -3644,8 +3716,10 @@ END:VCALENDAR`;
               </div>
             )}
 
+          </div>
+
             {/* Dienstleister-spezifische Aktionen */}
-            {!isBautraeger() && (
+            {!isBautraegerUser && (
               // Zeige Aktionen nur wenn:
               // 1. Kein Angebot angenommen wurde ODER
               // 2. Das angenommene Angebot NICHT von diesem Dienstleister ist
@@ -3759,4 +3833,6 @@ END:VCALENDAR`;
   );
 }
 export default TradeDetailsModal;
+
+
 

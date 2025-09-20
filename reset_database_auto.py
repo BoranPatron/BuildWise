@@ -66,9 +66,13 @@ async def clear_database_data(seed_admin: bool = True) -> None:
             tables_result = await conn.execute(
                 text("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'")
             )
-            tables = [row[0] for row in tables_result.fetchall()]
+            all_tables = [row[0] for row in tables_result.fetchall()]
             
-            if not tables:
+            # Trenne normale Tabellen und FTS5-Tabellen
+            tables = [t for t in all_tables if not t.endswith('_fts')]
+            fts_tables = [t for t in all_tables if t.endswith('_fts')]
+            
+            if not tables and not fts_tables:
                 print("ℹ️  Keine Tabellen gefunden - erstelle Struktur...")
                 await conn.run_sync(Base.metadata.create_all)
                 print("✅ Tabellen-Struktur erstellt")
@@ -76,7 +80,7 @@ async def clear_database_data(seed_admin: bool = True) -> None:
                 # Foreign Key Constraints temporär deaktivieren
                 await conn.execute(text("PRAGMA foreign_keys = OFF"))
                 
-                # Alle Tabellen leeren
+                # Normale Tabellen leeren
                 deleted_count = 0
                 for table in tables:
                     try:
@@ -88,6 +92,15 @@ async def clear_database_data(seed_admin: bool = True) -> None:
                     except Exception as e:
                         print(f"   ⚠️  Fehler bei Tabelle {table}: {e}")
                 
+                # FTS5-Tabellen behandeln
+                for fts_table in fts_tables:
+                    try:
+                        # FTS5-Tabellen mit Rebuild leeren
+                        await conn.execute(text(f"INSERT INTO {fts_table}({fts_table}) VALUES('rebuild')"))
+                        print(f"   🔧 FTS5-Index für {fts_table} neu aufgebaut")
+                    except Exception as e:
+                        print(f"   ⚠️  Fehler bei FTS5-Tabelle {fts_table}: {e}")
+                
                 # Foreign Key Constraints wieder aktivieren
                 await conn.execute(text("PRAGMA foreign_keys = ON"))
                 
@@ -95,6 +108,8 @@ async def clear_database_data(seed_admin: bool = True) -> None:
                 await conn.execute(text("VACUUM"))
                 
                 print(f"✅ Insgesamt {deleted_count} Einträge aus {len(tables)} Tabellen gelöscht")
+                if fts_tables:
+                    print(f"🔧 {len(fts_tables)} FTS5-Indizes neu aufgebaut")
 
         # 3) SQLite-Optimierungen anwenden
         try:
@@ -176,7 +191,20 @@ async def seed_minimal_admin() -> None:
         from sqlalchemy import select
         from app.core.database import AsyncSessionLocal
         from app.models import User
-        from app.core.security import get_password_hash
+        
+        # Versuche bcrypt zu importieren, falls fehlgeschlagen verwende Standard-Hash
+        use_secure_hash = False
+        try:
+            from app.core.security import get_password_hash
+            # Teste ob die Hash-Funktion funktioniert
+            test_hash = get_password_hash("test")
+            use_secure_hash = True
+        except Exception as hash_error:
+            print(f"⚠️  Sichere Passwort-Hash-Funktion nicht verfügbar: {hash_error}")
+            print("💡 Verwende einfachen Hash für Admin-User")
+            if "bcrypt" in str(hash_error).lower():
+                print("💡 Hinweis: bcrypt-Version könnte inkompatibel sein. Versuche: pip install 'bcrypt>=4.0.0'")
+            use_secure_hash = False
 
         async with AsyncSessionLocal() as session:
             # Prüfe, ob bereits ein Admin existiert
@@ -198,7 +226,15 @@ async def seed_minimal_admin() -> None:
                 user_role="BAUTRAEGER",
                 is_active=True,
             )
-            admin.hashed_password = get_password_hash("Admin123!ChangeMe")
+            
+            # Passwort hash erstellen
+            if use_secure_hash:
+                admin.hashed_password = get_password_hash("Admin123!ChangeMe")
+            else:
+                # Fallback: einfacher Hash (nur für Entwicklung!)
+                import hashlib
+                admin.hashed_password = hashlib.sha256("Admin123!ChangeMe".encode()).hexdigest()
+                print("⚠️  WARNUNG: Einfacher SHA256-Hash verwendet - nur für Entwicklung!")
 
             session.add(admin)
             await session.commit()
