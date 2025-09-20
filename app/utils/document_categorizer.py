@@ -72,6 +72,70 @@ class DocumentCategorizer:
                 'Nachträge': ['nachtrag', 'änderung', 'zusatz'],
                 'Versicherungen': ['versicherung', 'police', 'haftung']
             }
+        },
+        'project_management': {
+            'patterns': [
+                r'projektplan',
+                r'projektstruktur',
+                r'terminplan',
+                r'bauzeit',
+                r'meilenstein',
+                r'gantt',
+                r'projekthandbuch',
+                r'projektcharter',
+                r'risikomanagement',
+                r'qualitätsplan',
+                r'fortschritt',
+                r'controlling',
+                r'budgetplan',
+                r'kostenrahmen',
+                r'cashflow',
+                r'ressourcenplan',
+                r'personalplan',
+                r'materialplan',
+                r'soll.ist',
+                r'status',
+                r'reporting'
+            ],
+            'subcategories': {
+                'Projektpläne': ['projektplan', 'projektstruktur', 'psp', 'wbs'],
+                'Terminplanung': ['terminplan', 'bauzeit', 'meilenstein', 'gantt', 'zeitplan'],
+                'Budgetplanung': ['budgetplan', 'kostenrahmen', 'cashflow', 'kostenschätzung'],
+                'Projektsteuerung': ['controlling', 'fortschritt', 'status', 'soll.ist'],
+                'Risikomanagement': ['risiko', 'risk', 'gefahr', 'bewertung'],
+                'Qualitätsmanagement': ['qualität', 'qm', 'qualitätsplan', 'prüfung'],
+                'Ressourcenplanung': ['ressource', 'personal', 'material', 'gerät'],
+                'Projektdokumentation': ['projekthandbuch', 'charter', 'reporting', 'protokoll']
+            }
+        },
+        'procurement': {
+            'patterns': [
+                r'ausschreibung',
+                r'leistungsverzeichnis',
+                r'angebot',
+                r'vergabe',
+                r'bieter',
+                r'submission',
+                r'tender',
+                r'preisspiegel',
+                r'angebotsvergleich',
+                r'bewertung',
+                r'zuschlag',
+                r'ablehnung',
+                r'vergabeprotokoll',
+                r'technische.spezifikation',
+                r'lastenheft',
+                r'pflichtenheft',
+                r'bewertungsmatrix'
+            ],
+            'subcategories': {
+                'Ausschreibungsunterlagen': ['ausschreibung', 'leistungsverzeichnis', 'lv', 'tender'],
+                'Technische Spezifikationen': ['spezifikation', 'lastenheft', 'pflichtenheft', 'anforderung'],
+                'Angebote': ['angebot', 'offerte', 'kostenvoranschlag', 'bieter'],
+                'Angebotsbewertung': ['bewertung', 'preisspiegel', 'vergleich', 'bewertungsmatrix'],
+                'Vergabedokumentation': ['vergabe', 'zuschlag', 'ablehnung', 'vergabeprotokoll'],
+                'Verhandlungen': ['verhandlung', 'nachverhandlung', 'protokoll', 'vereinbarung']
+            }
         }
     }
     
@@ -120,9 +184,13 @@ class DocumentCategorizer:
                 if keyword in filename_lower:
                     return subcategory
         
-        # Fallback für Finanzdokumente
+        # Fallback für verschiedene Kategorien
         if category == 'finance':
             return "Rechnungen"
+        elif category == 'project_management':
+            return "Projektdokumentation"
+        elif category == 'procurement':
+            return "Ausschreibungsunterlagen"
         
         return "Sonstige"
     

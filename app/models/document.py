@@ -26,6 +26,8 @@ class DocumentCategory(enum.Enum):
     EXECUTION = "execution"
     DOCUMENTATION = "documentation"
     ORDER_CONFIRMATIONS = "order_confirmations"  # Neue Kategorie für Auftragsbestätigungen
+    PROJECT_MANAGEMENT = "project_management"  # Projektmanagement-Dokumente
+    PROCUREMENT = "procurement"  # Ausschreibungen und Angebote
 
 class DocumentStatus(enum.Enum):
     DRAFT = "DRAFT"
