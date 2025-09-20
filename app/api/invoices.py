@@ -298,7 +298,7 @@ async def get_project_invoices(
     
     return summaries
 
-@router.get("/milestone/{milestone_id}", response_model=Optional[InvoiceRead])
+@router.get("/milestone/{milestone_id}", response_model=InvoiceRead)
 async def get_milestone_invoice(
     milestone_id: int,
     db: AsyncSession = Depends(get_db),
@@ -312,7 +312,7 @@ async def get_milestone_invoice(
         invoice = await InvoiceService.get_invoice_by_milestone(db, milestone_id)
         if not invoice:
             print(f"ℹ️ Keine Rechnung für Milestone {milestone_id} gefunden")
-            return None
+            raise HTTPException(status_code=404, detail="Keine Rechnung für diesen Meilenstein gefunden")
         
         print(f"✅ Rechnung gefunden: {invoice.id}, Service Provider: {invoice.service_provider_id}")
         print(f"🔍 Project Owner ID: {getattr(invoice.project, 'owner_id', 'NOT_LOADED')}")
@@ -668,6 +668,98 @@ async def get_my_invoice_stats(
     
     return stats
 
+@router.post("/{invoice_id}/mark-dms-integrated")
+async def mark_invoice_dms_integrated(
+    invoice_id: int,
+    dms_data: dict,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+):
+    """Markiere eine Rechnung als DMS-integriert"""
+    
+    try:
+        print(f"🔍 Mark-DMS-Integrated für Rechnung {invoice_id}, User: {current_user.id}")
+        print(f"🔍 DMS-Daten: {dms_data}")
+        
+        invoice = await InvoiceService.get_invoice_by_id(db, invoice_id)
+        if not invoice:
+            raise HTTPException(status_code=404, detail="Rechnung nicht gefunden")
+        
+        print(f"✅ Rechnung gefunden: {invoice.id}, Service Provider: {invoice.service_provider_id}")
+        print(f"🔍 Current User: {current_user.id}, Role: {current_user.user_role}, Type: {current_user.user_type}")
+        
+        # Erweiterte Berechtigung prüfen - auch für Bauträger
+        from ..models.user import UserRole, UserType
+        is_bautraeger = (
+            current_user.user_role == UserRole.BAUTRAEGER or 
+            current_user.user_type in [UserType.PROFESSIONAL, 'bautraeger', 'developer', 'PROFESSIONAL', 'professional']
+        )
+        
+        is_authorized = (
+            current_user.id == invoice.service_provider_id or  # Dienstleister
+            (hasattr(invoice.project, 'owner_id') and current_user.id == invoice.project.owner_id) or  # Projektbesitzer
+            is_bautraeger or  # Bauträger
+            current_user.user_role == UserRole.ADMIN  # Admin
+        )
+        
+        if not is_authorized:
+            print(f"❌ Berechtigung verweigert für User {current_user.id}")
+            raise HTTPException(status_code=403, detail="Keine Berechtigung")
+        
+        print(f"✅ Berechtigung gewährt für User {current_user.id}")
+        
+        # Update invoice mit DMS-Daten
+        invoice.dms_document_id = dms_data.get('dms_document_id')
+        invoice.dms_category = dms_data.get('category')
+        invoice.dms_subcategory = dms_data.get('subcategory')
+        invoice.dms_tags = json.dumps(dms_data.get('tags', []))
+        
+        # ✅ Aktualisiere auch das DMS-Dokument mit der korrekten Unterkategorie
+        if invoice.dms_document_id:
+            try:
+                from ..services.document_service import update_document
+                from ..schemas.document import DocumentUpdate
+                
+                # Update das DMS-Dokument mit der korrekten Unterkategorie
+                document_update = DocumentUpdate(
+                    subcategory=dms_data.get('subcategory'),
+                    tags=dms_data.get('tags', [])
+                )
+                
+                await update_document(
+                    db=db,
+                    document_id=invoice.dms_document_id,
+                    document_update=document_update
+                )
+                
+                print(f"✅ DMS-Dokument {invoice.dms_document_id} mit Unterkategorie '{dms_data.get('subcategory')}' aktualisiert")
+                
+            except Exception as update_error:
+                print(f"⚠️ Fehler beim Aktualisieren des DMS-Dokuments: {update_error}")
+                # Fehler blockiert nicht die Hauptfunktion
+        
+        await db.commit()
+        await db.refresh(invoice)
+        
+        print(f"✅ Rechnung {invoice_id} als DMS-integriert markiert")
+        
+        return {
+            "message": "Rechnung erfolgreich als DMS-integriert markiert",
+            "invoice_id": invoice_id,
+            "dms_document_id": invoice.dms_document_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"❌ Fehler beim mark-dms-integrated für Rechnung {invoice_id}: {e}")
+        import traceback
+        print(f"🔍 Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Markieren als DMS-integriert: {str(e)}"
+        )
+
 
 @router.get("/service-provider", response_model=List[dict])
 async def get_service_provider_invoices(
@@ -732,68 +824,3 @@ async def get_service_provider_invoices(
             detail=f"Fehler beim Laden der Rechnungen: {str(e)}"
         )
 
-
-@router.get("/milestone/{milestone_id}", response_model=dict)
-async def get_invoice_for_milestone(
-    milestone_id: int,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """Lade Rechnung für ein spezifisches Gewerk"""
-    try:
-        print(f"🔍 Lade Rechnung für Milestone: {milestone_id}")
-        
-        # Prüfe ob Milestone existiert und dem Dienstleister gehört
-        milestone_stmt = select(Milestone).where(
-            and_(
-                Milestone.id == milestone_id,
-                Milestone.service_provider_id == current_user.id
-            )
-        )
-        milestone_result = await db.execute(milestone_stmt)
-        milestone = milestone_result.scalar_one_or_none()
-        
-        if not milestone:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Gewerk nicht gefunden oder Sie haben keine Berechtigung"
-            )
-        
-        # Lade Rechnung für dieses Gewerk
-        invoice_stmt = select(Invoice).where(
-            Invoice.milestone_id == milestone_id
-        )
-        invoice_result = await db.execute(invoice_stmt)
-        invoice = invoice_result.scalar_one_or_none()
-        
-        if not invoice:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Keine Rechnung für dieses Gewerk gefunden"
-            )
-        
-        invoice_data = {
-            'id': invoice.id,
-            'invoice_number': invoice.invoice_number,
-            'milestone_id': invoice.milestone_id,
-            'milestone_title': milestone.title,
-            'project_name': milestone.project.title if milestone.project else 'Unbekanntes Projekt',
-            'total_amount': invoice.total_amount,
-            'currency': invoice.currency,
-            'status': invoice.status,
-            'created_at': invoice.created_at.isoformat(),
-            'due_date': invoice.due_date.isoformat() if invoice.due_date else None,
-            'paid_at': invoice.paid_at.isoformat() if invoice.paid_at else None
-        }
-        
-        print(f"✅ Rechnung für Milestone {milestone_id} gefunden")
-        return invoice_data
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"❌ Fehler beim Laden der Rechnung: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Fehler beim Laden der Rechnung: {str(e)}"
-        )

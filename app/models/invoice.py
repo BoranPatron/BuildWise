@@ -80,6 +80,9 @@ class Invoice(Base):
     
     # DMS-Integration
     dms_document_id = Column(Integer, ForeignKey("documents.id"), nullable=True)
+    dms_category = Column(String(100), nullable=True)
+    dms_subcategory = Column(String(100), nullable=True)
+    dms_tags = Column(Text, nullable=True)
     
     # Relationships
     project = relationship("Project", back_populates="invoices")

@@ -932,7 +932,8 @@ class InvoiceService:
     async def create_dms_document(
         db: AsyncSession, 
         invoice: Invoice, 
-        pdf_path: str
+        pdf_path: str,
+        custom_subcategory: str = None
     ) -> None:
         """Erstelle automatisch ein DMS-Dokument für die Rechnung"""
         
@@ -952,12 +953,17 @@ class InvoiceService:
             
             filename = f"Rechnung_{invoice.invoice_number}_{invoice.milestone.title}.pdf"
             category = DocumentCategorizer.categorize_document(filename, ".pdf")
-            subcategory = DocumentCategorizer.suggest_subcategory(
-                category, 
-                filename, 
-                invoice.status.value, 
-                invoice.type.value if invoice.type else None
-            )
+            
+            # Verwende custom_subcategory falls vorhanden, sonst automatische Erkennung
+            if custom_subcategory:
+                subcategory = custom_subcategory
+            else:
+                subcategory = DocumentCategorizer.suggest_subcategory(
+                    category, 
+                    filename, 
+                    invoice.status.value, 
+                    invoice.type.value if invoice.type else None
+                )
             
             # Intelligente Tag-Generierung
             tags = DocumentCategorizer.generate_tags(

@@ -95,6 +95,8 @@ class Milestone(Base):
     # Archivierung
     archived = Column(Boolean, default=False)
     archived_at = Column(DateTime, nullable=True)
+    archived_by = Column(String(100), nullable=True)  # Wer hat archiviert
+    archive_reason = Column(Text, nullable=True)  # Grund für Archivierung
     
     # Geteilte Dokumente für Ausschreibung
     shared_document_ids = Column(Text, nullable=True)  # IDs der für Ausschreibung geteilten Dokumente (JSON Array)

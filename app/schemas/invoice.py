@@ -144,6 +144,12 @@ class InvoiceRead(BaseModel):
     created_at: datetime
     updated_at: datetime
     created_by: int
+    
+    # DMS-Integration
+    dms_document_id: Optional[int] = None
+    dms_category: Optional[str] = None
+    dms_subcategory: Optional[str] = None
+    dms_tags: Optional[str] = None
 
     model_config = {"from_attributes": True}
 

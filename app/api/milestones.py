@@ -557,63 +557,83 @@ async def get_milestone_completion_status(
 
 @router.get("/archived", response_model=List[dict])
 async def get_archived_milestones(
-    search_query: Optional[str] = None,
-    category_filter: Optional[str] = None,
-    project_id: Optional[int] = None,
-    skip: int = 0,
-    limit: int = 100,
+    project_id: Optional[str] = Query(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Lade archivierte Gewerke für den aktuellen Benutzer"""
+    """Lade archivierte Gewerke mit completion_status = 'archived'"""
     try:
         print(f"🔍 API: get_archived_milestones aufgerufen mit project_id={project_id}")
         
-        # Vereinfachte direkte Abfrage ohne milestone_service
-        from sqlalchemy import select, or_
-        from ..models import Milestone, Project
+        from sqlalchemy import select
+        from sqlalchemy.orm import selectinload
+        from ..models import Milestone, Project, Quote
         
-        # Basis-Query für archivierte Milestones
-        query = select(Milestone).where(
-            or_(
-                Milestone.archived == True,
-                Milestone.completion_status == "archived"
-            )
+        # Einfache Query: Alle Gewerke mit completion_status = "archived"
+        query = select(Milestone).options(
+            selectinload(Milestone.project),
+            selectinload(Milestone.quotes),
+            selectinload(Milestone.service_provider)
+        ).where(
+            Milestone.completion_status == "archived"
         )
         
-        # Bauträger sieht nur seine Projekte
-        if current_user.user_type != "service_provider":
-            query = query.join(Project).where(Project.created_by == current_user.id)
-        else:
-            query = query.where(Milestone.created_by == current_user.id)
-        
-        # Projekt-Filter
+        # Projekt-Filter falls angegeben
         if project_id:
-            query = query.where(Milestone.project_id == project_id)
+            try:
+                project_id_int = int(project_id)
+                query = query.where(Milestone.project_id == project_id_int)
+            except ValueError:
+                print(f"⚠️ Ungültige project_id: {project_id}")
         
-        # Filter anwenden
-        if search_query:
-            query = query.where(
-                or_(
-                    Milestone.title.ilike(f"%{search_query}%"),
-                    Milestone.description.ilike(f"%{search_query}%")
-                )
-            )
-        
-        if category_filter:
-            query = query.where(Milestone.category == category_filter)
-        
-        # Sortierung und Paginierung
-        query = query.order_by(Milestone.id.desc()).offset(skip).limit(limit)
+        # Sortierung nach archived_at
+        query = query.order_by(Milestone.archived_at.desc())
         
         result = await db.execute(query)
         milestones = result.scalars().all()
         
         print(f"🔍 Gefundene archivierte Milestones: {len(milestones)}")
         
-        # Vereinfachte Rückgabe
+        # Detaillierte Rückgabe mit allen Informationen
         archived_data = []
         for milestone in milestones:
+            # Finde das akzeptierte Angebot
+            accepted_quote = None
+            if milestone.quotes:
+                for quote in milestone.quotes:
+                    if quote.status == 'accepted':
+                        accepted_quote = quote
+                        break
+            
+            # Service Provider Informationen
+            service_provider = None
+            if milestone.service_provider:
+                service_provider = {
+                    "id": milestone.service_provider.id,
+                    "company_name": milestone.service_provider.company_name or "Unbekannt",
+                    "contact_person": milestone.service_provider.contact_person or "Unbekannt",
+                    "email": milestone.service_provider.email or "",
+                    "phone": milestone.service_provider.phone or ""
+                }
+            
+            # Rechnungsinformationen
+            invoice = None
+            if milestone.invoice_generated:
+                invoice = {
+                    "id": milestone.id,
+                    "invoice_number": f"INV-{milestone.id:06d}",
+                    "amount": float(milestone.invoice_amount) if milestone.invoice_amount else 0.0,
+                    "status": "paid" if milestone.invoice_approved else "pending",
+                    "paid_at": milestone.invoice_approved_at.isoformat() if milestone.invoice_approved_at else None
+                }
+            
+            # Projektinformationen
+            project_info = {
+                "id": milestone.project_id,
+                "title": milestone.project.title if milestone.project else "Unbekanntes Projekt",
+                "address": milestone.project.address if milestone.project else ""
+            }
+            
             archived_data.append({
                 "id": milestone.id,
                 "title": milestone.title,
@@ -622,23 +642,22 @@ async def get_archived_milestones(
                 "budget": float(milestone.budget) if milestone.budget else 0.0,
                 "completion_status": milestone.completion_status,
                 "archived_at": milestone.archived_at.isoformat() if milestone.archived_at else None,
-                "archived_by": "bautraeger",
-                "archive_reason": "Gewerk abgeschlossen und Rechnung bezahlt",
-                "project": {
-                    "id": milestone.project_id,
-                    "title": "Projekt",
-                    "address": ""
-                },
-                "service_provider": None,
-                "accepted_quote": None,
-                "invoice": None
+                "archived_by": milestone.archived_by or "bautraeger",
+                "archive_reason": milestone.archive_reason or "Gewerk abgeschlossen und Rechnung bezahlt",
+                "project": project_info,
+                "service_provider": service_provider,
+                "accepted_quote": {
+                    "id": accepted_quote.id,
+                    "amount": float(accepted_quote.total_amount) if accepted_quote else 0.0,
+                    "description": accepted_quote.description or "",
+                    "accepted_at": accepted_quote.accepted_at.isoformat() if accepted_quote and accepted_quote.accepted_at else None
+                } if accepted_quote else None,
+                "invoice": invoice
             })
         
-        print(f"✅ Returning {len(archived_data)} archived milestones")
+        print(f"✅ Returning {len(archived_data)} archived milestones with full details")
         return archived_data
         
-    except HTTPException:
-        raise
     except Exception as e:
         print(f"❌ Fehler beim Laden archivierter Gewerke: {e}")
         import traceback
@@ -724,6 +743,7 @@ async def get_completed_milestones_for_service_provider(
 @router.post("/{milestone_id}/archive")
 async def archive_milestone(
     milestone_id: int,
+    archive_data: dict = None,
     db: AsyncSession = Depends(get_db),
     current_user: User = Depends(get_current_user)
 ):
@@ -753,8 +773,21 @@ async def archive_milestone(
         milestone.archived_at = datetime.utcnow()
         milestone.completion_status = "archived"
         
+        # Setze zusätzliche Archivierungsinformationen falls vorhanden
+        if archive_data:
+            if 'archived_by' in archive_data:
+                milestone.archived_by = archive_data['archived_by']
+            if 'archive_reason' in archive_data:
+                milestone.archive_reason = archive_data['archive_reason']
+        else:
+            # Standard-Werte setzen
+            milestone.archived_by = "bautraeger"
+            milestone.archive_reason = "Gewerk abgeschlossen und Rechnung bezahlt"
+        
         await db.commit()
         await db.refresh(milestone)
+        
+        print(f"✅ Gewerk {milestone_id} erfolgreich archiviert")
         
         return {
             "message": "Gewerk erfolgreich archiviert",
@@ -770,6 +803,8 @@ async def archive_milestone(
         raise
     except Exception as e:
         print(f"❌ Fehler beim Archivieren: {e}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Fehler beim Archivieren: {str(e)}"

@@ -336,6 +336,8 @@ class MilestoneResponse(MilestoneBase):
     # Archivierung
     archived: bool = False
     archived_at: Optional[datetime] = None
+    archived_by: Optional[str] = None
+    archive_reason: Optional[str] = None
 
     class Config:
         from_attributes = True 
