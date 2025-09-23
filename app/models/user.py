@@ -193,6 +193,10 @@ class User(Base):
     # Bewertungen (als Dienstleister empfangen)
     received_ratings = relationship("ServiceProviderRating", foreign_keys="ServiceProviderRating.service_provider_id", back_populates="service_provider")
     
+    # Resource Management
+    resources = relationship("Resource", foreign_keys="Resource.service_provider_id", back_populates="service_provider")
+    resource_requests = relationship("ResourceRequest", foreign_keys="ResourceRequest.requested_by", back_populates="requested_by_user")
+    
     # Constraints für Social-Login
     __table_args__ = (
         # Mindestens ein Login-Verfahren muss vorhanden sein

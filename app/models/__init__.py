@@ -29,6 +29,11 @@ from .milestone_progress import MilestoneProgress, ProgressUpdateType
 from .service_provider_rating import ServiceProviderRating
 from .visualization import Visualization, VisualizationCategory, VisualizationStatus
 from .notification import Notification, NotificationType, NotificationPriority
+from .resource import (
+    Resource, ResourceStatus, ResourceVisibility, ResourceAllocation, 
+    AllocationStatus, ResourceRequest, RequestStatus, ResourceCalendarEntry, 
+    CalendarEntryStatus, ResourceKPIs
+)
 
 __all__ = [
     "Base",
@@ -106,5 +111,16 @@ __all__ = [
     "InvoiceType",
     "Notification",
     "NotificationType",
-    "NotificationPriority"
+    "NotificationPriority",
+    # Resource Management
+    "Resource",
+    "ResourceStatus",
+    "ResourceVisibility",
+    "ResourceAllocation", 
+    "AllocationStatus",
+    "ResourceRequest",
+    "RequestStatus",
+    "ResourceCalendarEntry",
+    "CalendarEntryStatus",
+    "ResourceKPIs"
 ]

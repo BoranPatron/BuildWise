@@ -985,7 +985,7 @@ class InvoiceService:
                            f"Status: {invoice.status.value}\n"
                            f"Automatisch kategorisiert als: {subcategory}",
                 document_type=DocumentTypeEnum.INVOICE,
-                category=DocumentCategory.FINANCE,
+                category=DocumentCategory.FINANCE,  # Rechnungen bleiben in FINANCE-Kategorie
                 subcategory=subcategory,
                 file_name=f"Rechnung_{invoice.invoice_number}_{invoice.id}.pdf",
                 file_path=pdf_path,

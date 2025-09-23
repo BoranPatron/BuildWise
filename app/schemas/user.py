@@ -92,8 +92,11 @@ class UserProfile(BaseModel):
     id: int
     first_name: str
     last_name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
     company_name: Optional[str] = None
     company_address: Optional[str] = None
+    company_phone: Optional[str] = None
     bio: Optional[str] = None
     profile_image: Optional[str] = None
     region: Optional[str] = None

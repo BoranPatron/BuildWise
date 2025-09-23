@@ -102,4 +102,5 @@ class Quote(Base):
     project = relationship("Project", back_populates="quotes")
     milestone = relationship("Milestone")  # Verknüpfung zum Gewerk
     service_provider = relationship("User")
-    buildwise_fees = relationship("BuildWiseFee", back_populates="quote") 
+    buildwise_fees = relationship("BuildWiseFee", back_populates="quote")
+    resource_allocations = relationship("ResourceAllocation", back_populates="quote")

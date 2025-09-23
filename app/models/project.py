@@ -83,3 +83,4 @@ class Project(Base):
     appointments = relationship("Appointment", back_populates="project", cascade="all, delete-orphan")
     acceptances = relationship("Acceptance", back_populates="project", cascade="all, delete-orphan")
     invoices = relationship("Invoice", back_populates="project", cascade="all, delete-orphan")
+    resources = relationship("Resource", foreign_keys="Resource.project_id", back_populates="project")

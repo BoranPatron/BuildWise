@@ -120,4 +120,6 @@ class Milestone(Base):
     acceptances = relationship("Acceptance", back_populates="milestone", cascade="all, delete-orphan")
     tasks = relationship("Task", back_populates="milestone", cascade="all, delete-orphan")
     invoices = relationship("Invoice", back_populates="milestone", cascade="all, delete-orphan")
-    quotes = relationship("Quote", back_populates="milestone", cascade="all, delete-orphan") 
+    quotes = relationship("Quote", back_populates="milestone", cascade="all, delete-orphan")
+    resource_allocations = relationship("ResourceAllocation", back_populates="trade")
+    resource_requests = relationship("ResourceRequest", back_populates="trade")

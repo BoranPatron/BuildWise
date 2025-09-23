@@ -52,6 +52,7 @@ async def create_milestone_with_documents(
     project_id: int = Form(...),
     document_ids: str = Form(None),  # JSON string mit IDs der hochgeladenen Dokumente
     shared_document_ids: str = Form(None),  # JSON string mit IDs der geteilten Dokumente
+    resource_allocations: str = Form(None),  # JSON string mit ResourceAllocations
     documents: List[UploadFile] = File(None),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
@@ -66,9 +67,10 @@ async def create_milestone_with_documents(
         print(f"🔧 [API] documents: {len(documents) if documents else 0} files")
         print(f"🔧 [API] shared_document_ids: {shared_document_ids}")
         
-        # Parse JSON-Strings für Dokument-IDs
+        # Parse JSON-Strings für Dokument-IDs und Resource Allocations
         parsed_document_ids = []
         parsed_shared_document_ids = []
+        parsed_resource_allocations = []
         
         if document_ids:
             try:
@@ -84,6 +86,14 @@ async def create_milestone_with_documents(
                 print(f"🔧 [API] parsed_shared_document_ids: {parsed_shared_document_ids}")
             except json.JSONDecodeError as e:
                 print(f"⚠️ [API] JSON decode error for shared_document_ids: {e}")
+                pass
+        
+        if resource_allocations:
+            try:
+                parsed_resource_allocations = json.loads(resource_allocations)
+                print(f"🔧 [API] parsed_resource_allocations: {parsed_resource_allocations}")
+            except json.JSONDecodeError as e:
+                print(f"⚠️ [API] JSON decode error for resource_allocations: {e}")
                 pass
         
         # Validiere Eingabedaten
@@ -117,6 +127,11 @@ async def create_milestone_with_documents(
         from ..services.milestone_service import create_milestone
         milestone = await create_milestone(db, milestone_in, user_id, documents, parsed_shared_document_ids, parsed_document_ids)
         print(f"✅ [API] Milestone erfolgreich erstellt: {milestone.id}")
+        
+        # Erstelle ResourceAllocations falls vorhanden
+        if parsed_resource_allocations:
+            await create_resource_allocations_for_milestone(db, milestone.id, parsed_resource_allocations)
+            print(f"✅ [API] {len(parsed_resource_allocations)} ResourceAllocations erstellt für Milestone {milestone.id}")
         
         # Explizite Konvertierung über Schema um JSON-String zu Liste zu konvertieren
         milestone_read = MilestoneRead.from_orm(milestone)
@@ -1060,4 +1075,44 @@ async def get_all_milestones_for_user(db: AsyncSession, user_id: int):
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Fehler beim Laden der Gewerke: {str(e)}"
-        ) 
+        )
+
+
+async def create_resource_allocations_for_milestone(db: AsyncSession, milestone_id: int, resource_allocations: list):
+    """Erstellt ResourceAllocations für ein neues Milestone"""
+    from ..models.resource import ResourceAllocation, AllocationStatus
+    from datetime import datetime
+    
+    try:
+        created_allocations = []
+        
+        for allocation_data in resource_allocations:
+            # Erstelle ResourceAllocation mit milestone_id als trade_id
+            allocation = ResourceAllocation(
+                resource_id=allocation_data.get('resource_id'),
+                trade_id=milestone_id,  # Verwende milestone_id als trade_id
+                allocated_person_count=allocation_data.get('allocated_person_count', 1),
+                allocated_start_date=datetime.fromisoformat(allocation_data.get('allocated_start_date')),
+                allocated_end_date=datetime.fromisoformat(allocation_data.get('allocated_end_date')),
+                allocated_hours=allocation_data.get('allocated_hours'),
+                allocation_status=AllocationStatus.PRE_SELECTED,  # Status: Vorausgewählt
+                priority=allocation_data.get('priority', 5),
+                notes=allocation_data.get('notes', 'Ressource während Ausschreibungserstellung zugeordnet')
+            )
+            
+            db.add(allocation)
+            created_allocations.append(allocation)
+        
+        await db.commit()
+        
+        # Refresh alle Allocations um IDs zu bekommen
+        for allocation in created_allocations:
+            await db.refresh(allocation)
+        
+        print(f"✅ {len(created_allocations)} ResourceAllocations für Milestone {milestone_id} erstellt")
+        return created_allocations
+        
+    except Exception as e:
+        await db.rollback()
+        print(f"❌ Fehler beim Erstellen der ResourceAllocations für Milestone {milestone_id}: {e}")
+        raise 
