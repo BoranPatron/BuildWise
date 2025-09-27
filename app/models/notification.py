@@ -18,6 +18,8 @@ class NotificationType(enum.Enum):
     DOCUMENT_UPLOADED = "document_uploaded"  # Dokument hochgeladen
     PROJECT_STATUS_CHANGED = "project_status_changed"  # Projektstatus geändert
     SYSTEM_ANNOUNCEMENT = "system_announcement"  # Systemankündigung
+    RESOURCE_ALLOCATED = "resource_allocated"  # Ressource einer Ausschreibung zugeordnet
+    TENDER_INVITATION = "tender_invitation"  # Einladung zur Angebotsabgabe
 
 class NotificationPriority(enum.Enum):
     """Prioritätsstufen für Benachrichtigungen"""

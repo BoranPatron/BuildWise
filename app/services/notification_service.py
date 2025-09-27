@@ -108,6 +108,194 @@ class NotificationService:
         return notification
     
     @staticmethod
+    async def create_resource_allocated_notification(
+        db: AsyncSession,
+        allocation_id: int,
+        service_provider_id: int
+    ) -> Notification:
+        """
+        Erstellt eine Benachrichtigung für eine Ressourcen-Zuordnung zu einer Ausschreibung
+        
+        Args:
+            db: Datenbank-Session
+            allocation_id: ID der Ressourcen-Zuordnung
+            service_provider_id: ID des Dienstleisters (Empfänger)
+        """
+        # Lade ResourceAllocation mit allen relevanten Daten
+        from ..models.resource import ResourceAllocation
+        from ..models.milestone import Milestone
+        from ..models.project import Project
+        from ..models.user import User
+        
+        result = await db.execute(
+            select(ResourceAllocation)
+            .options(
+                selectinload(ResourceAllocation.resource),
+                selectinload(ResourceAllocation.trade)
+            )
+            .where(ResourceAllocation.id == allocation_id)
+        )
+        allocation = result.scalar_one_or_none()
+        
+        if not allocation:
+            raise ValueError(f"ResourceAllocation mit ID {allocation_id} nicht gefunden")
+        
+        # Lade Projekt-Details
+        project = None
+        if allocation.trade and allocation.trade.project_id:
+            project_result = await db.execute(
+                select(Project).where(Project.id == allocation.trade.project_id)
+            )
+            project = project_result.scalar_one_or_none()
+        
+        # Lade Bauträger-Details
+        bautraeger = None
+        if project and project.user_id:
+            bautraeger_result = await db.execute(
+                select(User).where(User.id == project.user_id)
+            )
+            bautraeger = bautraeger_result.scalar_one_or_none()
+        
+        # Erstelle Bauträger Name
+        bautraeger_name = "Unbekannter Bauträger"
+        if bautraeger:
+            if bautraeger.company_name:
+                bautraeger_name = bautraeger.company_name
+            else:
+                bautraeger_name = f"{bautraeger.first_name or ''} {bautraeger.last_name or ''}".strip()
+                if not bautraeger_name:
+                    bautraeger_name = f"Bauträger #{bautraeger.id}"
+        
+        # Erstelle Benachrichtigungsdaten
+        notification_data = {
+            "allocation_id": allocation.id,
+            "resource_id": allocation.resource_id,
+            "trade_id": allocation.trade_id,
+            "trade_title": allocation.trade.title if allocation.trade else "Unbekanntes Gewerk",
+            "project_name": project.name if project else "Unbekanntes Projekt",
+            "bautraeger_name": bautraeger_name,
+            "allocated_start_date": allocation.allocated_start_date.isoformat() if allocation.allocated_start_date else None,
+            "allocated_end_date": allocation.allocated_end_date.isoformat() if allocation.allocated_end_date else None,
+            "allocated_person_count": allocation.allocated_person_count,
+            "allocation_status": allocation.allocation_status.value if allocation.allocation_status else "pre_selected"
+        }
+        
+        # Erstelle Benachrichtigung
+        notification = Notification(
+            recipient_id=service_provider_id,
+            type=NotificationType.RESOURCE_ALLOCATED,
+            priority=NotificationPriority.HIGH,
+            title=f"Ressource einer Ausschreibung zugeordnet",
+            message=f"Ihre Ressource wurde der Ausschreibung '{allocation.trade.title if allocation.trade else 'Unbekanntes Gewerk'}' im Projekt '{project.name if project else 'Unbekanntes Projekt'}' zugeordnet.",
+            data=json.dumps(notification_data),
+            related_project_id=project.id if project else None,
+            related_milestone_id=allocation.trade_id
+        )
+        
+        db.add(notification)
+        await db.commit()
+        await db.refresh(notification)
+        
+        print(f"✅ Benachrichtigung erstellt: ID={notification.id}, Type={notification.type.value}, Recipient={service_provider_id}")
+        
+        return notification
+    
+    @staticmethod
+    async def create_tender_invitation_notification(
+        db: AsyncSession,
+        allocation_id: int,
+        service_provider_id: int,
+        deadline: datetime = None
+    ) -> Notification:
+        """
+        Erstellt eine Benachrichtigung für eine Einladung zur Angebotsabgabe
+        
+        Args:
+            db: Datenbank-Session
+            allocation_id: ID der Ressourcen-Zuordnung
+            service_provider_id: ID des Dienstleisters (Empfänger)
+            deadline: Abgabefrist für das Angebot
+        """
+        # Lade ResourceAllocation mit allen relevanten Daten
+        from ..models.resource import ResourceAllocation
+        from ..models.milestone import Milestone
+        from ..models.project import Project
+        from ..models.user import User
+        
+        result = await db.execute(
+            select(ResourceAllocation)
+            .options(
+                selectinload(ResourceAllocation.resource),
+                selectinload(ResourceAllocation.trade)
+            )
+            .where(ResourceAllocation.id == allocation_id)
+        )
+        allocation = result.scalar_one_or_none()
+        
+        if not allocation:
+            raise ValueError(f"ResourceAllocation mit ID {allocation_id} nicht gefunden")
+        
+        # Lade Projekt-Details
+        project = None
+        if allocation.trade and allocation.trade.project_id:
+            project_result = await db.execute(
+                select(Project).where(Project.id == allocation.trade.project_id)
+            )
+            project = project_result.scalar_one_or_none()
+        
+        # Lade Bauträger-Details
+        bautraeger = None
+        if project and project.user_id:
+            bautraeger_result = await db.execute(
+                select(User).where(User.id == project.user_id)
+            )
+            bautraeger = bautraeger_result.scalar_one_or_none()
+        
+        # Erstelle Bauträger Name
+        bautraeger_name = "Unbekannter Bauträger"
+        if bautraeger:
+            if bautraeger.company_name:
+                bautraeger_name = bautraeger.company_name
+            else:
+                bautraeger_name = f"{bautraeger.first_name or ''} {bautraeger.last_name or ''}".strip()
+                if not bautraeger_name:
+                    bautraeger_name = f"Bauträger #{bautraeger.id}"
+        
+        # Erstelle Benachrichtigungsdaten
+        notification_data = {
+            "allocation_id": allocation.id,
+            "resource_id": allocation.resource_id,
+            "trade_id": allocation.trade_id,
+            "trade_title": allocation.trade.title if allocation.trade else "Unbekanntes Gewerk",
+            "project_name": project.name if project else "Unbekanntes Projekt",
+            "bautraeger_name": bautraeger_name,
+            "deadline": deadline.isoformat() if deadline else None,
+            "allocated_start_date": allocation.allocated_start_date.isoformat() if allocation.allocated_start_date else None,
+            "allocated_end_date": allocation.allocated_end_date.isoformat() if allocation.allocated_end_date else None,
+            "allocated_person_count": allocation.allocated_person_count,
+            "allocation_status": allocation.allocation_status.value if allocation.allocation_status else "invited"
+        }
+        
+        # Erstelle Benachrichtigung
+        deadline_text = f" Abgabefrist: {deadline.strftime('%d.%m.%Y %H:%M')}" if deadline else ""
+        notification = Notification(
+            recipient_id=service_provider_id,
+            type=NotificationType.TENDER_INVITATION,
+            priority=NotificationPriority.URGENT,
+            title=f"Einladung zur Angebotsabgabe",
+            message=f"Sie wurden eingeladen, ein Angebot für '{allocation.trade.title if allocation.trade else 'Unbekanntes Gewerk'}' im Projekt '{project.name if project else 'Unbekanntes Projekt'}' abzugeben.{deadline_text}",
+            data=json.dumps(notification_data),
+            related_project_id=project.id if project else None,
+            related_milestone_id=allocation.trade_id
+        )
+        
+        db.add(notification)
+        await db.commit()
+        await db.refresh(notification)
+        
+        return notification
+    
+    @staticmethod
     async def get_user_notifications(
         db: AsyncSession,
         user_id: int,
