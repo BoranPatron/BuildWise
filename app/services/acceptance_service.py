@@ -807,18 +807,22 @@ class AcceptanceService:
                 milestone.defects_resolved = True
                 milestone.defects_resolved_at = datetime.utcnow()
                 
+                # Aktualisiere completion_status auf 'defects_resolved'
+                milestone.completion_status = 'defects_resolved'
+                
                 # Optional: Erstelle eine Benachrichtigung für den Bauträger
                 # TODO: Implementiere Benachrichtigungssystem
                 
                 await db.commit()
                 
-                print(f"✅ Milestone {milestone_id} als bereit für finale Abnahme markiert")
+                print(f"✅ Milestone {milestone_id} als bereit für finale Abnahme markiert (completion_status: defects_resolved)")
                 
                 return {
                     "milestone_id": milestone_id,
                     "total_defects": total_defects,
                     "resolved_defects": resolved_defects,
                     "ready_for_final_acceptance": True,
+                    "completion_status": "defects_resolved",
                     "message": resolution_data.get('message', 'Alle Mängel behoben')
                 }
             else:

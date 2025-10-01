@@ -405,7 +405,9 @@ async def get_my_appointments_simple(
         # Lade alle Responses für diese Appointments aus der neuen Tabelle
         appointment_ids = [apt["id"] for apt in simple_appointments]
         if appointment_ids:
-            responses_stmt = select(AppointmentResponse).where(AppointmentResponse.appointment_id.in_(appointment_ids))
+            # Lade Responses mit Service Provider Informationen
+            from sqlalchemy.orm import selectinload
+            responses_stmt = select(AppointmentResponse).options(selectinload(AppointmentResponse.service_provider)).where(AppointmentResponse.appointment_id.in_(appointment_ids))
             responses_result = await db.execute(responses_stmt)
             all_responses = responses_result.scalars().all()
             
@@ -414,8 +416,22 @@ async def get_my_appointments_simple(
             for response in all_responses:
                 if response.appointment_id not in responses_by_appointment:
                     responses_by_appointment[response.appointment_id] = []
-                # Use to_dict() without service_provider to avoid lazy loading
-                responses_by_appointment[response.appointment_id].append(response.to_dict(include_service_provider=False))
+                
+                # Konvertiere zu Dictionary mit Service Provider Namen
+                response_dict = response.to_dict(include_service_provider=True)
+                
+                # Füge service_provider_name hinzu für Kompatibilität
+                if response.service_provider:
+                    if response.service_provider.company_name:
+                        response_dict["service_provider_name"] = response.service_provider.company_name
+                    else:
+                        response_dict["service_provider_name"] = f"{response.service_provider.first_name or ''} {response.service_provider.last_name or ''}".strip()
+                        if not response_dict["service_provider_name"]:
+                            response_dict["service_provider_name"] = f"Benutzer #{response.service_provider.id}"
+                else:
+                    response_dict["service_provider_name"] = f"Dienstleister #{response.service_provider_id}"
+                
+                responses_by_appointment[response.appointment_id].append(response_dict)
             
             print(f"📊 Loaded {len(all_responses)} responses from appointment_responses table")
             
@@ -428,6 +444,36 @@ async def get_my_appointments_simple(
                     print(f"✅ Updated appointment {apt['id']} with {len(new_responses)} responses from new table")
                 elif apt["responses"]:
                     print(f"📦 Using legacy JSON responses for appointment {apt['id']}")
+                    # Parse legacy JSON responses und füge service_provider_name hinzu
+                    try:
+                        legacy_responses = json.loads(apt["responses"]) if isinstance(apt["responses"], str) else apt["responses"]
+                        enhanced_responses = []
+                        
+                        for response in legacy_responses:
+                            # Lade Service Provider Informationen für Legacy Responses
+                            if response.get("service_provider_id"):
+                                from app.models.user import User
+                                user_stmt = select(User).where(User.id == response["service_provider_id"])
+                                user_result = await db.execute(user_stmt)
+                                service_provider = user_result.scalar_one_or_none()
+                                
+                                if service_provider:
+                                    if service_provider.company_name:
+                                        response["service_provider_name"] = service_provider.company_name
+                                    else:
+                                        response["service_provider_name"] = f"{service_provider.first_name or ''} {service_provider.last_name or ''}".strip()
+                                        if not response["service_provider_name"]:
+                                            response["service_provider_name"] = f"Benutzer #{service_provider.id}"
+                                else:
+                                    response["service_provider_name"] = f"Dienstleister #{response['service_provider_id']}"
+                            
+                            enhanced_responses.append(response)
+                        
+                        apt["responses"] = json.dumps(enhanced_responses)
+                        apt["responses_array"] = enhanced_responses
+                        print(f"✅ Enhanced legacy responses for appointment {apt['id']}")
+                    except Exception as e:
+                        print(f"⚠️ Error enhancing legacy responses for appointment {apt['id']}: {e}")
         
         # Für Dienstleister: Filtere nur Termine, zu denen sie eingeladen wurden
         if current_user.user_role.value == "DIENSTLEISTER":

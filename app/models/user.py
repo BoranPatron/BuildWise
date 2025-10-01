@@ -89,15 +89,15 @@ class User(Base):
     subscription_end = Column(DateTime(timezone=True), nullable=True)  # Abo-Ende
     max_gewerke = Column(Integer, default=3)  # Max Gewerke (3 für Basis, -1 für unbegrenzt)
     
-    # Geo-basierte Adressfelder (temporär deaktiviert für Kompatibilität)
-    # address_street = Column(String, nullable=True)  # Straße und Hausnummer
-    # address_zip = Column(String, nullable=True)  # PLZ
-    # address_city = Column(String, nullable=True)  # Ort
-    # address_country = Column(String, nullable=True, default="Deutschland")  # Land
-    # address_latitude = Column(Float, nullable=True)  # Geokoordinate Latitude
-    # address_longitude = Column(Float, nullable=True)  # Geokoordinate Longitude
-    # address_geocoded = Column(Boolean, default=False)  # Wurde die Adresse geocodiert
-    # address_geocoding_date = Column(DateTime(timezone=True), nullable=True)  # Wann geocodiert
+    # Geo-basierte Adressfelder
+    address_street = Column(String, nullable=True)  # Straße und Hausnummer
+    address_zip = Column(String, nullable=True)  # PLZ
+    address_city = Column(String, nullable=True)  # Ort
+    address_country = Column(String, nullable=True, default="Deutschland")  # Land
+    address_latitude = Column(Float, nullable=True)  # Geokoordinate Latitude
+    address_longitude = Column(Float, nullable=True)  # Geokoordinate Longitude
+    address_geocoded = Column(Boolean, default=False)  # Wurde die Adresse geocodiert
+    address_geocoding_date = Column(DateTime(timezone=True), nullable=True)  # Wann geocodiert
     
     # DSGVO-konforme Felder - Erweitert
     status = Column(Enum(UserStatus), nullable=False, default=UserStatus.ACTIVE)
@@ -141,9 +141,14 @@ class User(Base):
     company_name = Column(String, nullable=True)
     company_address = Column(Text, nullable=True)
     company_uid = Column(String(50), nullable=True)  # UID-Nummer
+    company_tax_number = Column(String(50), nullable=True)  # Steuernummer
     company_phone = Column(String, nullable=True)
     company_website = Column(String, nullable=True)
     business_license = Column(String, nullable=True)  # Gewerbeschein
+    
+    # Kleinunternehmerregelung
+    is_small_business = Column(Boolean, default=False)  # Kleinunternehmerregelung
+    small_business_exemption = Column(Boolean, default=False)  # Von USt befreit
     
     # Profilinformationen (optional, nur bei Einwilligung)
     bio = Column(Text, nullable=True)

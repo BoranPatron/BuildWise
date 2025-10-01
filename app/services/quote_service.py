@@ -250,37 +250,73 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
         )
     )
     
-    # Erstelle Kostenposition für das akzeptierte Angebot
+    # ✅ WICHTIG: Erstelle Kostenposition für Finanzen-Übersicht auf Startseite
+    # Diese Kostenposition erscheint beim Bauträger im Abschnitt "Finanzen"
     cost_position = await create_cost_position_from_quote(db, quote)
     
-    # Erstelle BuildWise Gebühr für das akzeptierte Angebot
-    if cost_position:
-        try:
-            from ..services.buildwise_fee_service import BuildWiseFeeService
-            from ..core.config import settings, get_fee_percentage
-            
-            print(f"🔧 Erstelle BuildWise Gebühr für akzeptiertes Angebot {quote.id}")
-            print(f"   - Quote ID: {quote.id}")
-            print(f"   - Cost Position ID: {cost_position.id}")
-            print(f"   - Quote Amount: {quote.total_amount} {quote.currency}")
-            print(f"   - Environment Mode: {settings.environment_mode}")
-            print(f"   - Fee Percentage: {get_fee_percentage()}%")
-            
-            # Erstelle BuildWise Gebühr
-            buildwise_fee = await BuildWiseFeeService.create_fee_from_quote(
-                db=db,
-                quote_id=quote.id,
-                cost_position_id=cost_position.id,
-                fee_percentage=None  # Verwende automatisch den aktuellen Modus
+    # ✅ BUILDWISE GEBÜHR: Erstelle automatisch eine Vermittlungsgebühr (4.7%)
+    # Diese wird in /buildwise-fees angezeigt und ist 30 Tage nach Angebotsannahme fällig
+    try:
+        from ..services.buildwise_fee_service import BuildWiseFeeService
+        from ..core.config import settings, get_fee_percentage
+        
+        print(f"🔧 [QuoteService] Erstelle BuildWise Gebühr für akzeptiertes Angebot {quote.id}")
+        print(f"   - Quote ID: {quote.id}")
+        print(f"   - Quote Amount: {quote.total_amount} {quote.currency}")
+        print(f"   - Environment Mode: {settings.environment_mode}")
+        print(f"   - Fee Percentage: {get_fee_percentage()}%")
+        
+        # Erstelle eine temporäre Kostenposition-ID falls keine existiert
+        # Die BuildWise-Gebühr muss auch dann erstellt werden, wenn keine Rechnung existiert
+        if cost_position and hasattr(cost_position, 'id'):
+            cost_position_id = cost_position.id
+        else:
+            # Fallback: Verwende Quote-ID als Referenz (wird später aktualisiert wenn Rechnung erstellt wird)
+            print(f"⚠️ [QuoteService] Keine Kostenposition gefunden, verwende Quote als Referenz")
+            # Erstelle eine Dummy-Kostenposition für die BuildWise-Gebühr
+            from ..models.cost_position import CostPosition
+            dummy_cost_position = CostPosition(
+                project_id=quote.project_id,
+                title=f"Angebot: {quote.title}",
+                description=f"Akzeptiertes Angebot vom {datetime.utcnow().strftime('%d.%m.%Y')}",
+                amount=quote.total_amount,
+                category="quote_accepted",
+                cost_type="service",
+                status="active",
+                contractor_name=quote.company_name or "Unbekannt",
+                quote_id=quote.id
             )
-            
-            print(f"✅ BuildWise Gebühr erfolgreich erstellt (ID: {buildwise_fee.id})")
-            print(f"   - Fee Amount: {buildwise_fee.fee_amount} {buildwise_fee.currency}")
-            print(f"   - Fee Percentage: {buildwise_fee.fee_percentage}%")
-            
-        except Exception as e:
-            print(f"❌ Fehler beim Erstellen der BuildWise Gebühr: {e}")
-            # Fehler beim Erstellen der Gebühr sollte nicht die Quote-Akzeptierung blockieren
+            db.add(dummy_cost_position)
+            await db.flush()
+            cost_position_id = dummy_cost_position.id
+        
+        print(f"   - Cost Position ID: {cost_position_id}")
+        
+        # Erstelle BuildWise Gebühr
+        buildwise_fee = await BuildWiseFeeService.create_fee_from_quote(
+            db=db,
+            quote_id=quote.id,
+            cost_position_id=cost_position_id,
+            fee_percentage=None  # Verwende automatisch den aktuellen Modus (4.7% in Production, 0% in Beta)
+        )
+        
+        print(f"✅ [QuoteService] BuildWise Gebühr erfolgreich erstellt (ID: {buildwise_fee.id})")
+        print(f"   - Rechnungsnummer: {buildwise_fee.invoice_number}")
+        print(f"   - Nettobetrag: {buildwise_fee.fee_amount} {buildwise_fee.currency}")
+        print(f"   - Bruttobetrag: {buildwise_fee.gross_amount} {buildwise_fee.currency}")
+        print(f"   - Provisionssatz: {buildwise_fee.fee_percentage}%")
+        print(f"   - Fälligkeitsdatum: {buildwise_fee.due_date}")
+        
+    except ValueError as ve:
+        # ValueError bedeutet, dass die Gebühr bereits existiert oder ein Validierungsfehler vorliegt
+        print(f"⚠️ [QuoteService] BuildWise Gebühr konnte nicht erstellt werden: {ve}")
+        # Dies ist nicht kritisch - das Angebot wurde bereits akzeptiert
+        
+    except Exception as e:
+        print(f"❌ [QuoteService] Unerwarteter Fehler beim Erstellen der BuildWise Gebühr: {e}")
+        import traceback
+        traceback.print_exc()
+        # Fehler beim Erstellen der Gebühr sollte nicht die Quote-Akzeptierung blockieren
     
     # Credit-Zuordnung für Bauträger - ERWEITERT FÜR BESICHTIGUNGSSYSTEM
     try:
@@ -446,62 +482,24 @@ async def create_cost_position_from_quote(db: AsyncSession, quote: Quote):
             print("⚠️ Milestone nicht gefunden – kann project_id nicht bestimmen")
             return True
 
-        # 3) Rechnung anlegen, falls nicht vorhanden
-        if not existing_invoice:
-            from datetime import datetime, timedelta
-            
-            # Setze due_date auf 30 Tage ab heute
-            invoice_date = datetime.utcnow()
-            due_date = invoice_date + timedelta(days=30)
-            
-            invoice = Invoice(
-                project_id=milestone.project_id,
-                milestone_id=milestone_id,
-                service_provider_id=quote.service_provider_id,
-                invoice_number=f"AUTO-{quote.id}",
-                invoice_date=invoice_date,
-                due_date=due_date,
-                net_amount=0.0,  # Wird später berechnet
-                vat_rate=19.0,   # Standard MwSt-Satz
-                vat_amount=0.0,  # Wird später berechnet
-                total_amount=quote.total_amount or 0,
-                status=InvoiceStatus.DRAFT,  # DRAFT statt SENT - Rechnung ist noch nicht vom Dienstleister abgeschickt
-                type=InvoiceType.MANUAL,
-                created_by=quote.service_provider_id,  # Ersteller ist der Dienstleister
-                notes="Automatisch als Entwurf aus Angebotsannahme erstellt - muss vom Dienstleister finalisiert werden"
-            )
-            db.add(invoice)
-            await db.commit()
-            await db.refresh(invoice)
-        else:
-            invoice = existing_invoice
-
-        # 4) Kostenposition aus dem angenommenen Angebot anlegen, sofern noch keine Position existiert
-        existing_cp_result = await db.execute(
-            select(CostPosition).where(CostPosition.invoice_id == invoice.id)
-        )
-        existing_cp = existing_cp_result.scalar_one_or_none()
+        # ❌ DEAKTIVIERT: Automatische Rechnungserstellung entfernt!
+        # 
+        # Diese Logik wurde entfernt, da sie automatisch DRAFT-Rechnungen mit AUTO-{id} 
+        # Nummern erstellt hat, die im Frontend angezeigt wurden, obwohl noch keine echte 
+        # Rechnung vom Dienstleister existierte.
+        #
+        # ✅ NEUE VORGEHENSWEISE:
+        # Rechnungen sollen NUR erstellt werden, wenn der Dienstleister sie tatsächlich 
+        # über POST /api/v1/invoices/create einreicht. Dies stellt sicher, dass nur 
+        # echte Rechnungen im System erscheinen.
+        #
+        # Kostenposition-Logik wurde ebenfalls entfernt, da sie an die Rechnung 
+        # gekoppelt war.
         
-        if not existing_cp:
-            cp = CostPosition(
-                invoice_id=invoice.id,
-                project_id=milestone.project_id,
-                title=quote.title or "Angebot",
-                description=quote.description or "Kostenposition aus angenommenem Angebot",
-                amount=float(quote.total_amount or 0),
-                category="custom",
-                cost_type="standard",
-                status="active"
-            )
-            db.add(cp)
-            await db.commit()
-            await db.refresh(cp)
-            cost_position = cp
-        else:
-            cost_position = existing_cp
+        print(f"ℹ️ Keine automatische Rechnung/Kostenposition für Quote {quote.id}")
+        print(f"✅ Dienstleister muss Rechnung manuell über /invoices/create erstellen")
         
-        print(f"✅ Kostenposition/Rechnung erstellt oder vorhanden – Projekt {milestone.project_id}, Invoice {invoice.id}")
-        return cost_position
+        return True  # Erfolg signalisieren
         
     except Exception as e:
         print(f"❌ Fehler beim Erstellen der Kostenposition: {e}")

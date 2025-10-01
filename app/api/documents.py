@@ -35,6 +35,103 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
+async def add_milestone_info_to_documents(db: AsyncSession, project_id: int, documents: List[Document], user_id: int) -> List[Document]:
+    """Erweitert Dokumente um Ausschreibungsinformationen"""
+    if not documents:
+        return documents
+    
+    try:
+        # Hole alle Milestones für das Projekt
+        from sqlalchemy import text
+        import json
+        
+        milestone_query = text("""
+            SELECT id, title, description, status, category, shared_document_ids, documents 
+            FROM milestones 
+            WHERE project_id = :project_id 
+            AND created_by = :user_id
+        """)
+        
+        result = await db.execute(milestone_query, {
+            "project_id": project_id,
+            "user_id": user_id
+        })
+        
+        milestones = result.fetchall()
+        
+        # Erstelle Mapping von Dokument-ID zu Milestone-Informationen
+        doc_to_milestone = {}
+        
+        for milestone in milestones:
+            milestone_id = milestone.id
+            milestone_title = milestone.title
+            milestone_status = milestone.status
+            milestone_category = milestone.category
+            
+            # Verarbeite shared_document_ids
+            if milestone.shared_document_ids:
+                try:
+                    doc_ids = json.loads(milestone.shared_document_ids)
+                    if isinstance(doc_ids, list):
+                        for doc_id in doc_ids:
+                            doc_to_milestone[str(doc_id)] = {
+                                'milestone_id': milestone_id,
+                                'milestone_title': milestone_title,
+                                'milestone_status': milestone_status,
+                                'milestone_category': milestone_category
+                            }
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            
+            # Verarbeite documents (falls vorhanden)
+            if milestone.documents:
+                try:
+                    docs_raw = milestone.documents
+                    if isinstance(docs_raw, str) and docs_raw.startswith('"') and docs_raw.endswith('"'):
+                        docs_raw = docs_raw[1:-1]
+                    
+                    docs = json.loads(docs_raw)
+                    if isinstance(docs, list):
+                        for doc_id in docs:
+                            doc_to_milestone[str(doc_id)] = {
+                                'milestone_id': milestone_id,
+                                'milestone_title': milestone_title,
+                                'milestone_status': milestone_status,
+                                'milestone_category': milestone_category
+                            }
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        
+        # Erweitere Dokumente um Milestone-Informationen
+        for doc in documents:
+            doc_id_str = str(doc.id)
+            if doc_id_str in doc_to_milestone:
+                milestone_info = doc_to_milestone[doc_id_str]
+                # Füge Milestone-Informationen als Attribute hinzu
+                doc.milestone_id = milestone_info['milestone_id']
+                doc.milestone_title = milestone_info['milestone_title']
+                doc.milestone_status = milestone_info['milestone_status']
+                doc.milestone_category = milestone_info['milestone_category']
+            else:
+                # Dokument gehört zu keiner Ausschreibung
+                doc.milestone_id = None
+                doc.milestone_title = None
+                doc.milestone_status = None
+                doc.milestone_category = None
+        
+        return documents
+        
+    except Exception as e:
+        logger.error(f"Fehler beim Hinzufügen der Milestone-Informationen: {e}")
+        # Bei Fehler: Dokumente ohne Milestone-Info zurückgeben
+        for doc in documents:
+            doc.milestone_id = None
+            doc.milestone_title = None
+            doc.milestone_status = None
+            doc.milestone_category = None
+        return documents
+
+
 @router.delete("/debug/delete-all-documents")
 async def delete_all_documents(
     db: AsyncSession = Depends(get_db),
@@ -308,6 +405,7 @@ async def read_documents(
     sort_order: str = Query("desc", regex="^(asc|desc)$"),
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
+    milestone_id: Optional[int] = Query(None, description="Filter nach spezifischer Ausschreibung (Milestone)"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -315,6 +413,73 @@ async def read_documents(
     
     # Für jetzt verwenden wir die bestehende Funktion und filtern nachträglich
     documents = await get_documents_for_project(db, project_id)
+    
+    # Erweitere Dokumente um Ausschreibungsinformationen
+    documents = await add_milestone_info_to_documents(db, project_id, documents, current_user.id)
+    
+    # Filter für spezifische Ausschreibung (Milestone)
+    if milestone_id:
+        from sqlalchemy import text
+        import json
+        
+        # Query für spezifisches Milestone mit shared_document_ids und documents
+        milestone_query = text("""
+            SELECT shared_document_ids, documents 
+            FROM milestones 
+            WHERE id = :milestone_id 
+            AND project_id = :project_id 
+            AND created_by = :user_id
+        """)
+        
+        result = await db.execute(milestone_query, {
+            "milestone_id": milestone_id,
+            "project_id": project_id,
+            "user_id": current_user.id
+        })
+        
+        milestone_row = result.fetchone()
+        
+        if milestone_row:
+            shared_document_ids = set()
+            milestone_documents = set()
+            
+            # Verarbeite shared_document_ids
+            if milestone_row.shared_document_ids:
+                try:
+                    doc_ids = json.loads(milestone_row.shared_document_ids)
+                    if isinstance(doc_ids, list):
+                        shared_document_ids.update(str(doc_id) for doc_id in doc_ids)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            
+            # Verarbeite documents (falls vorhanden)
+            if milestone_row.documents:
+                try:
+                    # Handle doppelt kodiertes JSON (falls vorhanden)
+                    docs_raw = milestone_row.documents
+                    if isinstance(docs_raw, str) and docs_raw.startswith('"') and docs_raw.endswith('"'):
+                        # Entferne äußere Anführungszeichen
+                        docs_raw = docs_raw[1:-1]
+                    
+                    docs = json.loads(docs_raw)
+                    if isinstance(docs, list):
+                        # Die documents Spalte enthält direkt die Dokument-IDs als Array
+                        milestone_documents.update(str(doc_id) for doc_id in docs)
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            
+            # Kombiniere beide Dokument-Quellen
+            all_milestone_doc_ids = shared_document_ids.union(milestone_documents)
+            
+            # Filtere Dokumente nach den Milestone-Dokument-IDs
+            if all_milestone_doc_ids:
+                documents = [doc for doc in documents if str(doc.id) in all_milestone_doc_ids]
+            else:
+                # Keine Dokumente für diese Ausschreibung gefunden
+                documents = []
+        else:
+            # Milestone nicht gefunden oder keine Berechtigung
+            documents = []
     
     # Filter anwenden
     if category:
@@ -791,6 +956,55 @@ async def delete_document_endpoint(
     return None
 
 
+@router.get("/project/{project_id}/milestones")
+async def get_project_milestones_for_filter(
+    project_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Holt alle Milestones (Ausschreibungen) des aktuellen Benutzers für ein Projekt"""
+    from sqlalchemy import text
+    
+    try:
+        # Query für Milestones des aktuellen Users für das Projekt
+        milestone_query = text("""
+            SELECT id, title, description, status, category, planned_date, created_at
+            FROM milestones 
+            WHERE project_id = :project_id 
+            AND created_by = :user_id
+            ORDER BY created_at DESC
+        """)
+        
+        result = await db.execute(milestone_query, {
+            "project_id": project_id,
+            "user_id": current_user.id
+        })
+        
+        milestones = result.fetchall()
+        
+        # Konvertiere zu Dictionary-Format für Frontend
+        milestone_list = []
+        for milestone in milestones:
+            milestone_list.append({
+                "id": milestone.id,
+                "title": milestone.title,
+                "description": milestone.description,
+                "status": milestone.status,
+                "category": milestone.category,
+                "planned_date": milestone.planned_date.isoformat() if milestone.planned_date and hasattr(milestone.planned_date, 'isoformat') else milestone.planned_date,
+                "created_at": milestone.created_at.isoformat() if milestone.created_at and hasattr(milestone.created_at, 'isoformat') else milestone.created_at
+            })
+        
+        return milestone_list
+        
+    except Exception as e:
+        print(f"Fehler beim Laden der Milestones: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Laden der Ausschreibungen: {str(e)}"
+        )
+
+
 @router.get("/project/{project_id}/statistics")
 async def get_project_document_statistics(
     project_id: int,
@@ -1018,9 +1232,56 @@ async def read_service_provider_documents(
         result = await db.execute(stmt)
         documents = result.scalars().all()
         
+        # Erweitere Dokumente um Ausschreibungsinformationen (falls sie zu einem Projekt gehören)
+        documents_with_milestone_info = []
+        for doc in documents:
+            if doc.project_id:
+                # Versuche Milestone-Informationen für dieses Dokument zu finden
+                try:
+                    from sqlalchemy import text
+                    import json
+                    
+                    milestone_query = text("""
+                        SELECT id, title, description, status, category, shared_document_ids, documents 
+                        FROM milestones 
+                        WHERE project_id = :project_id 
+                        AND (shared_document_ids LIKE :doc_id_pattern OR documents LIKE :doc_id_pattern)
+                    """)
+                    
+                    doc_id_pattern = f'%{doc.id}%'
+                    milestone_result = await db.execute(milestone_query, {
+                        "project_id": doc.project_id,
+                        "doc_id_pattern": doc_id_pattern
+                    })
+                    
+                    milestone_row = milestone_result.fetchone()
+                    if milestone_row:
+                        doc.milestone_id = milestone_row.id
+                        doc.milestone_title = milestone_row.title
+                        doc.milestone_status = milestone_row.status
+                        doc.milestone_category = milestone_row.category
+                    else:
+                        doc.milestone_id = None
+                        doc.milestone_title = None
+                        doc.milestone_status = None
+                        doc.milestone_category = None
+                except Exception as e:
+                    logger.warning(f"Fehler beim Laden der Milestone-Info für Dokument {doc.id}: {e}")
+                    doc.milestone_id = None
+                    doc.milestone_title = None
+                    doc.milestone_status = None
+                    doc.milestone_category = None
+            else:
+                doc.milestone_id = None
+                doc.milestone_title = None
+                doc.milestone_status = None
+                doc.milestone_category = None
+            
+            documents_with_milestone_info.append(doc)
+        
         # Konvertiere zu DocumentSummary mit allen erforderlichen Feldern
         document_summaries = []
-        for doc in documents:
+        for doc in documents_with_milestone_info:
             summary = {
                 "id": doc.id,
                 "title": doc.title,
@@ -1035,7 +1296,12 @@ async def read_service_provider_documents(
                 "created_at": doc.created_at,
                 "updated_at": doc.updated_at,
                 "is_favorite": doc.is_favorite or False,
-                "download_count": 0  # Standard-Download-Count
+                "download_count": 0,  # Standard-Download-Count
+                # Ausschreibungsinformationen
+                "milestone_id": getattr(doc, 'milestone_id', None),
+                "milestone_title": getattr(doc, 'milestone_title', None),
+                "milestone_status": getattr(doc, 'milestone_status', None),
+                "milestone_category": getattr(doc, 'milestone_category', None)
             }
             document_summaries.append(DocumentSummary(**summary))
         

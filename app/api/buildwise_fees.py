@@ -66,22 +66,37 @@ async def get_buildwise_fees(
     current_user = Depends(get_current_user)
 ):
     """
-    Holt alle BuildWise-Gebühren mit optionalen Filtern
+    Holt alle BuildWise-Gebühren mit optionalen Filtern.
+    
+    Für Dienstleister: Zeigt nur eigene Gebühren
+    Für Administratoren: Zeigt alle Gebühren
     """
     try:
+        from ..models.user import UserRole
+        
         print(f"🔍 Debug: Lade BuildWise-Gebühren mit Parametern: skip={skip}, limit={limit}, project_id={project_id}, status={status}, month={month}, year={year}")
+        print(f"   - Benutzer: {current_user.email} (Rolle: {current_user.role})")
         
-        fees = await BuildWiseFeeService.get_fees(
-            db=db,
-            skip=skip,
-            limit=limit,
-            project_id=project_id,
-            status=status,
-            month=month,
-            year=year
-        )
-        
-        print(f"✅ Debug: {len(fees)} Gebühren erfolgreich geladen")
+        # Wenn Dienstleister, zeige nur eigene Gebühren
+        if current_user.role == UserRole.SERVICE_PROVIDER:
+            fees = await BuildWiseFeeService.get_fees_for_service_provider(
+                db=db,
+                service_provider_id=current_user.id,
+                status=status
+            )
+            print(f"✅ Debug: {len(fees)} Gebühren für Dienstleister {current_user.id} geladen")
+        else:
+            # Für Bauträger und Admins: Zeige alle oder gefilterte Gebühren
+            fees = await BuildWiseFeeService.get_fees(
+                db=db,
+                skip=skip,
+                limit=limit,
+                project_id=project_id,
+                status=status,
+                month=month,
+                year=year
+            )
+            print(f"✅ Debug: {len(fees)} Gebühren erfolgreich geladen")
         
         # Einfache JSON-Response ohne Pydantic-Validierung
         result = []

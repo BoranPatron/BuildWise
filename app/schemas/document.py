@@ -25,6 +25,9 @@ class DocumentCategoryEnum(str, Enum):
     EXECUTION = "execution"
     DOCUMENTATION = "documentation"
     ORDER_CONFIRMATIONS = "order_confirmations"
+    PROJECT_MANAGEMENT = "project_management"
+    PROCUREMENT = "procurement"
+    TECHNICAL = "technical"
 
 class DocumentStatusEnum(str, Enum):
     DRAFT = "DRAFT"
@@ -106,6 +109,9 @@ class DocumentBase(BaseModel):
                 'EXECUTION': DocumentCategoryEnum.EXECUTION,
                 'DOCUMENTATION': DocumentCategoryEnum.DOCUMENTATION,
                 'ORDER_CONFIRMATIONS': DocumentCategoryEnum.ORDER_CONFIRMATIONS,
+                'PROJECT_MANAGEMENT': DocumentCategoryEnum.PROJECT_MANAGEMENT,
+                'PROCUREMENT': DocumentCategoryEnum.PROCUREMENT,
+                'TECHNICAL': DocumentCategoryEnum.TECHNICAL,
                 # Lowercase (Frontend)
                 'planning': DocumentCategoryEnum.PLANNING,
                 'contracts': DocumentCategoryEnum.CONTRACTS,
@@ -113,6 +119,9 @@ class DocumentBase(BaseModel):
                 'execution': DocumentCategoryEnum.EXECUTION,
                 'documentation': DocumentCategoryEnum.DOCUMENTATION,
                 'order_confirmations': DocumentCategoryEnum.ORDER_CONFIRMATIONS,
+                'project_management': DocumentCategoryEnum.PROJECT_MANAGEMENT,
+                'procurement': DocumentCategoryEnum.PROCUREMENT,
+                'technical': DocumentCategoryEnum.TECHNICAL,
             }
             
             return category_mapping.get(v, DocumentCategoryEnum.DOCUMENTATION)
@@ -177,6 +186,9 @@ class DocumentUpdate(BaseModel):
     tags: Optional[str] = Field(None, max_length=500)
     is_public: Optional[bool] = None
     access_level: Optional[AccessLevelEnum] = None
+    
+    # Ausschreibungs-Zuordnung
+    milestone_id: Optional[int] = None
     
     # Status-Updates
     document_status: Optional[DocumentStatusEnum] = None
@@ -376,6 +388,11 @@ class DocumentSummary(BaseModel):
     updated_at: datetime
     is_favorite: bool
     download_count: int
+    # Neue Felder für Ausschreibungsinformationen
+    milestone_id: Optional[int] = None
+    milestone_title: Optional[str] = None
+    milestone_status: Optional[str] = None
+    milestone_category: Optional[str] = None
 
     class Config:
         from_attributes = True

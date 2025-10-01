@@ -28,7 +28,28 @@ class BuildWiseFeeService:
         cost_position_id: int, 
         fee_percentage: Optional[float] = None
     ) -> BuildWiseFee:
-        """Erstellt automatisch eine BuildWise-Gebühr aus einem akzeptierten Angebot."""
+        """
+        Erstellt automatisch eine BuildWise-Gebühr aus einem akzeptierten Angebot.
+        
+        Die Gebühr wird mit folgenden Parametern erstellt:
+        - Provisionssatz: 4.7% (konfigurierbar via environment_mode)
+        - Fälligkeitsdatum: +30 Tage ab Rechnungsdatum
+        - Status: 'open' (offen)
+        
+        Args:
+            db: Datenbank-Session
+            quote_id: ID des akzeptierten Angebots
+            cost_position_id: ID der zugehörigen Kostenposition
+            fee_percentage: Optionaler Prozentsatz (Standard: aus Konfiguration)
+            
+        Returns:
+            BuildWiseFee: Die erstellte Gebühr
+            
+        Raises:
+            ValueError: Wenn das Angebot nicht gefunden wird oder bereits eine Gebühr existiert
+        """
+        
+        print(f"🔧 [BuildWiseFeeService] Erstelle Gebühr für Quote {quote_id}")
         
         # Hole das Angebot mit allen notwendigen Informationen
         quote_query = select(Quote).where(Quote.id == quote_id)
@@ -36,7 +57,15 @@ class BuildWiseFeeService:
         quote = quote_result.scalar_one_or_none()
         
         if not quote:
-            raise ValueError(f"Angebot mit ID {quote_id} nicht gefunden")
+            error_msg = f"Angebot mit ID {quote_id} nicht gefunden"
+            print(f"❌ [BuildWiseFeeService] {error_msg}")
+            raise ValueError(error_msg)
+        
+        # Validiere dass das Angebot akzeptiert wurde
+        if quote.status.value != 'ACCEPTED':
+            error_msg = f"Angebot {quote_id} ist nicht akzeptiert (Status: {quote.status.value})"
+            print(f"⚠️ [BuildWiseFeeService] {error_msg}")
+            raise ValueError(error_msg)
         
         # Prüfe ob bereits eine Gebühr für dieses Angebot existiert
         existing_fee_query = select(BuildWiseFee).where(BuildWiseFee.quote_id == quote_id)
@@ -44,17 +73,27 @@ class BuildWiseFeeService:
         existing_fee = existing_fee_result.scalar_one_or_none()
         
         if existing_fee:
-            raise ValueError(f"Für Angebot {quote_id} existiert bereits eine Gebühr")
+            print(f"ℹ️ [BuildWiseFeeService] Gebühr für Quote {quote_id} existiert bereits (ID: {existing_fee.id})")
+            return existing_fee  # Gebe existierende Gebühr zurück statt Fehler
         
         # Verwende den aktuellen Gebühren-Prozentsatz aus der Konfiguration
+        # Standard: 4.7% in Production, 0% in Beta
         if fee_percentage is None:
             fee_percentage = get_fee_percentage()
+        
+        print(f"📊 [BuildWiseFeeService] Verwende Provisionssatz: {fee_percentage}%")
         
         # Berechne die Gebühr
         quote_amount = float(quote.total_amount)
         fee_amount = quote_amount * (fee_percentage / 100.0)
         
-        # Generiere Rechnungsnummer
+        # Validierung: Gebühr darf nicht negativ sein
+        if fee_amount < 0:
+            error_msg = f"Gebührenbetrag ist negativ: {fee_amount}"
+            print(f"❌ [BuildWiseFeeService] {error_msg}")
+            raise ValueError(error_msg)
+        
+        # Generiere Rechnungsnummer (Format: BW-XXXXXX)
         last_fee_query = select(BuildWiseFee).order_by(BuildWiseFee.id.desc()).limit(1)
         last_fee_result = await db.execute(last_fee_query)
         last_fee = last_fee_result.scalar_one_or_none()
@@ -69,36 +108,64 @@ class BuildWiseFeeService:
         else:
             invoice_number = "BW-000001"
         
+        print(f"📄 [BuildWiseFeeService] Generiere Rechnung: {invoice_number}")
+        
+        # Berechne Fälligkeitsdatum (+30 Tage ab heute)
+        invoice_date = date.today()
+        due_date = invoice_date + timedelta(days=30)
+        
+        # Berechne Steuerbeträge (19% MwSt.)
+        tax_rate = Decimal("19.0")
+        net_amount = Decimal(str(fee_amount))
+        tax_amount = net_amount * (tax_rate / Decimal("100.0"))
+        gross_amount = net_amount + tax_amount
+        
         # Erstelle die Gebühr
         fee_data = BuildWiseFeeCreate(
             project_id=int(quote.project_id),
             quote_id=quote_id,
             cost_position_id=cost_position_id,
             service_provider_id=int(quote.service_provider_id),
-            fee_amount=Decimal(str(fee_amount)),
+            fee_amount=net_amount,
             fee_percentage=Decimal(str(fee_percentage)),
             quote_amount=Decimal(str(quote_amount)),
             currency=str(quote.currency),
             invoice_number=invoice_number,
-            invoice_date=date.today(),
-            due_date=date.today() + timedelta(days=30),
+            invoice_date=invoice_date,
+            due_date=due_date,
             status='open',
             invoice_pdf_generated=False,
-            tax_rate=Decimal("19.0"),
-            tax_amount=Decimal(str(fee_amount * 0.19)),
-            net_amount=Decimal(str(fee_amount)),
-            gross_amount=Decimal(str(fee_amount * 1.19)),
-            fee_details=f"BuildWise-Gebühr für akzeptiertes Angebot {quote_id}",
-            notes=f"Automatisch generiert bei Angebotsannahme"
+            tax_rate=tax_rate,
+            tax_amount=tax_amount,
+            net_amount=net_amount,
+            gross_amount=gross_amount,
+            fee_details=f"BuildWise Vermittlungsgebühr ({fee_percentage}%) für akzeptiertes Angebot '{quote.title}'",
+            notes=f"Automatisch generiert bei Angebotsannahme am {invoice_date.strftime('%d.%m.%Y')}. Fällig am {due_date.strftime('%d.%m.%Y')}."
         )
         
         # Erstelle das BuildWiseFee-Objekt
         fee = BuildWiseFee(**fee_data.dict())
         db.add(fee)
-        await db.commit()
-        await db.refresh(fee)
         
-        return fee
+        try:
+            await db.commit()
+            await db.refresh(fee)
+            
+            print(f"✅ [BuildWiseFeeService] Gebühr erfolgreich erstellt:")
+            print(f"   - ID: {fee.id}")
+            print(f"   - Rechnungsnummer: {fee.invoice_number}")
+            print(f"   - Nettobetrag: {fee.net_amount} {fee.currency}")
+            print(f"   - Bruttobetrag: {fee.gross_amount} {fee.currency}")
+            print(f"   - Provisionssatz: {fee.fee_percentage}%")
+            print(f"   - Fälligkeitsdatum: {fee.due_date}")
+            
+            return fee
+            
+        except Exception as e:
+            await db.rollback()
+            error_msg = f"Fehler beim Speichern der Gebühr: {str(e)}"
+            print(f"❌ [BuildWiseFeeService] {error_msg}")
+            raise ValueError(error_msg)
     
     @staticmethod
     async def get_fees(
@@ -599,9 +666,20 @@ class BuildWiseFeeService:
     
     @staticmethod
     async def check_overdue_fees(db: AsyncSession) -> dict:
-        """Prüft auf überfällige Gebühren."""
+        """
+        Prüft auf überfällige Gebühren und markiert sie entsprechend.
+        
+        Eine Gebühr gilt als überfällig, wenn:
+        - Status ist 'open' (noch nicht bezahlt)
+        - Fälligkeitsdatum liegt in der Vergangenheit
+        
+        Returns:
+            dict: Informationen über die aktualisierten Gebühren
+        """
         
         today = date.today()
+        print(f"🔍 [BuildWiseFeeService] Prüfe auf überfällige Gebühren (Stand: {today})")
+        
         overdue_query = select(BuildWiseFee).where(
             and_(
                 BuildWiseFee.status == 'open',
@@ -612,13 +690,69 @@ class BuildWiseFeeService:
         overdue_result = await db.execute(overdue_query)
         overdue_fees = overdue_result.scalars().all()
         
+        if not overdue_fees:
+            print(f"✅ [BuildWiseFeeService] Keine überfälligen Gebühren gefunden")
+            return {
+                "message": "Keine überfälligen Gebühren gefunden",
+                "overdue_count": 0,
+                "updated_fees": []
+            }
+        
         # Markiere als überfällig
+        updated_fee_ids = []
         for fee in overdue_fees:
             fee.status = 'overdue'
+            fee.updated_at = datetime.utcnow()
+            updated_fee_ids.append(fee.id)
+            
+            days_overdue = (today - fee.due_date).days
+            print(f"⚠️ [BuildWiseFeeService] Gebühr {fee.invoice_number} ist {days_overdue} Tage überfällig")
         
         await db.commit()
         
+        print(f"✅ [BuildWiseFeeService] {len(overdue_fees)} Gebühren als überfällig markiert")
+        
         return {
             "message": f"{len(overdue_fees)} Gebühren als überfällig markiert",
-            "overdue_count": len(overdue_fees)
-        } 
+            "overdue_count": len(overdue_fees),
+            "updated_fees": updated_fee_ids
+        }
+    
+    @staticmethod
+    async def get_fees_for_service_provider(
+        db: AsyncSession,
+        service_provider_id: int,
+        status: Optional[str] = None
+    ) -> List[BuildWiseFee]:
+        """
+        Holt alle BuildWise-Gebühren für einen bestimmten Dienstleister.
+        
+        Dies ist die zentrale Methode für die /buildwise-fees Ansicht des Dienstleisters.
+        
+        Args:
+            db: Datenbank-Session
+            service_provider_id: ID des Dienstleisters
+            status: Optional - Filter nach Status ('open', 'paid', 'overdue', 'cancelled')
+            
+        Returns:
+            List[BuildWiseFee]: Liste aller Gebühren für diesen Dienstleister
+        """
+        
+        print(f"🔍 [BuildWiseFeeService] Lade Gebühren für Dienstleister {service_provider_id}")
+        
+        query = select(BuildWiseFee).where(
+            BuildWiseFee.service_provider_id == service_provider_id
+        )
+        
+        if status:
+            query = query.where(BuildWiseFee.status == status)
+            print(f"   - Filter: Status = {status}")
+        
+        query = query.order_by(BuildWiseFee.due_date.desc())
+        
+        result = await db.execute(query)
+        fees = result.scalars().all()
+        
+        print(f"✅ [BuildWiseFeeService] {len(fees)} Gebühren gefunden")
+        
+        return list(fees) 

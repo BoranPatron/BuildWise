@@ -19,6 +19,7 @@ from app.schemas.invoice import (
     InvoicePayment, InvoiceRating, InvoiceStats
 )
 from app.core.config import settings
+from app.utils.uid_validator import UIDValidator, InvoiceUIDRequirements
 
 class InvoiceService:
     
@@ -366,6 +367,33 @@ class InvoiceService:
                 bautraeger_info = f"{bautraeger.first_name} {bautraeger.last_name}"
                 if bautraeger.company_name:
                     bautraeger_info = f"{bautraeger.company_name}<br/>{bautraeger_info}"
+                
+                # Adressinformationen hinzufügen
+                address_parts = []
+                if bautraeger.address_street:
+                    address_parts.append(bautraeger.address_street)
+                if bautraeger.address_zip and bautraeger.address_city:
+                    address_parts.append(f"{bautraeger.address_zip} {bautraeger.address_city}")
+                elif bautraeger.address_city:
+                    address_parts.append(bautraeger.address_city)
+                if bautraeger.address_country and bautraeger.address_country != "Deutschland":
+                    address_parts.append(bautraeger.address_country)
+                
+                if address_parts:
+                    bautraeger_info += f"<br/>{'<br/>'.join(address_parts)}"
+                
+                # UID-Anzeige für Rechnungsempfänger
+                uid_requirements = InvoiceUIDRequirements.get_uid_display_requirements(
+                    invoice_amount=invoice.total_amount,
+                    seller_is_small_business=getattr(invoice.service_provider, 'is_small_business', False),
+                    is_eu_cross_border=False  # TODO: Implementiere EU-Erkennung
+                )
+                
+                if uid_requirements['buyer_uid_required'] and bautraeger.company_uid:
+                    bautraeger_info += f"<br/>USt-ID: {UIDValidator.format_uid_for_display(bautraeger.company_uid)}"
+                elif uid_requirements['buyer_uid_required'] and bautraeger.company_tax_number:
+                    bautraeger_info += f"<br/>Steuernummer: {UIDValidator.format_tax_number_for_display(bautraeger.company_tax_number)}"
+                
                 if bautraeger.email:
                     bautraeger_info += f"<br/>{bautraeger.email}"
                 if bautraeger.phone:
@@ -381,6 +409,40 @@ class InvoiceService:
             dienstleister_info = f"{invoice.service_provider.first_name} {invoice.service_provider.last_name}"
             if invoice.service_provider.company_name:
                 dienstleister_info = f"{invoice.service_provider.company_name}<br/>{dienstleister_info}"
+            
+            # Adressinformationen hinzufügen
+            address_parts = []
+            if invoice.service_provider.address_street:
+                address_parts.append(invoice.service_provider.address_street)
+            if invoice.service_provider.address_zip and invoice.service_provider.address_city:
+                address_parts.append(f"{invoice.service_provider.address_zip} {invoice.service_provider.address_city}")
+            elif invoice.service_provider.address_city:
+                address_parts.append(invoice.service_provider.address_city)
+            if invoice.service_provider.address_country and invoice.service_provider.address_country != "Deutschland":
+                address_parts.append(invoice.service_provider.address_country)
+            
+            if address_parts:
+                dienstleister_info += f"<br/>{'<br/>'.join(address_parts)}"
+            
+            # UID-Anzeige für Rechnungssteller
+            uid_requirements = InvoiceUIDRequirements.get_uid_display_requirements(
+                invoice_amount=invoice.total_amount,
+                seller_is_small_business=getattr(invoice.service_provider, 'is_small_business', False),
+                is_eu_cross_border=False  # TODO: Implementiere EU-Erkennung
+            )
+            
+            # Rechnungssteller muss immer USt-ID oder Steuernummer angeben (außer Kleinunternehmer)
+            if not uid_requirements['seller_uid_required'] and uid_requirements['seller_tax_number_required']:
+                if invoice.service_provider.company_uid:
+                    dienstleister_info += f"<br/>USt-ID: {UIDValidator.format_uid_for_display(invoice.service_provider.company_uid)}"
+                elif invoice.service_provider.company_tax_number:
+                    dienstleister_info += f"<br/>Steuernummer: {UIDValidator.format_tax_number_for_display(invoice.service_provider.company_tax_number)}"
+            elif uid_requirements['seller_uid_required']:
+                if invoice.service_provider.company_uid:
+                    dienstleister_info += f"<br/>USt-ID: {UIDValidator.format_uid_for_display(invoice.service_provider.company_uid)}"
+                elif invoice.service_provider.company_tax_number:
+                    dienstleister_info += f"<br/>Steuernummer: {UIDValidator.format_tax_number_for_display(invoice.service_provider.company_tax_number)}"
+            
             if invoice.service_provider.email:
                 dienstleister_info += f"<br/>{invoice.service_provider.email}"
             if invoice.service_provider.phone:
@@ -500,6 +562,11 @@ class InvoiceService:
                         <p>
                             {bautraeger.company_name if bautraeger and bautraeger.company_name else ''}<br/>
                             {bautraeger.first_name if bautraeger else ''} {bautraeger.last_name if bautraeger else ''}<br/>
+                            {bautraeger.address_street if bautraeger and bautraeger.address_street else ''}<br/>
+                            {f"{bautraeger.address_zip} {bautraeger.address_city}" if bautraeger and bautraeger.address_zip and bautraeger.address_city else (bautraeger.address_city if bautraeger and bautraeger.address_city else '')}<br/>
+                            {bautraeger.address_country if bautraeger and bautraeger.address_country and bautraeger.address_country != "Deutschland" else ''}<br/>
+                            {f"USt-ID: {UIDValidator.format_uid_for_display(bautraeger.company_uid)}" if bautraeger and bautraeger.company_uid and invoice.total_amount >= 10000.0 else ''}<br/>
+                            {f"Steuernummer: {UIDValidator.format_tax_number_for_display(bautraeger.company_tax_number)}" if bautraeger and bautraeger.company_tax_number and invoice.total_amount >= 10000.0 and not bautraeger.company_uid else ''}<br/>
                             {bautraeger.email if bautraeger and bautraeger.email else ''}<br/>
                             {bautraeger.phone if bautraeger and bautraeger.phone else ''}
                         </p>
@@ -510,6 +577,11 @@ class InvoiceService:
                         <p>
                             {invoice.service_provider.company_name if invoice.service_provider.company_name else ''}<br/>
                             {invoice.service_provider.first_name} {invoice.service_provider.last_name}<br/>
+                            {invoice.service_provider.address_street if invoice.service_provider.address_street else ''}<br/>
+                            {f"{invoice.service_provider.address_zip} {invoice.service_provider.address_city}" if invoice.service_provider.address_zip and invoice.service_provider.address_city else (invoice.service_provider.address_city if invoice.service_provider.address_city else '')}<br/>
+                            {invoice.service_provider.address_country if invoice.service_provider.address_country and invoice.service_provider.address_country != "Deutschland" else ''}<br/>
+                            {f"USt-ID: {UIDValidator.format_uid_for_display(invoice.service_provider.company_uid)}" if invoice.service_provider.company_uid else ''}<br/>
+                            {f"Steuernummer: {UIDValidator.format_tax_number_for_display(invoice.service_provider.company_tax_number)}" if invoice.service_provider.company_tax_number and not invoice.service_provider.company_uid else ''}<br/>
                             {invoice.service_provider.email if invoice.service_provider.email else ''}<br/>
                             {invoice.service_provider.phone if invoice.service_provider.phone else ''}
                         </p>
@@ -575,6 +647,19 @@ class InvoiceService:
                         if bautraeger.company_name:
                             f.write(f"{bautraeger.company_name}\n")
                         f.write(f"{bautraeger.first_name} {bautraeger.last_name}\n")
+                        if bautraeger.address_street:
+                            f.write(f"{bautraeger.address_street}\n")
+                        if bautraeger.address_zip and bautraeger.address_city:
+                            f.write(f"{bautraeger.address_zip} {bautraeger.address_city}\n")
+                        elif bautraeger.address_city:
+                            f.write(f"{bautraeger.address_city}\n")
+                        if bautraeger.address_country and bautraeger.address_country != "Deutschland":
+                            f.write(f"{bautraeger.address_country}\n")
+                        if invoice.total_amount >= 10000.0:
+                            if bautraeger.company_uid:
+                                f.write(f"USt-ID: {UIDValidator.format_uid_for_display(bautraeger.company_uid)}\n")
+                            elif bautraeger.company_tax_number:
+                                f.write(f"Steuernummer: {UIDValidator.format_tax_number_for_display(bautraeger.company_tax_number)}\n")
                         if bautraeger.email:
                             f.write(f"{bautraeger.email}\n")
                         if bautraeger.phone:
@@ -585,6 +670,18 @@ class InvoiceService:
                     if invoice.service_provider.company_name:
                         f.write(f"{invoice.service_provider.company_name}\n")
                     f.write(f"{invoice.service_provider.first_name} {invoice.service_provider.last_name}\n")
+                    if invoice.service_provider.address_street:
+                        f.write(f"{invoice.service_provider.address_street}\n")
+                    if invoice.service_provider.address_zip and invoice.service_provider.address_city:
+                        f.write(f"{invoice.service_provider.address_zip} {invoice.service_provider.address_city}\n")
+                    elif invoice.service_provider.address_city:
+                        f.write(f"{invoice.service_provider.address_city}\n")
+                    if invoice.service_provider.address_country and invoice.service_provider.address_country != "Deutschland":
+                        f.write(f"{invoice.service_provider.address_country}\n")
+                    if invoice.service_provider.company_uid:
+                        f.write(f"USt-ID: {UIDValidator.format_uid_for_display(invoice.service_provider.company_uid)}\n")
+                    elif invoice.service_provider.company_tax_number:
+                        f.write(f"Steuernummer: {UIDValidator.format_tax_number_for_display(invoice.service_provider.company_tax_number)}\n")
                     if invoice.service_provider.email:
                         f.write(f"{invoice.service_provider.email}\n")
                     if invoice.service_provider.phone:
@@ -684,8 +781,16 @@ class InvoiceService:
         db: AsyncSession, 
         milestone_id: int
     ) -> Optional[Invoice]:
-        """Hole die Rechnung für einen bestimmten Meilenstein"""
-        query = select(Invoice).where(Invoice.milestone_id == milestone_id).options(
+        """Hole die Rechnung für einen bestimmten Meilenstein (nur finale Rechnungen, keine Entwürfe)"""
+        from ..models.invoice import InvoiceStatus
+        
+        # ✅ KRITISCH: Nur echte Rechnungen zurückgeben, keine DRAFT-Entwürfe!
+        # DRAFT-Rechnungen werden automatisch beim Annehmen von Angeboten erstellt,
+        # sollen aber erst angezeigt werden, wenn der Dienstleister sie finalisiert hat
+        query = select(Invoice).where(
+            Invoice.milestone_id == milestone_id,
+            #Invoice.status != InvoiceStatus.DRAFT  # ✅ DRAFT-Status ausschließen
+        ).options(
             selectinload(Invoice.project),
             selectinload(Invoice.service_provider)
         )

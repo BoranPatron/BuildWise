@@ -170,8 +170,16 @@ async def create_defect_monitoring_task_for_bautraeger(
     milestone = await db.execute(select(Milestone).where(Milestone.id == acceptance.milestone_id))
     milestone = milestone.scalars().first()
     
-    # Erstelle Task-Titel und Beschreibung für Bauträger
-    task_title = f"Mangelbehebung überwachen: {defect.title}"
+    # Bestimme ob Bauträger auch Dienstleister ist
+    service_provider_id = acceptance.service_provider_id or acceptance.contractor_id
+    is_bautraeger_also_service_provider = service_provider_id == created_by_user_id
+    
+    # Erstelle Task-Titel basierend darauf, ob Bauträger auch Dienstleister ist
+    if is_bautraeger_also_service_provider:
+        task_title = f"Mangel beheben: {defect.title}"
+    else:
+        task_title = f"Mangelbehebung überwachen: {defect.title}"
+    
     if milestone:
         task_title = f"[{milestone.title}] {task_title}"
     
@@ -181,7 +189,31 @@ async def create_defect_monitoring_task_for_bautraeger(
     if photo_count > 0:
         photo_info = f"\n📸 **Dokumentierte Fotos:** {photo_count} Foto(s)\n"
     
-    task_description = f"""👁️ MANGELBEHEBUNG ÜBERWACHEN
+    if is_bautraeger_also_service_provider:
+        task_description = f"""🔧 MANGEL SELBST BEHEBEN
+
+📋 **Mangel-Details:**
+- **Schweregrad:** {defect.severity.value} ({'Geringfügig' if defect.severity.value == 'MINOR' else 'Erheblich' if defect.severity.value == 'MAJOR' else 'Kritisch'})
+- **Ort:** {defect.location or 'Nicht angegeben'}
+- **Raum:** {defect.room or 'Nicht angegeben'}
+
+📝 **Beschreibung:**
+{defect.description}
+
+📅 **Frist:** {due_date.strftime('%d.%m.%Y')} ({days} Tage)
+{photo_info}
+🏗️ **Gewerk:** {milestone.title if milestone else 'Unbekannt'}
+
+🔧 **Ihre Aufgaben:**
+- Beheben Sie den dokumentierten Mangel selbst
+- Dokumentieren Sie den Fortschritt der Behebung
+- Laden Sie Fotos der erledigten Arbeiten hoch
+- Markieren Sie die Task als "Erledigt" wenn vollständig behoben
+
+🔗 **Abnahme-ID:** {acceptance.id}
+"""
+    else:
+        task_description = f"""👁️ MANGELBEHEBUNG ÜBERWACHEN
 
 📋 **Mangel-Details:**
 - **Schweregrad:** {defect.severity.value} ({'Geringfügig' if defect.severity.value == 'MINOR' else 'Erheblich' if defect.severity.value == 'MAJOR' else 'Kritisch'})
@@ -205,6 +237,9 @@ async def create_defect_monitoring_task_for_bautraeger(
 🔗 **Abnahme-ID:** {acceptance.id}
 """
 
+    # Bestimme Status basierend darauf, ob Bauträger auch Dienstleister ist
+    task_status = TaskStatus.IN_PROGRESS if is_bautraeger_also_service_provider else TaskStatus.REVIEW
+    
     # Erstelle Task für Bauträger
     monitoring_task = Task(
         project_id=acceptance.project_id,
@@ -213,7 +248,7 @@ async def create_defect_monitoring_task_for_bautraeger(
         created_by=created_by_user_id,
         title=task_title,
         description=task_description,
-        status=TaskStatus.REVIEW,  # Bauträger-Task in "Überprüfung"
+        status=task_status,  # "In Bearbeitung" wenn Bauträger = Dienstleister, sonst "Überprüfung"
         priority=priority,
         due_date=due_date,
         is_milestone=False
@@ -342,17 +377,21 @@ async def process_acceptance_completion(
         for defect in acceptance.defects:
             if not defect.resolved and not defect.task_id:  # Nur für ungelöste Mängel ohne bestehende Task
                 try:
-                    # 1a. Erstelle Mangel-Task für Dienstleister (TODO)
-                    defect_task = await create_defect_task_for_service_provider(
-                        db=db,
-                        defect=defect,
-                        acceptance=acceptance,
-                        created_by_user_id=created_by_user_id
-                    )
-                    result['defect_tasks'].append(defect_task)
-                    result['defect_tasks_created'] += 1
+                    # Bestimme den tatsächlichen Dienstleister
+                    service_provider_id = acceptance.service_provider_id or acceptance.contractor_id
                     
-                    # 1b. Erstelle Überwachungs-Task für Bauträger (REVIEW)
+                    # 1a. Erstelle Mangel-Task für Dienstleister (TODO) - nur wenn Dienstleister != Bauträger
+                    if service_provider_id != created_by_user_id:
+                        defect_task = await create_defect_task_for_service_provider(
+                            db=db,
+                            defect=defect,
+                            acceptance=acceptance,
+                            created_by_user_id=created_by_user_id
+                        )
+                        result['defect_tasks'].append(defect_task)
+                        result['defect_tasks_created'] += 1
+                    
+                    # 1b. Erstelle Überwachungs-Task für Bauträger (REVIEW) - immer
                     monitoring_task = await create_defect_monitoring_task_for_bautraeger(
                         db=db,
                         defect=defect,

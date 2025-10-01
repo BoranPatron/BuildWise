@@ -26,7 +26,6 @@ import {
 import type { TradeSearchResult } from '../api/geoService';
 import { useAuth } from '../context/AuthContext';
 import { getAuthenticatedFileUrl, getApiBaseUrl, apiCall } from '../api/api';
-import TradeProgress from './TradeProgress';
 import QuoteDetailsModal from './QuoteDetailsModal';
 import { appointmentService, type AppointmentResponse } from '../api/appointmentService';
 import ServiceProviderRating from './ServiceProviderRating';
@@ -528,6 +527,12 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
   const [currentProgress, setCurrentProgress] = useState(trade?.progress_percentage || 0);
   const [showRatingModal, setShowRatingModal] = useState(false);
   const [hasRated, setHasRated] = useState(false);
+  
+  // Benachrichtigungssystem States
+  const [hasUnreadMessages, setHasUnreadMessages] = useState(false);
+  const [notificationBlink, setNotificationBlink] = useState(false);
+  const [messageInput, setMessageInput] = useState('');
+  const [messages, setMessages] = useState<Array<{id: number, text: string, sender: string, timestamp: string}>>([]);
       const [acceptedQuote, setAcceptedQuote] = useState<Quote | null>(null);
     const [completionStatus, setCompletionStatus] = useState(trade?.completion_status || 'in_progress');
     const [showInvoiceModal, setShowInvoiceModal] = useState(false);
@@ -1080,6 +1085,46 @@ function TradeDocumentViewer({ documents, existingQuotes }: DocumentViewerProps)
     // Optional: API call to update progress
   };
 
+  // Benachrichtigungssystem Funktionen
+  const triggerNotification = () => {
+    setHasUnreadMessages(true);
+    setNotificationBlink(true);
+    
+    // Blink-Animation nach 3 Sekunden stoppen
+    setTimeout(() => {
+      setNotificationBlink(false);
+    }, 3000);
+  };
+
+  const handleTabClick = (tabKey: BuilderTabKey) => {
+    setActiveBuilderTab(tabKey);
+    
+    // Wenn der Fortschritt-Tab geklickt wird, Benachrichtigung zurücksetzen
+    if (tabKey === 'workflow') {
+      setHasUnreadMessages(false);
+      setNotificationBlink(false);
+    }
+  };
+
+  const handleMessageSent = () => {
+    if (messageInput.trim()) {
+      // Neue Nachricht hinzufügen
+      const newMessage = {
+        id: Date.now(),
+        text: messageInput.trim(),
+        sender: user?.name || 'Sie',
+        timestamp: new Date().toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' })
+      };
+      
+      setMessages(prev => [...prev, newMessage]);
+      setMessageInput('');
+      
+      // Diese Funktion wird aufgerufen, wenn eine Nachricht gesendet wird
+      // Sie triggert die Benachrichtigung auf der Gegenseite
+      triggerNotification();
+    }
+  };
+
   const handleCompletionRequest = async () => {
     try {
 
@@ -1419,8 +1464,7 @@ END:VCALENDAR`;
       </div>
 
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-
-      <div className="bg-gradient-to-br from-[#1a1a2e] to-[#2c3539] rounded-2xl shadow-2xl border border-gray-600/30 max-w-6xl w-full max-h-[95vh] overflow-hidden">
+        <div className="bg-gradient-to-br from-[#1a1a2e] to-[#2c3539] rounded-2xl shadow-2xl border border-gray-600/30 max-w-6xl w-full max-h-[95vh] overflow-hidden">
         <div className="flex items-center justify-between p-6 border-b border-gray-600/30">
           <div className="flex items-center gap-3">
             <div className="w-12 h-12 bg-gradient-to-br from-[#ffbd59] to-[#ffa726] rounded-xl flex items-center justify-center text-white font-bold shadow-lg">
@@ -1429,6 +1473,14 @@ END:VCALENDAR`;
             <div className="flex-1">
               <div className="flex items-center gap-3 mb-1">
                 <h2 className="text-xl font-bold text-white">{trade.title}</h2>
+                
+                {/* Benachrichtigungssymbol */}
+                {hasUnreadMessages && (
+                  <div className={`relative ${notificationBlink ? 'animate-pulse' : ''}`}>
+                    <div className="w-3 h-3 bg-red-500 rounded-full"></div>
+                    <div className="absolute inset-0 w-3 h-3 bg-red-500 rounded-full animate-ping opacity-75"></div>
+                  </div>
+                )}
                 
                 {/* BESICHTIGUNGSTERMIN BANNER - DIREKT UNTER TITEL */}
                 <div className="mt-3 p-3 bg-blue-600 rounded-lg flex items-center justify-between w-full">
@@ -2009,13 +2061,16 @@ END:VCALENDAR`;
                 {builderTabs.map((tab) => {
                   const Icon = tab.icon;
                   const isActive = activeBuilderTab === tab.key;
+                  const isWorkflowTab = tab.key === 'workflow';
+                  const shouldBlink = isWorkflowTab && hasUnreadMessages && notificationBlink;
+                  
                   return (
                     <button
                       key={tab.key}
-                      onClick={() => setActiveBuilderTab(tab.key)}
-                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 ${
+                      onClick={() => handleTabClick(tab.key)}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all duration-200 relative ${
                         isActive ? 'bg-[#ffbd59] text-[#1a1a2e] shadow-lg' : 'bg-[#ffbd59]/10 text-gray-300 hover:bg-[#ffbd59]/20'
-                      }`}
+                      } ${shouldBlink ? 'animate-pulse' : ''}`}
                     >
                       <Icon size={16} className={isActive ? 'text-[#1a1a2e]' : 'text-[#ffbd59]'} />
                       {tab.label}
@@ -3311,16 +3366,79 @@ END:VCALENDAR`;
               // Für Dienstleister: Immer anzeigen (können kommunizieren und Fortschritt melden)
               !isBautraegerUser
             ) && (
-              <TradeProgress
-                milestoneId={trade.id}
-                currentProgress={currentProgress}
-                onProgressChange={handleProgressChange}
-                isBautraeger={isBautraegerUser}
-                isServiceProvider={!isBautraegerUser && (acceptedQuote?.service_provider_id === user?.id || existingQuotes?.some(q => q.service_provider_id === user?.id))}
-                completionStatus={completionStatus}
-                onCompletionRequest={handleCompletionRequest}
-                onCompletionResponse={handleCompletionResponse}
-              />
+              <div className="bg-gradient-to-br from-[#1a1a2e]/50 to-[#2c3539]/50 rounded-xl p-6 border border-gray-600/30">
+                <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                  <CheckSquare size={18} className="text-[#ffbd59]" />
+                  Fortschritt & Kommunikation
+                </h3>
+                
+                {/* Fortschrittsanzeige */}
+                <div className="mb-6">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-medium text-gray-400">Aktueller Fortschritt</span>
+                    <span className="text-white font-bold">{currentProgress}%</span>
+                  </div>
+                  <div className="w-full bg-gray-600/30 rounded-full h-3">
+                    <div 
+                      className="bg-gradient-to-r from-[#ffbd59] to-[#ffa726] h-3 rounded-full transition-all duration-500"
+                      style={{ width: `${currentProgress}%` }}
+                    ></div>
+                  </div>
+                </div>
+
+                {/* Kommunikationsbereich */}
+                <div className="space-y-4">
+                  <h4 className="text-md font-medium text-white flex items-center gap-2">
+                    <Mail size={16} className="text-[#ffbd59]" />
+                    Nachrichten
+                  </h4>
+                  
+                  {/* Nachrichtenliste */}
+                  <div className="bg-[#111827]/50 rounded-lg p-4 min-h-[200px] max-h-[300px] overflow-y-auto">
+                    {messages.length === 0 ? (
+                      <div className="text-center text-gray-400 text-sm py-8">
+                        Keine Nachrichten vorhanden
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {messages.map((message) => (
+                          <div key={message.id} className="bg-[#1a1a2e]/50 rounded-lg p-3 border border-gray-600/30">
+                            <div className="flex items-center justify-between mb-1">
+                              <span className="text-sm font-medium text-[#ffbd59]">{message.sender}</span>
+                              <span className="text-xs text-gray-400">{message.timestamp}</span>
+                            </div>
+                            <p className="text-white text-sm">{message.text}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  
+                  {/* Nachrichteneingabe */}
+                  <div className="flex gap-2">
+                    <input
+                      type="text"
+                      value={messageInput}
+                      onChange={(e) => setMessageInput(e.target.value)}
+                      onKeyPress={(e) => {
+                        if (e.key === 'Enter') {
+                          handleMessageSent();
+                        }
+                      }}
+                      placeholder="Nachricht eingeben..."
+                      className="flex-1 px-3 py-2 bg-[#111827]/50 border border-gray-600/30 rounded-lg text-white placeholder-gray-400 focus:outline-none focus:border-[#ffbd59]/50"
+                    />
+                    <button
+                      onClick={handleMessageSent}
+                      disabled={!messageInput.trim()}
+                      className="px-4 py-2 bg-gradient-to-r from-[#ffbd59] to-[#ffa726] text-[#1a1a2e] font-semibold rounded-lg hover:shadow-lg transition-all duration-200 flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                    >
+                      <Mail size={16} />
+                      Senden
+                    </button>
+                  </div>
+                </div>
+              </div>
             )}
             
 
@@ -3591,16 +3709,15 @@ END:VCALENDAR`;
                       </p>
                     </div>
                     
-                    <DefectResolutionWorkflow
-                      milestoneId={trade.id}
-                      onDefectsResolved={() => {
-                        // Aktualisiere den Status nach Mängelbehebung
-                        if (trade?.id) {
-                          loadTradeDocuments(trade.id);
-                          loadCompletionStatus(trade.id);
-                        }
-                      }}
-                    />
+                    <div className="bg-yellow-500/10 border border-yellow-500/30 rounded-lg p-4">
+                      <div className="flex items-center gap-2 mb-2">
+                        <AlertTriangle size={20} className="text-yellow-400" />
+                        <span className="text-yellow-300 font-medium">Mängelbehebung erforderlich</span>
+                      </div>
+                      <p className="text-yellow-200 text-sm">
+                        Es wurden Mängel festgestellt, die behoben werden müssen. Der Dienstleister wird über die erforderlichen Maßnahmen informiert.
+                      </p>
+                    </div>
                   </div>
                 )}
                 
@@ -3810,9 +3927,6 @@ END:VCALENDAR`;
             setShowFinalAcceptanceModal(false);
             // Aktualisiere den Status nach finaler Abnahme
             setCompletionStatus('completed');
-            if (onTradeUpdate) {
-              onTradeUpdate(trade.id);
-            }
           }}
         />
       )}
@@ -3828,7 +3942,8 @@ END:VCALENDAR`;
           projectName={project?.name}
         />
       )}
-    </div>
+        </div>
+      </div>
     </>
   );
 }
