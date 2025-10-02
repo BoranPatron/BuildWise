@@ -220,6 +220,7 @@ class MilestoneSummary(BaseModel):
             'id': obj.id,
             'title': obj.title,
             'status': obj.status,
+            'completion_status': obj.completion_status,  # ✅ KRITISCH: completion_status hinzufügen
             'priority': obj.priority,
             'category': obj.category,
             'planned_date': obj.planned_date,

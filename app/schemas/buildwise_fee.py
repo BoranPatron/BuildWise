@@ -43,7 +43,7 @@ class BuildWiseFeeBase(BaseModel):
     fee_amount: Decimal = Field(..., ge=0, decimal_places=2)
     fee_percentage: Decimal = Field(default=Decimal("1.00"), ge=0, le=100, decimal_places=2)
     quote_amount: Decimal = Field(..., ge=0, decimal_places=2)
-    currency: str = Field(default="EUR", max_length=3)
+    currency: str = Field(default="CHF", max_length=3)
     invoice_number: Optional[str] = None
     invoice_date: Optional[date] = None
     due_date: Optional[date] = None
@@ -51,7 +51,7 @@ class BuildWiseFeeBase(BaseModel):
     status: BuildWiseFeeStatus = BuildWiseFeeStatus.OPEN
     invoice_pdf_path: Optional[str] = None
     invoice_pdf_generated: bool = False
-    tax_rate: Decimal = Field(default=Decimal("19.00"), ge=0, le=100, decimal_places=2)
+    tax_rate: Decimal = Field(default=Decimal("8.10"), ge=0, le=100, decimal_places=2)
     tax_amount: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
     net_amount: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
     gross_amount: Optional[Decimal] = Field(None, ge=0, decimal_places=2)

@@ -29,6 +29,9 @@ jinja2==3.1.2
 # PDF-Generierung
 reportlab==4.0.7
 
+# Stripe Payment Integration
+stripe==7.4.0
+
 # Security und Monitoring
 bcrypt==4.1.2
 python-multipart==0.0.6

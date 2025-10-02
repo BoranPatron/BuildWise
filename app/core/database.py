@@ -39,7 +39,7 @@ async def get_db():
     try:
         yield session
     except Exception as e:
-        print(f"❌ Datenbankfehler: {e}")
+        print(f"[ERROR] Datenbankfehler: {e}")
         await session.rollback()
         raise e
     finally:
@@ -66,7 +66,7 @@ async def optimize_sqlite_connection():
             await conn.execute(text("PRAGMA wal_autocheckpoint=1000"))  # WAL Checkpoint alle 1000 Pages
             await conn.execute(text("PRAGMA optimize"))  # Optimiere Statistiken
             await conn.commit()
-            print("✅ SQLite-Optimierungen erfolgreich angewendet")
+            print("[SUCCESS] SQLite-Optimierungen erfolgreich angewendet")
     except Exception as e:
-        print(f"⚠️ Warnung: SQLite-Optimierungen konnten nicht angewendet werden: {e}")
+        print(f"[WARNING] SQLite-Optimierungen konnten nicht angewendet werden: {e}")
         # Fahre trotz Fehler fort - die Anwendung sollte auch ohne Optimierungen funktionieren

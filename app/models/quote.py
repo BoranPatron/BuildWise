@@ -29,7 +29,7 @@ class Quote(Base):
     
     # Angebotsdetails
     total_amount = Column(Float, nullable=False)
-    currency = Column(String, default="EUR")
+    currency = Column(String, default="CHF")
     valid_until = Column(Date, nullable=True)
     
     # Aufschlüsselung

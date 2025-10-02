@@ -25,7 +25,7 @@ class BuildWiseFee(Base):
     fee_amount = Column(Numeric(10, 2), nullable=False)
     fee_percentage = Column(Numeric(5, 2), nullable=False, default=1.00)
     quote_amount = Column(Numeric(10, 2), nullable=False)
-    currency = Column(String(3), nullable=False, default="EUR")
+    currency = Column(String(3), nullable=False, default="CHF")
     
     # Rechnungsdaten
     invoice_number = Column(String(50), unique=True, index=True)
@@ -38,8 +38,15 @@ class BuildWiseFee(Base):
     invoice_pdf_path = Column(String(255))
     invoice_pdf_generated = Column(Boolean, default=False)
     
+    # Stripe Payment Integration
+    stripe_payment_link_id = Column(String(255), index=True)
+    stripe_payment_link_url = Column(String(500))
+    stripe_payment_intent_id = Column(String(255), index=True)
+    stripe_checkout_session_id = Column(String(255), index=True)
+    payment_method = Column(String(50))  # card, sepa_debit, etc.
+    
     # Steuerrelevante Daten
-    tax_rate = Column(Numeric(5, 2), default=19.00)
+    tax_rate = Column(Numeric(5, 2), default=8.10)
     tax_amount = Column(Numeric(10, 2))
     net_amount = Column(Numeric(10, 2))
     gross_amount = Column(Numeric(10, 2))

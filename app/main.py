@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
+import asyncio
 import time
 import os
 from dotenv import load_dotenv
@@ -44,7 +45,7 @@ else:
     ]
 
 # Debug-Ausgabe für CORS-Konfiguration
-print(f"🔧 CORS allowed origins: {allowed_origins}")
+print(f"[DEBUG] CORS allowed origins: {allowed_origins}")
 
 app.add_middleware(
     CORSMiddleware,
@@ -75,9 +76,9 @@ async def add_process_time_header(request: Request, call_next):
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
     import traceback
-    print(f"❌ Global Exception Handler: {type(exc).__name__}: {str(exc)}")
-    print(f"📍 URL: {request.url}")
-    print(f"🔍 Method: {request.method}")
+    print(f"[ERROR] Global Exception Handler: {type(exc).__name__}: {str(exc)}")
+    print(f"[DEBUG] URL: {request.url}")
+    print(f"[DEBUG] Method: {request.method}")
     
     # CORS-Header auch bei Fehlern senden
     response = JSONResponse(
@@ -128,22 +129,22 @@ async def serve_authenticated_file(
 ):
     """Stellt Dateien mit Token-Authentifizierung bereit"""
     try:
-        print(f"🔍 serve_authenticated_file: Token erhalten: {token[:50]}..." if token else "🔍 serve_authenticated_file: Kein Token")
+        print(f"[DEBUG] serve_authenticated_file: Token erhalten: {token[:50]}..." if token else "[DEBUG] serve_authenticated_file: Kein Token")
         
         # Token validieren
         from .core.security import decode_access_token
         payload = decode_access_token(token)
         
         if not payload:
-            print(f"❌ serve_authenticated_file: Token konnte nicht decodiert werden")
+            print(f"[ERROR] serve_authenticated_file: Token konnte nicht decodiert werden")
             raise HTTPException(status_code=401, detail="Ungültiger Token")
         
-        print(f"🔍 serve_authenticated_file: Token payload: {payload}")
+        print(f"[DEBUG] serve_authenticated_file: Token payload: {payload}")
         
         # Benutzer-ID aus Token extrahieren
         user_id = payload.get("sub")
         if not user_id:
-            print(f"❌ serve_authenticated_file: Keine user_id im Token gefunden")
+            print(f"[ERROR] serve_authenticated_file: Keine user_id im Token gefunden")
             raise HTTPException(status_code=401, detail="Ungültiger Token - keine Benutzer-ID")
         
         # Benutzer aus Datenbank laden
@@ -160,22 +161,22 @@ async def serve_authenticated_file(
             user = result.scalar_one_or_none()
         
         if not user:
-            print(f"❌ serve_authenticated_file: Benutzer nicht gefunden für ID/E-Mail: {user_id}")
+            print(f"[ERROR] serve_authenticated_file: Benutzer nicht gefunden für ID/E-Mail: {user_id}")
             raise HTTPException(status_code=401, detail="Benutzer nicht gefunden")
         
-        print(f"✅ serve_authenticated_file: Benutzer authentifiziert: {user.id}, {user.email}")
+        print(f"[SUCCESS] serve_authenticated_file: Benutzer authentifiziert: {user.id}, {user.email}")
         
         # Vollständiger Pfad zur Datei
         full_path = os.path.join("storage", file_path)
         
         # Sicherheitsprüfung: Stelle sicher, dass der Pfad innerhalb des storage-Verzeichnisses liegt
         if not os.path.abspath(full_path).startswith(os.path.abspath("storage")):
-            print(f"❌ serve_authenticated_file: Zugriff verweigert für Pfad: {full_path}")
+            print(f"[ERROR] serve_authenticated_file: Zugriff verweigert für Pfad: {full_path}")
             raise HTTPException(status_code=403, detail="Zugriff verweigert")
         
         # Prüfe ob die Datei existiert
         if not os.path.exists(full_path):
-            print(f"❌ serve_authenticated_file: Datei nicht gefunden: {full_path}")
+            print(f"[ERROR] serve_authenticated_file: Datei nicht gefunden: {full_path}")
             raise HTTPException(status_code=404, detail="Datei nicht gefunden")
         
         # Bestimme den MIME-Type
@@ -184,7 +185,7 @@ async def serve_authenticated_file(
         if mime_type is None:
             mime_type = "application/octet-stream"
         
-        print(f"✅ serve_authenticated_file: Datei erfolgreich bereitgestellt: {full_path}")
+        print(f"[SUCCESS] serve_authenticated_file: Datei erfolgreich bereitgestellt: {full_path}")
         
         # Für Bilder: Inline-Anzeige im Browser statt Download
         is_image = mime_type and mime_type.startswith('image/')
@@ -207,9 +208,9 @@ async def serve_authenticated_file(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ serve_authenticated_file: Unerwarteter Fehler: {str(e)}")
+        print(f"[ERROR] serve_authenticated_file: Unerwarteter Fehler: {str(e)}")
         import traceback
-        print(f"❌ serve_authenticated_file: Traceback: {traceback.format_exc()}")
+        print(f"[ERROR] serve_authenticated_file: Traceback: {traceback.format_exc()}")
         raise HTTPException(status_code=401, detail="Authentifizierung fehlgeschlagen")
 
 # Static Files für hochgeladene Dokumente (nur für Entwicklung)
@@ -226,15 +227,15 @@ async def on_startup():
         from .core.database import optimize_sqlite_connection
         await optimize_sqlite_connection()
     except Exception as e:
-        print(f"⚠️ SQLite-Optimierungen konnten nicht angewendet werden: {e}")
+        print(f"[WARNING] SQLite-Optimierungen konnten nicht angewendet werden: {e}")
     
     # Starte Credit-Scheduler
     try:
         from .core.scheduler import start_credit_scheduler
         await start_credit_scheduler()
-        print("✅ Credit-Scheduler gestartet")
+        print("[SUCCESS] Credit-Scheduler gestartet")
     except Exception as e:
-        print(f"❌ Fehler beim Starten des Credit-Schedulers: {e}")
+        print(f"[ERROR] Fehler beim Starten des Credit-Schedulers: {e}")
 
 
 @app.on_event("shutdown")
@@ -243,9 +244,18 @@ async def on_shutdown():
     try:
         from .core.scheduler import stop_credit_scheduler
         await stop_credit_scheduler()
-        print("✅ Credit-Scheduler gestoppt")
+        print("[SUCCESS] Credit-Scheduler gestoppt")
+    except asyncio.CancelledError:
+        # Normal beim Shutdown
+        print("[SUCCESS] Credit-Scheduler gestoppt (abgebrochen)")
     except Exception as e:
-        print(f"❌ Fehler beim Stoppen des Credit-Schedulers: {e}")
+        print(f"[WARNING] Fehler beim Stoppen des Credit-Schedulers: {e}")
+    
+    # Kurze Pause für graceful shutdown
+    try:
+        await asyncio.sleep(0.1)
+    except:
+        pass
 
 # Health Check
 @app.get("/health")
@@ -260,23 +270,23 @@ async def health_check():
 @app.post("/api/v1/debug/progress")
 async def debug_progress_simple(data: dict = Body(...)):
     """Einfacher Debug-Endpoint ohne Dependencies"""
-    print(f"🎯 [MAIN DEBUG] Endpoint erreicht!")
-    print(f"🎯 [MAIN DEBUG] Received Data: {data}")
+    print(f"[DEBUG] [MAIN DEBUG] Endpoint erreicht!")
+    print(f"[DEBUG] [MAIN DEBUG] Received Data: {data}")
     return {"status": "received", "data": data}
 
 # Debug Endpoint für Attachments
 @app.post("/api/v1/debug/attachment")
 async def debug_attachment_simple(file: UploadFile = File(..., alias="file")):
     """Einfacher Debug-Endpoint für Attachments"""
-    print(f"🎯 [MAIN DEBUG ATTACHMENT] Endpoint erreicht!")
-    print(f"🎯 [MAIN DEBUG ATTACHMENT] File: {file.filename}")
-    print(f"🎯 [MAIN DEBUG ATTACHMENT] Content-Type: {file.content_type}")
-    print(f"🎯 [MAIN DEBUG ATTACHMENT] Size: {file.size}")
+    print(f"[DEBUG] [MAIN DEBUG ATTACHMENT] Endpoint erreicht!")
+    print(f"[DEBUG] [MAIN DEBUG ATTACHMENT] File: {file.filename}")
+    print(f"[DEBUG] [MAIN DEBUG ATTACHMENT] Content-Type: {file.content_type}")
+    print(f"[DEBUG] [MAIN DEBUG ATTACHMENT] Size: {file.size}")
     
     # Lese den Inhalt für Debug-Zwecke
     content = await file.read()
-    print(f"🎯 [MAIN DEBUG ATTACHMENT] Content length: {len(content)} bytes")
-    print(f"🎯 [MAIN DEBUG ATTACHMENT] First 100 bytes: {content[:100]}")
+    print(f"[DEBUG] [MAIN DEBUG ATTACHMENT] Content length: {len(content)} bytes")
+    print(f"[DEBUG] [MAIN DEBUG ATTACHMENT] First 100 bytes: {content[:100]}")
     
     return {"status": "received", "filename": file.filename, "content_type": file.content_type, "size": len(content)}
 
@@ -284,23 +294,23 @@ async def debug_attachment_simple(file: UploadFile = File(..., alias="file")):
 @app.post("/api/v1/debug/request")
 async def debug_request_simple(request: Request):
     """Debug-Endpoint für Request-Details"""
-    print(f"🎯 [MAIN DEBUG REQUEST] Endpoint erreicht!")
-    print(f"🎯 [MAIN DEBUG REQUEST] Method: {request.method}")
-    print(f"🎯 [MAIN DEBUG REQUEST] URL: {request.url}")
-    print(f"🎯 [MAIN DEBUG REQUEST] Content-Type: {request.headers.get('content-type', 'NOT SET')}")
-    print(f"🎯 [MAIN DEBUG REQUEST] Headers: {dict(request.headers)}")
+    print(f"[DEBUG] [MAIN DEBUG REQUEST] Endpoint erreicht!")
+    print(f"[DEBUG] [MAIN DEBUG REQUEST] Method: {request.method}")
+    print(f"[DEBUG] [MAIN DEBUG REQUEST] URL: {request.url}")
+    print(f"[DEBUG] [MAIN DEBUG REQUEST] Content-Type: {request.headers.get('content-type', 'NOT SET')}")
+    print(f"[DEBUG] [MAIN DEBUG REQUEST] Headers: {dict(request.headers)}")
     
     # Lese den Body
     body = await request.body()
-    print(f"🎯 [MAIN DEBUG REQUEST] Body length: {len(body)} bytes")
-    print(f"🎯 [MAIN DEBUG REQUEST] Body preview: {body[:200]}")
+    print(f"[DEBUG] [MAIN DEBUG REQUEST] Body length: {len(body)} bytes")
+    print(f"[DEBUG] [MAIN DEBUG REQUEST] Body preview: {body[:200]}")
     
     # Prüfe ob es Multipart-FormData ist
     content_type = request.headers.get('content-type', '')
     if 'multipart/form-data' in content_type:
-        print(f"🎯 [MAIN DEBUG REQUEST] ✅ Multipart-FormData erkannt!")
+        print(f"[DEBUG] [MAIN DEBUG REQUEST] [SUCCESS] Multipart-FormData erkannt!")
     else:
-        print(f"🎯 [MAIN DEBUG REQUEST] ❌ Kein Multipart-FormData: {content_type}")
+        print(f"[DEBUG] [MAIN DEBUG REQUEST] [ERROR] Kein Multipart-FormData: {content_type}")
     
     return {"status": "received", "method": request.method, "body_length": len(body), "content_type": content_type}
 

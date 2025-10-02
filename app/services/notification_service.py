@@ -140,6 +140,10 @@ class NotificationService:
         if not allocation:
             raise ValueError(f"ResourceAllocation mit ID {allocation_id} nicht gefunden")
         
+        # Prüfe ob trade_id gültig ist (nicht 0 oder None)
+        if not allocation.trade_id or allocation.trade_id == 0:
+            raise ValueError(f"ResourceAllocation {allocation_id} hat ungültige trade_id: {allocation.trade_id}")
+        
         # Lade Projekt-Details
         project = None
         if allocation.trade and allocation.trade.project_id:
@@ -150,21 +154,33 @@ class NotificationService:
         
         # Lade Bauträger-Details
         bautraeger = None
-        if project and project.user_id:
+        if project and project.owner_id:
             bautraeger_result = await db.execute(
-                select(User).where(User.id == project.user_id)
+                select(User).where(User.id == project.owner_id)
             )
             bautraeger = bautraeger_result.scalar_one_or_none()
         
-        # Erstelle Bauträger Name
+        # Erstelle Bauträger Name (Vorname + Nachname + optional Firmenname)
         bautraeger_name = "Unbekannter Bauträger"
+        bautraeger_full_name = ""
+        bautraeger_company = ""
+        
         if bautraeger:
+            # Name: Vorname + Nachname
+            full_name_parts = []
+            if bautraeger.first_name:
+                full_name_parts.append(bautraeger.first_name)
+            if bautraeger.last_name:
+                full_name_parts.append(bautraeger.last_name)
+            
+            bautraeger_full_name = " ".join(full_name_parts) if full_name_parts else f"Benutzer #{bautraeger.id}"
+            
+            # Firmenname separat
             if bautraeger.company_name:
-                bautraeger_name = bautraeger.company_name
+                bautraeger_company = bautraeger.company_name
+                bautraeger_name = f"{bautraeger_full_name} ({bautraeger.company_name})"
             else:
-                bautraeger_name = f"{bautraeger.first_name or ''} {bautraeger.last_name or ''}".strip()
-                if not bautraeger_name:
-                    bautraeger_name = f"Bauträger #{bautraeger.id}"
+                bautraeger_name = bautraeger_full_name
         
         # Erstelle Benachrichtigungsdaten
         notification_data = {
@@ -173,20 +189,29 @@ class NotificationService:
             "trade_id": allocation.trade_id,
             "trade_title": allocation.trade.title if allocation.trade else "Unbekanntes Gewerk",
             "project_name": project.name if project else "Unbekanntes Projekt",
+            "project_id": project.id if project else None,
             "bautraeger_name": bautraeger_name,
+            "bautraeger_full_name": bautraeger_full_name,
+            "bautraeger_company": bautraeger_company,
             "allocated_start_date": allocation.allocated_start_date.isoformat() if allocation.allocated_start_date else None,
             "allocated_end_date": allocation.allocated_end_date.isoformat() if allocation.allocated_end_date else None,
             "allocated_person_count": allocation.allocated_person_count,
             "allocation_status": allocation.allocation_status.value if allocation.allocation_status else "pre_selected"
         }
         
-        # Erstelle Benachrichtigung
+        # Erstelle Benachrichtigung mit besserer Nachricht
+        trade_title = allocation.trade.title if allocation.trade else "Unbekanntes Gewerk"
+        project_name = project.name if project else "Unbekanntes Projekt"
+        
+        # Erstelle message mit Fallback-Werten
+        message = f"Ihre Ressource wurde der Ausschreibung '{trade_title}' im Projekt '{project_name}' zugeordnet."
+        
         notification = Notification(
             recipient_id=service_provider_id,
             type=NotificationType.RESOURCE_ALLOCATED,
             priority=NotificationPriority.HIGH,
             title=f"Ressource einer Ausschreibung zugeordnet",
-            message=f"Ihre Ressource wurde der Ausschreibung '{allocation.trade.title if allocation.trade else 'Unbekanntes Gewerk'}' im Projekt '{project.name if project else 'Unbekanntes Projekt'}' zugeordnet.",
+            message=message,
             data=json.dumps(notification_data),
             related_project_id=project.id if project else None,
             related_milestone_id=allocation.trade_id
@@ -195,8 +220,6 @@ class NotificationService:
         db.add(notification)
         await db.commit()
         await db.refresh(notification)
-        
-        print(f"✅ Benachrichtigung erstellt: ID={notification.id}, Type={notification.type.value}, Recipient={service_provider_id}")
         
         return notification
     
@@ -245,9 +268,9 @@ class NotificationService:
         
         # Lade Bauträger-Details
         bautraeger = None
-        if project and project.user_id:
+        if project and project.owner_id:
             bautraeger_result = await db.execute(
-                select(User).where(User.id == project.user_id)
+                select(User).where(User.id == project.owner_id)
             )
             bautraeger = bautraeger_result.scalar_one_or_none()
         
@@ -444,6 +467,42 @@ class NotificationService:
                 is_read=True,
                 read_at=now
             )
+        )
+        
+        await db.commit()
+        return result.rowcount
+    
+    @staticmethod
+    async def delete_notification(
+        db: AsyncSession,
+        notification_id: int,
+        user_id: int
+    ) -> bool:
+        """Löscht eine spezifische Benachrichtigung"""
+        from sqlalchemy import delete
+        
+        result = await db.execute(
+            delete(Notification).where(
+                and_(
+                    Notification.id == notification_id,
+                    Notification.recipient_id == user_id
+                )
+            )
+        )
+        
+        await db.commit()
+        return result.rowcount > 0
+    
+    @staticmethod
+    async def delete_all_notifications(
+        db: AsyncSession,
+        user_id: int
+    ) -> int:
+        """Löscht alle Benachrichtigungen eines Benutzers"""
+        from sqlalchemy import delete
+        
+        result = await db.execute(
+            delete(Notification).where(Notification.recipient_id == user_id)
         )
         
         await db.commit()

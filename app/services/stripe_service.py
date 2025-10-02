@@ -1,217 +1,343 @@
-#!/usr/bin/env python3
 """
-Stripe Service für BuildWise Subscription Management
+Stripe Payment Service für BuildWise Gebühren
+Verwaltet Payment Links und Zahlungsabwicklung über Stripe
 """
 
 import stripe
-import os
 from typing import Optional, Dict, Any
-from datetime import datetime, timedelta
-from ..core.config import settings
+from decimal import Decimal
+from datetime import datetime
+from app.core.config import settings
 
-# Stripe konfigurieren
-stripe.api_key = os.getenv('STRIPE_SECRET_KEY', 'sk_test_...')
+# Initialisiere Stripe mit dem Secret Key
+stripe.api_key = settings.stripe_secret_key
 
-class StripeService:
-    """Service für Stripe-Integration"""
-    
-    # Stripe Price IDs (werden in .env konfiguriert)
-    PRO_MONTHLY_PRICE_ID = os.getenv('STRIPE_PRO_MONTHLY_PRICE_ID', 'price_monthly_test')
-    PRO_YEARLY_PRICE_ID = os.getenv('STRIPE_PRO_YEARLY_PRICE_ID', 'price_yearly_test')
+
+class StripePaymentService:
+    """Service-Klasse für Stripe-Zahlungsintegration"""
     
     @staticmethod
-    async def create_customer(email: str, name: str) -> Optional[Dict[str, Any]]:
-        """Erstellt einen neuen Stripe Customer"""
+    def create_payment_link(
+        fee_id: int,
+        amount: Decimal,
+        currency: str = "eur",
+        description: str = "",
+        invoice_number: str = "",
+        fee_percentage: float = 4.7
+    ) -> Dict[str, Any]:
+        """
+        Erstellt einen Stripe Payment Link für eine BuildWise-Gebühr.
+        
+        Args:
+            fee_id: ID der BuildWise-Gebühr
+            amount: Bruttobetrag in der kleinsten Währungseinheit (z.B. Cent)
+            currency: Währungscode (Standard: EUR)
+            description: Beschreibung der Zahlung
+            invoice_number: Rechnungsnummer
+            fee_percentage: Provisionssatz in Prozent
+            
+        Returns:
+            Dict mit payment_link_id und payment_link_url
+            
+        Raises:
+            stripe.error.StripeError: Bei Fehlern in der Stripe-API
+        """
+        
         try:
-            customer = stripe.Customer.create(
-                email=email,
-                name=name,
-                metadata={
-                    'platform': 'buildwise',
-                    'created_via': 'api'
-                }
-            )
-            return {
-                'id': customer.id,
-                'email': customer.email,
-                'name': customer.name,
-                'created': customer.created
-            }
-        except stripe.error.StripeError as e:
-            print(f"❌ Stripe Customer Error: {e}")
-            return None
-        except Exception as e:
-            print(f"❌ Unexpected error creating customer: {e}")
-            return None
-    
-    @staticmethod
-    async def create_checkout_session(
-        customer_id: str,
-        price_id: str,
-        success_url: str,
-        cancel_url: str,
-        user_id: int
-    ) -> Optional[Dict[str, Any]]:
-        """Erstellt eine Stripe Checkout Session"""
-        try:
-            session = stripe.checkout.Session.create(
-                customer=customer_id,
-                payment_method_types=['card'],
-                line_items=[{
-                    'price': price_id,
-                    'quantity': 1,
-                }],
-                mode='subscription',
-                success_url=success_url,
-                cancel_url=cancel_url,
-                metadata={
-                    'user_id': str(user_id),
-                    'platform': 'buildwise'
-                },
-                subscription_data={
-                    'metadata': {
-                        'user_id': str(user_id),
-                        'platform': 'buildwise'
-                    }
-                }
-            )
-            return {
-                'id': session.id,
-                'url': session.url,
-                'customer': session.customer,
-                'payment_status': session.payment_status
-            }
-        except stripe.error.StripeError as e:
-            print(f"❌ Stripe Checkout Error: {e}")
-            return None
-        except Exception as e:
-            print(f"❌ Unexpected error creating checkout: {e}")
-            return None
-    
-    @staticmethod
-    async def get_subscription(subscription_id: str) -> Optional[Dict[str, Any]]:
-        """Holt Subscription-Details von Stripe"""
-        try:
-            subscription = stripe.Subscription.retrieve(subscription_id)
-            return {
-                'id': subscription.id,
-                'status': subscription.status,
-                'customer': subscription.customer,
-                'current_period_start': subscription.current_period_start,
-                'current_period_end': subscription.current_period_end,
-                'cancel_at_period_end': subscription.cancel_at_period_end,
-                'items': [{
-                    'price_id': item.price.id,
-                    'product_id': item.price.product
-                } for item in subscription.items.data]
-            }
-        except stripe.error.StripeError as e:
-            print(f"❌ Stripe Subscription Error: {e}")
-            return None
-        except Exception as e:
-            print(f"❌ Unexpected error getting subscription: {e}")
-            return None
-    
-    @staticmethod
-    async def cancel_subscription(subscription_id: str, at_period_end: bool = True) -> bool:
-        """Kündigt eine Subscription"""
-        try:
-            if at_period_end:
-                # Kündigung am Ende der Periode
-                stripe.Subscription.modify(
-                    subscription_id,
-                    cancel_at_period_end=True
-                )
+            # Konvertiere Betrag in kleinste Währungseinheit (Cent)
+            # Stripe erwartet Beträge in Cent (z.B. 470 EUR = 47000 Cent)
+            amount_in_cents = int(float(amount) * 100)
+            
+            print(f"[StripeService] Erstelle Payment Link für Gebühr {fee_id}")
+            print(f"   - Betrag: {amount} {currency.upper()} ({amount_in_cents} Cent)")
+            print(f"   - Rechnungsnummer: {invoice_number}")
+            
+            # Bestimme Zahlungsmethoden basierend auf Währung
+            # SEPA funktioniert nur mit EUR, CHF benötigt nur Kreditkarte
+            currency_lower = currency.lower()
+            if currency_lower == "eur":
+                payment_methods = ["card", "sepa_debit"]
+                print(f"   - Zahlungsmethoden: Kreditkarte + SEPA (EUR)")
+            elif currency_lower == "chf":
+                payment_methods = ["card"]
+                print(f"   - Zahlungsmethoden: Kreditkarte (CHF)")
             else:
-                # Sofortige Kündigung
-                stripe.Subscription.delete(subscription_id)
-            return True
-        except stripe.error.StripeError as e:
-            print(f"❌ Stripe Cancel Error: {e}")
-            return False
-        except Exception as e:
-            print(f"❌ Unexpected error canceling subscription: {e}")
-            return False
-    
-    @staticmethod
-    async def get_customer(customer_id: str) -> Optional[Dict[str, Any]]:
-        """Holt Customer-Details von Stripe"""
-        try:
-            customer = stripe.Customer.retrieve(customer_id)
+                # Für andere Währungen nur Kreditkarte
+                payment_methods = ["card"]
+                print(f"   - Zahlungsmethoden: Kreditkarte ({currency.upper()})")
+            
+            # Erstelle Checkout Session (nicht Payment Link!)
+            # Checkout Sessions unterstützen success_url besser als Payment Links
+            checkout_session = stripe.checkout.Session.create(
+                mode="payment",
+                line_items=[{
+                    "price_data": {
+                        "currency": currency_lower,
+                        "unit_amount": amount_in_cents,
+                        "product_data": {
+                            "name": f"BuildWise Vermittlungsgebühr - {invoice_number}",
+                            "description": description or f"Provision für Auftrag ({fee_percentage}%)",
+                        },
+                    },
+                    "quantity": 1,
+                }],
+                metadata={
+                    "fee_id": str(fee_id),
+                    "invoice_number": invoice_number,
+                    "type": "buildwise_fee",
+                    "created_at": datetime.utcnow().isoformat()
+                },
+                success_url=f"{settings.stripe_payment_success_url}&fee_id={fee_id}",
+                cancel_url=f"{settings.stripe_payment_cancel_url}&fee_id={fee_id}",
+                payment_method_types=payment_methods,  # Dynamisch basierend auf Währung
+                billing_address_collection="auto",
+                phone_number_collection={
+                    "enabled": True
+                },
+                custom_text={
+                    "submit": {
+                        "message": "Vielen Dank für Ihre Zahlung über BuildWise!"
+                    }
+                },
+                allow_promotion_codes=False,
+            )
+            
+            print(f"[StripeService] Checkout Session erfolgreich erstellt:")
+            print(f"   - Session ID: {checkout_session.id}")
+            print(f"   - URL: {checkout_session.url}")
+            print(f"   - Success URL: {checkout_session.success_url}")
+            
             return {
-                'id': customer.id,
-                'email': customer.email,
-                'name': customer.name,
-                'created': customer.created,
-                'subscriptions': [sub.id for sub in customer.subscriptions.data]
+                "payment_link_id": checkout_session.id,
+                "payment_link_url": checkout_session.url,
+                "amount": float(amount),
+                "currency": currency.upper(),
+                "status": "created"
             }
+            
+        except stripe.error.CardError as e:
+            # Kartenfehler
+            print(f"[StripeService] Kartenfehler: {e.error.message}")
+            raise Exception(f"Kartenfehler: {e.error.message}")
+            
+        except stripe.error.RateLimitError as e:
+            # Zu viele Anfragen
+            print(f"[StripeService] Rate Limit Fehler: {str(e)}")
+            raise Exception("Zu viele Anfragen. Bitte versuchen Sie es später erneut.")
+            
+        except stripe.error.InvalidRequestError as e:
+            # Ungültige Parameter
+            print(f"[StripeService] Ungültige Anfrage: {str(e)}")
+            raise Exception(f"Ungültige Anfrage: {str(e)}")
+            
+        except stripe.error.AuthenticationError as e:
+            # Authentifizierungsfehler
+            print(f"[StripeService] Authentifizierungsfehler: {str(e)}")
+            raise Exception("Stripe-Authentifizierung fehlgeschlagen")
+            
+        except stripe.error.APIConnectionError as e:
+            # Netzwerkfehler
+            print(f"[StripeService] Netzwerkfehler: {str(e)}")
+            raise Exception("Verbindung zu Stripe fehlgeschlagen")
+            
         except stripe.error.StripeError as e:
-            print(f"❌ Stripe Customer Error: {e}")
-            return None
-        except Exception as e:
-            print(f"❌ Unexpected error getting customer: {e}")
-            return None
-    
-    @staticmethod
-    def verify_webhook_signature(payload: bytes, signature: str) -> bool:
-        """Verifiziert Stripe Webhook Signature"""
-        try:
-            webhook_secret = os.getenv('STRIPE_WEBHOOK_SECRET')
-            if not webhook_secret:
-                print("❌ STRIPE_WEBHOOK_SECRET nicht konfiguriert")
-                return False
+            # Allgemeiner Stripe-Fehler
+            print(f"[StripeService] Stripe-Fehler: {str(e)}")
+            raise Exception(f"Stripe-Fehler: {str(e)}")
             
-            stripe.Webhook.construct_event(
-                payload, signature, webhook_secret
-            )
-            return True
-        except stripe.error.SignatureVerificationError:
-            print("❌ Stripe Webhook Signature ungültig")
-            return False
         except Exception as e:
-            print(f"❌ Webhook Verification Error: {e}")
-            return False
+            # Unerwarteter Fehler
+            print(f"[StripeService] Unerwarteter Fehler: {str(e)}")
+            raise Exception(f"Fehler beim Erstellen des Payment Links: {str(e)}")
     
     @staticmethod
-    def parse_webhook_event(payload: bytes, signature: str) -> Optional[Dict[str, Any]]:
-        """Parsed ein Stripe Webhook Event"""
-        try:
-            webhook_secret = os.getenv('STRIPE_WEBHOOK_SECRET')
-            if not webhook_secret:
-                return None
+    def retrieve_payment_link(payment_link_id: str) -> Dict[str, Any]:
+        """
+        Ruft einen existierenden Payment Link ab.
+        
+        Args:
+            payment_link_id: Stripe Payment Link ID
             
-            event = stripe.Webhook.construct_event(
-                payload, signature, webhook_secret
-            )
-            return event
-        except Exception as e:
-            print(f"❌ Webhook Parse Error: {e}")
-            return None
-    
-    @staticmethod
-    def get_price_info(price_id: str) -> Dict[str, Any]:
-        """Gibt Preis-Informationen zurück"""
-        price_info = {
-            StripeService.PRO_MONTHLY_PRICE_ID: {
-                'name': 'BuildWise Pro Monthly',
-                'amount': 1299,  # 12.99 CHF in Rappen
-                'currency': 'chf',
-                'interval': 'month',
-                'plan': 'pro'
-            },
-            StripeService.PRO_YEARLY_PRICE_ID: {
-                'name': 'BuildWise Pro Yearly',
-                'amount': 13000,  # 130 CHF in Rappen
-                'currency': 'chf',
-                'interval': 'year',
-                'plan': 'pro'
+        Returns:
+            Dict mit Payment Link Daten
+        """
+        try:
+            payment_link = stripe.PaymentLink.retrieve(payment_link_id)
+            
+            return {
+                "payment_link_id": payment_link.id,
+                "payment_link_url": payment_link.url,
+                "active": payment_link.active,
+                "metadata": payment_link.metadata
             }
-        }
-        return price_info.get(price_id, {})
+            
+        except stripe.error.StripeError as e:
+            print(f"[StripeService] Fehler beim Abrufen des Payment Links: {str(e)}")
+            raise Exception(f"Payment Link konnte nicht abgerufen werden: {str(e)}")
     
     @staticmethod
-    def format_amount(amount_in_cents: int, currency: str = 'chf') -> str:
-        """Formatiert Betrag für Anzeige"""
-        if currency.lower() == 'chf':
-            return f"{amount_in_cents / 100:.2f} CHF"
-        return f"{amount_in_cents / 100:.2f} {currency.upper()}" 
+    def verify_webhook_signature(payload: bytes, sig_header: str) -> Dict[str, Any]:
+        """
+        Verifiziert die Webhook-Signatur von Stripe.
+        
+        Args:
+            payload: Rohdaten des Webhooks
+            sig_header: Stripe-Signature Header
+            
+        Returns:
+            Dict mit Event-Daten
+            
+        Raises:
+            ValueError: Bei ungültiger Signatur
+        """
+        
+        if not settings.stripe_webhook_secret:
+            print("[StripeService] WARNING: Kein Webhook Secret konfiguriert - verwende Test-Modus")
+            # Im Test-Modus: Parse Event direkt ohne Signatur-Prüfung
+            import json
+            try:
+                event = json.loads(payload)
+                print(f"[StripeService] Test-Modus: Event-Type = {event.get('type', 'unknown')}")
+                return event
+            except json.JSONDecodeError as e:
+                print(f"[StripeService] Ungültiger JSON im Webhook: {str(e)}")
+                raise ValueError("Ungültiger JSON im Webhook Payload")
+        
+        try:
+            # Verifiziere Signatur mit konfigurierbarer Toleranz
+            event = stripe.Webhook.construct_event(
+                payload, 
+                sig_header, 
+                settings.stripe_webhook_secret,
+                tolerance=settings.stripe_webhook_tolerance
+            )
+            
+            print(f"[StripeService] Webhook-Signatur erfolgreich verifiziert")
+            print(f"   - Event ID: {event.get('id', 'unknown')}")
+            print(f"   - Event Type: {event.get('type', 'unknown')}")
+            
+            return event
+            
+        except ValueError as e:
+            print(f"[StripeService] Ungültiger Webhook Payload: {str(e)}")
+            raise ValueError(f"Ungültiger Webhook Payload: {str(e)}")
+            
+        except stripe.error.SignatureVerificationError as e:
+            print(f"[StripeService] Ungültige Webhook Signatur: {str(e)}")
+            raise ValueError(f"Ungültige Webhook Signatur: {str(e)}")
+            
+        except Exception as e:
+            print(f"[StripeService] Unerwarteter Fehler bei Signatur-Verifizierung: {str(e)}")
+            raise ValueError(f"Webhook-Verifizierung fehlgeschlagen: {str(e)}")
+    
+    @staticmethod
+    def process_payment_success(event_data: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Verarbeitet ein erfolgreiches Zahlungs-Event von Stripe.
+        
+        Args:
+            event_data: Stripe Event Daten
+            
+        Returns:
+            Dict mit Zahlungsinformationen
+        """
+        
+        try:
+            # Extrahiere relevante Daten aus dem Event
+            event_type = event_data.get("type")
+            event_id = event_data.get("id", "unknown")
+            data_object = event_data.get("data", {}).get("object", {})
+            
+            print(f"[StripeService] Verarbeite Event: {event_type} (ID: {event_id})")
+            
+            # Hole Metadaten
+            metadata = data_object.get("metadata", {})
+            fee_id = metadata.get("fee_id")
+            invoice_number = metadata.get("invoice_number")
+            
+            if not fee_id:
+                print(f"[StripeService] WARNING: Keine fee_id in Metadaten gefunden")
+                print(f"   - Verfügbare Metadaten: {list(metadata.keys())}")
+            
+            # Hole Zahlungsinformationen - robuste Extraktion
+            amount_total = data_object.get("amount_total", 0)
+            amount_received = amount_total / 100 if amount_total else 0  # Cent zu Hauptwährung
+            currency = data_object.get("currency", "eur").upper()
+            payment_intent_id = data_object.get("payment_intent")
+            
+            # Zahlungsmethode - verschiedene Quellen prüfen
+            payment_method = "unknown"
+            if "payment_method_types" in data_object:
+                payment_methods = data_object.get("payment_method_types", [])
+                payment_method = payment_methods[0] if payment_methods else "unknown"
+            
+            # Zusätzliche Informationen
+            customer_email = data_object.get("customer_details", {}).get("email")
+            session_id = data_object.get("id")
+            
+            print(f"[StripeService] Zahlung erfolgreich verarbeitet:")
+            print(f"   - Gebühr ID: {fee_id}")
+            print(f"   - Rechnungsnummer: {invoice_number}")
+            print(f"   - Betrag: {amount_received} {currency}")
+            print(f"   - Payment Intent: {payment_intent_id}")
+            print(f"   - Session ID: {session_id}")
+            print(f"   - Zahlungsmethode: {payment_method}")
+            print(f"   - Kunden-E-Mail: {customer_email}")
+            
+            return {
+                "fee_id": int(fee_id) if fee_id and fee_id.isdigit() else None,
+                "invoice_number": invoice_number,
+                "amount_received": amount_received,
+                "currency": currency,
+                "payment_intent_id": payment_intent_id,
+                "payment_method": payment_method,
+                "session_id": session_id,
+                "customer_email": customer_email,
+                "event_type": event_type,
+                "event_id": event_id,
+                "paid_at": datetime.utcnow().isoformat()
+            }
+            
+        except Exception as e:
+            print(f"[StripeService] Fehler beim Verarbeiten des Events: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise Exception(f"Fehler bei der Zahlungsverarbeitung: {str(e)}")
+    
+    @staticmethod
+    def get_payment_link_for_fee(
+        fee_id: int,
+        amount: Decimal,
+        currency: str,
+        description: str,
+        invoice_number: str,
+        fee_percentage: float
+    ) -> Dict[str, Any]:
+        """
+        Erstellt oder ruft einen Payment Link für eine Gebühr ab.
+        Dies ist die Hauptmethode für die API.
+        
+        Args:
+            fee_id: ID der BuildWise-Gebühr
+            amount: Bruttobetrag
+            currency: Währungscode
+            description: Beschreibung
+            invoice_number: Rechnungsnummer
+            fee_percentage: Provisionssatz
+            
+        Returns:
+            Dict mit Payment Link Informationen
+        """
+        
+        return StripePaymentService.create_payment_link(
+            fee_id=fee_id,
+            amount=amount,
+            currency=currency,
+            description=description,
+            invoice_number=invoice_number,
+            fee_percentage=fee_percentage
+        )
+
+
+# Alias für Backward-Kompatibilität mit subscription_service
+StripeService = StripePaymentService

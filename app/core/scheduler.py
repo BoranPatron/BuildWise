@@ -36,44 +36,64 @@ class CreditScheduler:
             return
         
         self.is_running = False
-        if self.task:
+        if self.task and not self.task.done():
             self.task.cancel()
             try:
-                await self.task
-            except asyncio.CancelledError:
+                await asyncio.wait_for(self.task, timeout=5.0)
+            except (asyncio.CancelledError, asyncio.TimeoutError):
+                # Diese Exceptions sind beim Shutdown normal
                 pass
+            except Exception as e:
+                logger.warning(f"Unerwarteter Fehler beim Scheduler-Shutdown: {e}")
         
         logger.info("Credit-Scheduler gestoppt")
     
     async def _run_scheduler(self):
         """Hauptschleife des Schedulers"""
-        while self.is_running:
-            try:
-                # Warte bis zur nächsten Ausführungszeit (täglich um 02:00 Uhr)
-                now = datetime.now()
-                next_run = now.replace(hour=2, minute=0, second=0, microsecond=0)
-                
-                if now >= next_run:
-                    next_run = next_run.replace(day=next_run.day + 1)
-                
-                wait_seconds = (next_run - now).total_seconds()
-                logger.info(f"Nächste Credit-Abzug-Ausführung: {next_run} (in {wait_seconds:.0f} Sekunden)")
-                
-                await asyncio.sleep(wait_seconds)
-                
-                # Führe tägliche Credit-Abzüge aus
-                await self._process_daily_deductions()
+        try:
+            while self.is_running:
+                try:
+                    # Warte bis zur nächsten Ausführungszeit (täglich um 02:00 Uhr)
+                    now = datetime.now()
+                    next_run = now.replace(hour=2, minute=0, second=0, microsecond=0)
+                    
+                    if now >= next_run:
+                        next_run = next_run.replace(day=next_run.day + 1)
+                    
+                    wait_seconds = (next_run - now).total_seconds()
+                    logger.info(f"Nächste Credit-Abzug-Ausführung: {next_run} (in {wait_seconds:.0f} Sekunden)")
+                    
+                    await asyncio.sleep(wait_seconds)
+                    
+                    # Prüfe ob wir noch laufen sollen (nach dem Sleep)
+                    if not self.is_running:
+                        break
+                    
+                    # Führe tägliche Credit-Abzüge aus
+                    await self._process_daily_deductions()
 
-                # Ergänzung: Periodisches Geocoding-Update für Projekte ohne Koordinaten
-                await self._update_project_geocoding_batch()
-                
-            except asyncio.CancelledError:
-                logger.info("Credit-Scheduler wurde abgebrochen")
-                break
-            except Exception as e:
-                logger.error(f"Fehler im Credit-Scheduler: {e}")
-                # Warte 1 Stunde bei Fehlern
-                await asyncio.sleep(3600)
+                    # Ergänzung: Periodisches Geocoding-Update für Projekte ohne Koordinaten
+                    await self._update_project_geocoding_batch()
+                    
+                except asyncio.CancelledError:
+                    logger.info("Credit-Scheduler wurde abgebrochen")
+                    break
+                except Exception as e:
+                    if self.is_running:  # Nur loggen wenn wir noch laufen sollen
+                        logger.error(f"Fehler im Credit-Scheduler: {e}")
+                        # Warte 1 Stunde bei Fehlern, aber prüfe regelmäßig ob wir stoppen sollen
+                        for _ in range(360):  # 360 * 10 = 3600 Sekunden = 1 Stunde
+                            if not self.is_running:
+                                break
+                            await asyncio.sleep(10)
+                    else:
+                        break
+        except asyncio.CancelledError:
+            logger.info("Credit-Scheduler Hauptschleife wurde abgebrochen")
+        except Exception as e:
+            logger.error(f"Unerwarteter Fehler in Credit-Scheduler Hauptschleife: {e}")
+        finally:
+            logger.info("Credit-Scheduler Hauptschleife beendet")
     
     async def _process_daily_deductions(self):
         """Verarbeitet tägliche Credit-Abzüge"""

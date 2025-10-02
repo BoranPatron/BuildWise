@@ -256,67 +256,80 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
     
     # ✅ BUILDWISE GEBÜHR: Erstelle automatisch eine Vermittlungsgebühr (4.7%)
     # Diese wird in /buildwise-fees angezeigt und ist 30 Tage nach Angebotsannahme fällig
+    buildwise_fee_created = False
     try:
         from ..services.buildwise_fee_service import BuildWiseFeeService
         from ..core.config import settings, get_fee_percentage
         
-        print(f"🔧 [QuoteService] Erstelle BuildWise Gebühr für akzeptiertes Angebot {quote.id}")
+        print(f"[QuoteService] Erstelle BuildWise Gebuehr fuer akzeptiertes Angebot {quote.id}")
         print(f"   - Quote ID: {quote.id}")
         print(f"   - Quote Amount: {quote.total_amount} {quote.currency}")
-        print(f"   - Environment Mode: {settings.environment_mode}")
+        print(f"   - Environment Mode: {getattr(settings, 'environment_mode', 'production')}")
         print(f"   - Fee Percentage: {get_fee_percentage()}%")
         
-        # Erstelle eine temporäre Kostenposition-ID falls keine existiert
-        # Die BuildWise-Gebühr muss auch dann erstellt werden, wenn keine Rechnung existiert
-        if cost_position and hasattr(cost_position, 'id'):
-            cost_position_id = cost_position.id
-        else:
-            # Fallback: Verwende Quote-ID als Referenz (wird später aktualisiert wenn Rechnung erstellt wird)
-            print(f"⚠️ [QuoteService] Keine Kostenposition gefunden, verwende Quote als Referenz")
-            # Erstelle eine Dummy-Kostenposition für die BuildWise-Gebühr
-            from ..models.cost_position import CostPosition
-            dummy_cost_position = CostPosition(
-                project_id=quote.project_id,
-                title=f"Angebot: {quote.title}",
-                description=f"Akzeptiertes Angebot vom {datetime.utcnow().strftime('%d.%m.%Y')}",
-                amount=quote.total_amount,
-                category="quote_accepted",
-                cost_type="service",
-                status="active",
-                contractor_name=quote.company_name or "Unbekannt",
-                quote_id=quote.id
-            )
-            db.add(dummy_cost_position)
-            await db.flush()
-            cost_position_id = dummy_cost_position.id
+        # ✅ FIX: Da create_cost_position_from_quote deaktiviert wurde, verwende Quote-ID direkt
+        # Die BuildWise Fee Service kann mit der Quote-ID arbeiten, ohne eine echte CostPosition zu benötigen
+        cost_position_id = quote.id
+        print(f"   - Verwende Quote-ID als Cost Position Referenz: {cost_position_id}")
+        print(f"   - Hinweis: create_cost_position_from_quote ist deaktiviert, verwende direkte Quote-Referenz")
         
-        print(f"   - Cost Position ID: {cost_position_id}")
-        
-        # Erstelle BuildWise Gebühr
-        buildwise_fee = await BuildWiseFeeService.create_fee_from_quote(
-            db=db,
-            quote_id=quote.id,
-            cost_position_id=cost_position_id,
-            fee_percentage=None  # Verwende automatisch den aktuellen Modus (4.7% in Production, 0% in Beta)
-        )
-        
-        print(f"✅ [QuoteService] BuildWise Gebühr erfolgreich erstellt (ID: {buildwise_fee.id})")
-        print(f"   - Rechnungsnummer: {buildwise_fee.invoice_number}")
-        print(f"   - Nettobetrag: {buildwise_fee.fee_amount} {buildwise_fee.currency}")
-        print(f"   - Bruttobetrag: {buildwise_fee.gross_amount} {buildwise_fee.currency}")
-        print(f"   - Provisionssatz: {buildwise_fee.fee_percentage}%")
-        print(f"   - Fälligkeitsdatum: {buildwise_fee.due_date}")
+        # Erstelle BuildWise Gebühr mit Retry-Logik
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                buildwise_fee = await BuildWiseFeeService.create_fee_from_quote(
+                    db=db,
+                    quote_id=quote.id,
+                    cost_position_id=cost_position_id,
+                    fee_percentage=None  # Verwende automatisch den aktuellen Modus (4.7% in Production, 0% in Beta)
+                )
+                
+                print(f"[QuoteService] BuildWise Gebuehr erfolgreich erstellt (ID: {buildwise_fee.id})")
+                print(f"   - Rechnungsnummer: {buildwise_fee.invoice_number}")
+                print(f"   - Nettobetrag: {buildwise_fee.fee_amount} {buildwise_fee.currency}")
+                print(f"   - Bruttobetrag: {buildwise_fee.gross_amount} {buildwise_fee.currency}")
+                print(f"   - Provisionssatz: {buildwise_fee.fee_percentage}%")
+                print(f"   - Faelligkeitsdatum: {buildwise_fee.due_date}")
+                
+                buildwise_fee_created = True
+                break  # Erfolgreich erstellt, verlasse Retry-Schleife
+                
+            except ValueError as ve:
+                if "bereits" in str(ve).lower():
+                    # Gebühr existiert bereits - das ist OK
+                    print(f"[QuoteService] BuildWise Gebuehr existiert bereits: {ve}")
+                    buildwise_fee_created = True
+                    break
+                elif attempt < max_retries - 1:
+                    print(f"[QuoteService] Versuch {attempt + 1} fehlgeschlagen: {ve}, versuche erneut...")
+                    # Kein Rollback hier - das verursacht DB-Probleme
+                    continue
+                else:
+                    raise ve  # Letzter Versuch fehlgeschlagen
+            except Exception as e:
+                if attempt < max_retries - 1:
+                    print(f"[QuoteService] Versuch {attempt + 1} fehlgeschlagen: {e}, versuche erneut...")
+                    # Kein Rollback hier - das verursacht DB-Probleme
+                    continue
+                else:
+                    raise e  # Letzter Versuch fehlgeschlagen
         
     except ValueError as ve:
         # ValueError bedeutet, dass die Gebühr bereits existiert oder ein Validierungsfehler vorliegt
-        print(f"⚠️ [QuoteService] BuildWise Gebühr konnte nicht erstellt werden: {ve}")
+        print(f"[QuoteService] BuildWise Gebuehr konnte nicht erstellt werden: {ve}")
         # Dies ist nicht kritisch - das Angebot wurde bereits akzeptiert
         
     except Exception as e:
-        print(f"❌ [QuoteService] Unerwarteter Fehler beim Erstellen der BuildWise Gebühr: {e}")
+        print(f"[QuoteService] Unerwarteter Fehler beim Erstellen der BuildWise Gebuehr: {e}")
         import traceback
         traceback.print_exc()
         # Fehler beim Erstellen der Gebühr sollte nicht die Quote-Akzeptierung blockieren
+        
+    # Logging für Monitoring
+    if buildwise_fee_created:
+        print(f"[QuoteService] BuildWise-Rechnungsstellung erfolgreich abgeschlossen fuer Quote {quote.id}")
+    else:
+        print(f"[QuoteService] BuildWise-Rechnungsstellung fuer Quote {quote.id} nicht erfolgreich - manueller Eingriff erforderlich")
     
     # Credit-Zuordnung für Bauträger - ERWEITERT FÜR BESICHTIGUNGSSYSTEM
     try:
@@ -325,7 +338,7 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
         from ..models.user import UserRole
         from ..models import Project
         from ..models.inspection import Inspection
-        from ..models.quote_revision import QuoteRevision
+        # from ..models.quote_revision import QuoteRevision  # Nicht verfügbar
         
         # Hole Projekt-Owner (Bauträger)
         project_result = await db.execute(
@@ -348,15 +361,16 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
             inspection = inspection_result.scalar_one_or_none()
             
             # Prüfe ob es eine aktive Revision gibt (Indikator für Besichtigungsprozess)
-            revision_result = await db.execute(
-                select(QuoteRevision).where(
-                    and_(
-                        QuoteRevision.original_quote_id == quote.id,
-                        QuoteRevision.is_active == True
-                    )
-                )
-            )
-            revision = revision_result.scalar_one_or_none()
+            # revision_result = await db.execute(
+            #     select(QuoteRevision).where(
+            #         and_(
+            #             QuoteRevision.original_quote_id == quote.id,
+            #             QuoteRevision.is_active == True
+            #         )
+            #     )
+            # )
+            # revision = revision_result.scalar_one_or_none()
+            revision = None  # Temporär deaktiviert
             
             # Vergebe erhöhte Credits wenn Besichtigungsprozess durchlaufen wurde
             if inspection or revision:
@@ -369,9 +383,9 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
                 )
                 
                 if success:
-                    print(f"🎉 BONUS-CREDITS vergeben! Bauträger {project.owner} erhielt 15 Credits für Besichtigungsangebot")
+                    print(f"BONUS-CREDITS vergeben! Bautraeger {project.owner} erhielt 15 Credits fuer Besichtigungsangebot")
                 else:
-                    print(f"⚠️  Bonus-Credits konnten nicht vergeben werden")
+                    print(f"Bonus-Credits konnten nicht vergeben werden")
             else:
                 # Standard-Credits für normale Angebotsakzeptanz
                 success = await CreditService.reward_user_action(
@@ -383,30 +397,34 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
                 )
                 
                 if success:
-                    print(f"✅ Standard-Credits vergeben für Quote-Akzeptanz")
+                    print(f"Standard-Credits vergeben fuer Quote-Akzeptanz")
                 else:
-                    print(f"⚠️  Standard-Credits konnten nicht vergeben werden")
+                    print(f"Standard-Credits konnten nicht vergeben werden")
         
+        # Zusätzliche Credit-Zuordnung (Legacy)
         if project and project.owner:
-            owner = project.owner
-            
-            # Prüfe ob Owner ein Bauträger ist
-            if owner.user_role == UserRole.BAUTRAEGER:
-                # Füge Credits für akzeptiertes Angebot hinzu
-                await CreditService.add_credits_for_activity(
-                    db=db,
-                    user_id=owner.id,
-                    event_type=CreditEventType.QUOTE_ACCEPTED,
-                    description=f"Angebot akzeptiert: {quote.title}",
-                    related_entity_type="quote",
-                    related_entity_id=quote.id
-                )
-                print(f"✅ Credits für Bauträger {owner.id} hinzugefügt: Angebot akzeptiert")
-            else:
-                print(f"ℹ️  Projekt-Owner {owner.id} ist kein Bauträger, keine Credits hinzugefügt")
+            try:
+                owner = project.owner
+                
+                # Prüfe ob Owner ein Bauträger ist
+                if owner.user_role == UserRole.BAUTRAEGER:
+                    # Füge Credits für akzeptiertes Angebot hinzu
+                    await CreditService.add_credits_for_activity(
+                        db=db,
+                        user_id=owner.id,
+                        event_type=CreditEventType.QUOTE_ACCEPTED,
+                        description=f"Angebot akzeptiert: {quote.title}",
+                        related_entity_type="quote",
+                        related_entity_id=quote.id
+                    )
+                    print(f"Credits fuer Bautraeger {owner.id} hinzugefuegt: Angebot akzeptiert")
+                else:
+                    print(f"Projekt-Owner {owner.id} ist kein Bautraeger, keine Credits hinzugefuegt")
+            except Exception as credit_error:
+                print(f"Fehler bei zusaetzlicher Credit-Zuordnung: {credit_error}")
                 
     except Exception as e:
-        print(f"❌ Fehler bei Credit-Zuordnung: {e}")
+        print(f"Fehler bei Credit-Zuordnung: {e}")
         # Fehler bei Credit-Zuordnung sollte nicht die Quote-Akzeptierung blockieren
     
     # Erstelle Benachrichtigung für den Dienstleister
@@ -439,12 +457,12 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
                 notification_data=notification_data
             )
             
-            print(f"✅ Benachrichtigung für Dienstleister {quote.service_provider_id or quote.user_id} erstellt: Angebot {quote.id} angenommen")
+            print(f"Benachrichtigung fuer Dienstleister {quote.service_provider_id or quote.user_id} erstellt: Angebot {quote.id} angenommen")
         else:
-            print(f"⚠️ Milestone {quote.milestone_id} nicht gefunden - Benachrichtigung übersprungen")
+            print(f"Milestone {quote.milestone_id} nicht gefunden - Benachrichtigung uebersprungen")
             
     except Exception as e:
-        print(f"❌ Fehler beim Erstellen der Benachrichtigung: {e}")
+        print(f"Fehler beim Erstellen der Benachrichtigung: {e}")
         # Fehler bei Benachrichtigung sollte nicht die Quote-Akzeptierung blockieren
     
     await db.commit()
@@ -455,7 +473,7 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
 async def create_cost_position_from_quote(db: AsyncSession, quote: Quote):
     """Erstellt eine Kostenposition aus einem akzeptierten Angebot (Legacy-Funktion)"""
     try:
-        print(f"🔄 Erstelle Kostenposition aus Quote {quote.id} für Projekt {quote.project_id}")
+        print(f"Erstelle Kostenposition aus Quote {quote.id} fuer Projekt {quote.project_id}")
         # Robuste Erstellung einer Projekt-Rechnung inkl. Kostenposition, falls noch keine existiert
         from ..models import Invoice, InvoiceStatus, InvoiceType, Milestone
         from ..schemas.invoice import InvoiceCreate
@@ -467,7 +485,7 @@ async def create_cost_position_from_quote(db: AsyncSession, quote: Quote):
         # 1) Prüfe, ob bereits eine Rechnung für dieses Gewerk existiert
         milestone_id = quote.milestone_id
         if milestone_id is None:
-            print("⚠️ Quote hat keinen milestone_id – überspringe Kostenposition-Erstellung")
+            print("Quote hat keinen milestone_id - ueberspringe Kostenposition-Erstellung")
             return True
 
         existing_invoice_result = await db.execute(
@@ -479,7 +497,7 @@ async def create_cost_position_from_quote(db: AsyncSession, quote: Quote):
         milestone_result = await db.execute(select(Milestone).where(Milestone.id == milestone_id))
         milestone = milestone_result.scalar_one_or_none()
         if not milestone:
-            print("⚠️ Milestone nicht gefunden – kann project_id nicht bestimmen")
+            print("Milestone nicht gefunden - kann project_id nicht bestimmen")
             return True
 
         # ❌ DEAKTIVIERT: Automatische Rechnungserstellung entfernt!
@@ -496,17 +514,17 @@ async def create_cost_position_from_quote(db: AsyncSession, quote: Quote):
         # Kostenposition-Logik wurde ebenfalls entfernt, da sie an die Rechnung 
         # gekoppelt war.
         
-        print(f"ℹ️ Keine automatische Rechnung/Kostenposition für Quote {quote.id}")
-        print(f"✅ Dienstleister muss Rechnung manuell über /invoices/create erstellen")
+        print(f"Keine automatische Rechnung/Kostenposition fuer Quote {quote.id}")
+        print(f"Dienstleister muss Rechnung manuell ueber /invoices/create erstellen")
         
         return True  # Erfolg signalisieren
         
     except Exception as e:
-        print(f"❌ Fehler beim Erstellen der Kostenposition: {e}")
+        print(f"Fehler beim Erstellen der Kostenposition: {e}")
         # Rollback bei Fehlern
         await db.rollback()
         # Fehler weiterwerfen, damit er im Frontend sichtbar wird
-        raise Exception(f"Fehler beim Erstellen der Kostenposition für Quote {quote.id}: {str(e)}")
+        raise Exception(f"Fehler beim Erstellen der Kostenposition fuer Quote {quote.id}: {str(e)}")
 
 
 async def get_quote_statistics(db: AsyncSession, project_id: int) -> dict:

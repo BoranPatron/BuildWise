@@ -3,7 +3,7 @@ from datetime import date, timedelta, datetime
 from decimal import Decimal
 from typing import List, Optional
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import func, and_, extract, select
+from sqlalchemy import func, and_, or_, extract, select
 from sqlalchemy.exc import IntegrityError
 
 from app.models.buildwise_fee import BuildWiseFee, BuildWiseFeeItem, BuildWiseFeeStatus
@@ -49,7 +49,7 @@ class BuildWiseFeeService:
             ValueError: Wenn das Angebot nicht gefunden wird oder bereits eine Gebühr existiert
         """
         
-        print(f"🔧 [BuildWiseFeeService] Erstelle Gebühr für Quote {quote_id}")
+        print(f"[BuildWiseFeeService] Erstelle Gebuehr fuer Quote {quote_id}")
         
         # Hole das Angebot mit allen notwendigen Informationen
         quote_query = select(Quote).where(Quote.id == quote_id)
@@ -58,13 +58,14 @@ class BuildWiseFeeService:
         
         if not quote:
             error_msg = f"Angebot mit ID {quote_id} nicht gefunden"
-            print(f"❌ [BuildWiseFeeService] {error_msg}")
+            print(f"[BuildWiseFeeService] {error_msg}")
             raise ValueError(error_msg)
         
         # Validiere dass das Angebot akzeptiert wurde
-        if quote.status.value != 'ACCEPTED':
-            error_msg = f"Angebot {quote_id} ist nicht akzeptiert (Status: {quote.status.value})"
-            print(f"⚠️ [BuildWiseFeeService] {error_msg}")
+        quote_status = str(quote.status.value).upper() if hasattr(quote.status, 'value') else str(quote.status).upper()
+        if quote_status != 'ACCEPTED':
+            error_msg = f"Angebot {quote_id} ist nicht akzeptiert (Status: {quote_status})"
+            print(f"[BuildWiseFeeService] {error_msg}")
             raise ValueError(error_msg)
         
         # Prüfe ob bereits eine Gebühr für dieses Angebot existiert
@@ -73,7 +74,10 @@ class BuildWiseFeeService:
         existing_fee = existing_fee_result.scalar_one_or_none()
         
         if existing_fee:
-            print(f"ℹ️ [BuildWiseFeeService] Gebühr für Quote {quote_id} existiert bereits (ID: {existing_fee.id})")
+            print(f"[BuildWiseFeeService] Gebuehr fuer Quote {quote_id} existiert bereits (ID: {existing_fee.id})")
+            print(f"   - Status: {existing_fee.status}")
+            print(f"   - Betrag: {existing_fee.fee_amount} {existing_fee.currency}")
+            print(f"   - Rechnungsnummer: {existing_fee.invoice_number}")
             return existing_fee  # Gebe existierende Gebühr zurück statt Fehler
         
         # Verwende den aktuellen Gebühren-Prozentsatz aus der Konfiguration
@@ -81,7 +85,23 @@ class BuildWiseFeeService:
         if fee_percentage is None:
             fee_percentage = get_fee_percentage()
         
-        print(f"📊 [BuildWiseFeeService] Verwende Provisionssatz: {fee_percentage}%")
+        print(f"[BuildWiseFeeService] Verwende Provisionssatz: {fee_percentage}%")
+        
+        # Validiere Quote-Daten
+        if not quote.total_amount or quote.total_amount <= 0:
+            error_msg = f"Ungültiger Quote-Betrag: {quote.total_amount}"
+            print(f"[BuildWiseFeeService] {error_msg}")
+            raise ValueError(error_msg)
+        
+        if not quote.project_id:
+            error_msg = f"Quote {quote_id} hat keine gültige project_id"
+            print(f"[BuildWiseFeeService] {error_msg}")
+            raise ValueError(error_msg)
+        
+        if not quote.service_provider_id:
+            error_msg = f"Quote {quote_id} hat keine gültige service_provider_id"
+            print(f"[BuildWiseFeeService] {error_msg}")
+            raise ValueError(error_msg)
         
         # Berechne die Gebühr
         quote_amount = float(quote.total_amount)
@@ -90,35 +110,57 @@ class BuildWiseFeeService:
         # Validierung: Gebühr darf nicht negativ sein
         if fee_amount < 0:
             error_msg = f"Gebührenbetrag ist negativ: {fee_amount}"
-            print(f"❌ [BuildWiseFeeService] {error_msg}")
+            print(f"[BuildWiseFeeService] {error_msg}")
             raise ValueError(error_msg)
         
-        # Generiere Rechnungsnummer (Format: BW-XXXXXX)
-        last_fee_query = select(BuildWiseFee).order_by(BuildWiseFee.id.desc()).limit(1)
-        last_fee_result = await db.execute(last_fee_query)
-        last_fee = last_fee_result.scalar_one_or_none()
+        # Validierung: Minimaler Gebührenbetrag (z.B. 0.01 EUR)
+        if fee_amount > 0 and fee_amount < 0.01:
+            print(f"[BuildWiseFeeService] Gebuehrenbetrag sehr klein: {fee_amount}, setze auf 0.01")
+            fee_amount = 0.01
         
-        if last_fee and last_fee.invoice_number:
-            # Extrahiere Nummer aus letzter Rechnung
-            try:
-                last_number = int(last_fee.invoice_number.split('-')[-1])
-                invoice_number = f"BW-{last_number + 1:06d}"
-            except:
-                invoice_number = "BW-000001"
-        else:
-            invoice_number = "BW-000001"
+        # Generiere Rechnungsnummer (Format: BW-XXXXXX) - Robuste Implementierung
+        invoice_number = "BW-000001"  # Fallback
+        try:
+            # Suche nach der höchsten existierenden Rechnungsnummer
+            last_fee_query = select(BuildWiseFee).where(
+                BuildWiseFee.invoice_number.like('BW-%')
+            ).order_by(BuildWiseFee.invoice_number.desc()).limit(1)
+            last_fee_result = await db.execute(last_fee_query)
+            last_fee = last_fee_result.scalar_one_or_none()
+            
+            if last_fee and last_fee.invoice_number:
+                # Extrahiere Nummer aus letzter Rechnung
+                try:
+                    # Format: BW-123456
+                    number_part = last_fee.invoice_number.split('-')[-1]
+                    last_number = int(number_part)
+                    invoice_number = f"BW-{last_number + 1:06d}"
+                    print(f"[BuildWiseFeeService] Naechste Rechnungsnummer: {invoice_number} (basierend auf {last_fee.invoice_number})")
+                except (ValueError, IndexError) as e:
+                    print(f"[BuildWiseFeeService] Fehler beim Parsen der letzten Rechnungsnummer '{last_fee.invoice_number}': {e}")
+                    # Fallback: Verwende aktuelle Zeit für Eindeutigkeit
+                    import time
+                    timestamp_suffix = int(time.time()) % 1000000
+                    invoice_number = f"BW-{timestamp_suffix:06d}"
+            else:
+                print(f"[BuildWiseFeeService] Keine vorherige Rechnung gefunden, starte mit: {invoice_number}")
+                
+        except Exception as e:
+            print(f"[BuildWiseFeeService] Fehler bei Rechnungsnummer-Generierung: {e}")
+            # Fallback: Verwende Quote-ID basierte Nummer
+            invoice_number = f"BW-{quote_id:06d}"
         
-        print(f"📄 [BuildWiseFeeService] Generiere Rechnung: {invoice_number}")
+        print(f"[BuildWiseFeeService] Generiere Rechnung: {invoice_number}")
         
         # Berechne Fälligkeitsdatum (+30 Tage ab heute)
         invoice_date = date.today()
         due_date = invoice_date + timedelta(days=30)
         
-        # Berechne Steuerbeträge (19% MwSt.)
-        tax_rate = Decimal("19.0")
+        # Berechne Steuerbeträge (8.1% MwSt. Schweiz)
+        tax_rate = Decimal("8.1")
         net_amount = Decimal(str(fee_amount))
-        tax_amount = net_amount * (tax_rate / Decimal("100.0"))
-        gross_amount = net_amount + tax_amount
+        tax_amount = (net_amount * (tax_rate / Decimal("100.0"))).quantize(Decimal("0.01"))
+        gross_amount = (net_amount + tax_amount).quantize(Decimal("0.01"))
         
         # Erstelle die Gebühr
         fee_data = BuildWiseFeeCreate(
@@ -151,20 +193,45 @@ class BuildWiseFeeService:
             await db.commit()
             await db.refresh(fee)
             
-            print(f"✅ [BuildWiseFeeService] Gebühr erfolgreich erstellt:")
+            print(f"[BuildWiseFeeService] Gebuehr erfolgreich erstellt:")
             print(f"   - ID: {fee.id}")
             print(f"   - Rechnungsnummer: {fee.invoice_number}")
             print(f"   - Nettobetrag: {fee.net_amount} {fee.currency}")
             print(f"   - Bruttobetrag: {fee.gross_amount} {fee.currency}")
             print(f"   - Provisionssatz: {fee.fee_percentage}%")
-            print(f"   - Fälligkeitsdatum: {fee.due_date}")
+            print(f"   - Faelligkeitsdatum: {fee.due_date}")
+            print(f"   - Status: {fee.status}")
+            
+            # Zusätzliche Validierung nach dem Speichern
+            if not fee.id:
+                raise ValueError("Gebühr wurde nicht korrekt gespeichert (keine ID)")
             
             return fee
             
+        except IntegrityError as ie:
+            await db.rollback()
+            error_msg = f"Datenbank-Integritätsfehler beim Speichern der Gebühr: {str(ie)}"
+            print(f"[BuildWiseFeeService] {error_msg}")
+            # Prüfe ob es ein Duplikat-Fehler ist
+            if "duplicate" in str(ie).lower() or "unique" in str(ie).lower():
+                # Versuche die existierende Gebühr zu finden und zurückzugeben
+                try:
+                    existing_fee_query = select(BuildWiseFee).where(BuildWiseFee.quote_id == quote_id)
+                    existing_fee_result = await db.execute(existing_fee_query)
+                    existing_fee = existing_fee_result.scalar_one_or_none()
+                    if existing_fee:
+                        print(f"[BuildWiseFeeService] Duplikat erkannt, gebe existierende Gebuehr zurueck: {existing_fee.id}")
+                        return existing_fee
+                except Exception:
+                    pass
+            raise ValueError(error_msg)
+            
         except Exception as e:
             await db.rollback()
-            error_msg = f"Fehler beim Speichern der Gebühr: {str(e)}"
-            print(f"❌ [BuildWiseFeeService] {error_msg}")
+            error_msg = f"Unerwarteter Fehler beim Speichern der Gebühr: {str(e)}"
+            print(f"[BuildWiseFeeService] {error_msg}")
+            import traceback
+            traceback.print_exc()
             raise ValueError(error_msg)
     
     @staticmethod
@@ -180,7 +247,7 @@ class BuildWiseFeeService:
         """Holt BuildWise-Gebühren mit optionalen Filtern."""
         
         try:
-            print(f"🔍 Debug: BuildWiseFeeService.get_fees aufgerufen mit: skip={skip}, limit={limit}, project_id={project_id}, status={status}, month={month}, year={year}")
+            print(f"[DEBUG] BuildWiseFeeService.get_fees aufgerufen mit: skip={skip}, limit={limit}, project_id={project_id}, status={status}, month={month}, year={year}")
             
             # Robuste Prüfung: Prüfe ob Tabelle existiert und Daten hat
             try:
@@ -188,12 +255,12 @@ class BuildWiseFeeService:
                 all_fees_query = select(BuildWiseFee)
                 all_result = await db.execute(all_fees_query)
                 all_fees = all_result.scalars().all()
-                print(f"🔍 Debug: Gesamtanzahl Datensätze in DB: {len(all_fees)}")
+                print(f"[DEBUG] Gesamtanzahl Datensätze in DB: {len(all_fees)}")
                 
                 # Wenn keine Daten vorhanden sind, gib leere Liste zurück
                 if len(all_fees) == 0:
-                    print("⚠️ Debug: Keine Datensätze in buildwise_fees Tabelle gefunden")
-                    print("💡 Tipp: Führen Sie ensure_buildwise_fees_data.py aus")
+                    print("[WARNING] Debug: Keine Datensätze in buildwise_fees Tabelle gefunden")
+                    print("[INFO] Tipp: Führen Sie ensure_buildwise_fees_data.py aus")
                     return []
                 
                 # Zeige alle Datensätze für Debug
@@ -201,8 +268,8 @@ class BuildWiseFeeService:
                     print(f"  Datensatz {i+1}: ID={fee.id}, Project={fee.project_id}, Status={fee.status}, Amount={fee.fee_amount}")
                     
             except Exception as table_error:
-                print(f"⚠️ Debug: Fehler beim Zugriff auf buildwise_fees Tabelle: {table_error}")
-                print("💡 Tipp: Prüfen Sie die Datenbank-Migrationen")
+                print(f"[WARNING] Debug: Fehler beim Zugriff auf buildwise_fees Tabelle: {table_error}")
+                print("[INFO] Tipp: Prüfen Sie die Datenbank-Migrationen")
                 return []
             
             # Hauptquery mit Filtern
@@ -211,11 +278,11 @@ class BuildWiseFeeService:
             # Filter anwenden
             if project_id:
                 query = query.where(BuildWiseFee.project_id == project_id)
-                print(f"🔍 Debug: Filter für project_id={project_id} angewendet")
+                print(f"[DEBUG] Filter für project_id={project_id} angewendet")
             
             if status:
                 query = query.where(BuildWiseFee.status == status)
-                print(f"🔍 Debug: Filter für status={status} angewendet")
+                print(f"[DEBUG] Filter für status={status} angewendet")
             
             # Datum-Filter - nur anwenden wenn beide Parameter vorhanden sind
             if month and year:
@@ -234,16 +301,16 @@ class BuildWiseFeeService:
                         BuildWiseFee.created_at.is_(None)
                     )
                 )
-                print(f"🔍 Debug: Datum-Filter angewendet: {start_date} bis {end_date} (inkl. NULL-Werte)")
+                print(f"[DEBUG] Datum-Filter angewendet: {start_date} bis {end_date} (inkl. NULL-Werte)")
             
             # Pagination
             query = query.offset(skip).limit(limit)
             
-            print("🔍 Debug: Führe gefilterte Query aus...")
+            print("[DEBUG] Führe gefilterte Query aus...")
             result = await db.execute(query)
             fees = result.scalars().all()
             
-            print(f"✅ Debug: {len(fees)} Gebühren nach Filterung gefunden")
+            print(f"[SUCCESS] Debug: {len(fees)} Gebühren nach Filterung gefunden")
             
             # Zeige gefilterte Datensätze für Debug
             for i, fee in enumerate(fees):
@@ -251,15 +318,15 @@ class BuildWiseFeeService:
             
             # Konvertiere zu Liste
             fees_list = list(fees)
-            print(f"✅ Debug: {len(fees_list)} Gebühren erfolgreich geladen")
+            print(f"[SUCCESS] Debug: {len(fees_list)} Gebühren erfolgreich geladen")
             return fees_list
             
         except Exception as e:
-            print(f"❌ Debug: Fehler in get_fees: {str(e)}")
+            print(f"[ERROR] Debug: Fehler in get_fees: {str(e)}")
             import traceback
             traceback.print_exc()
             # Bei Fehlern gib leere Liste zurück statt Exception zu werfen
-            print("⚠️ Debug: Gebe leere Liste zurück bei Fehler")
+            print("[WARNING] Debug: Gebe leere Liste zurück bei Fehler")
             return []
     
     @staticmethod
@@ -320,73 +387,138 @@ class BuildWiseFeeService:
         return fee
     
     @staticmethod
-    async def get_statistics(db: AsyncSession) -> BuildWiseFeeStatistics:
+    async def get_statistics(db: AsyncSession, service_provider_id: Optional[int] = None) -> BuildWiseFeeStatistics:
         """Holt Statistiken für BuildWise-Gebühren."""
         
-        # Gesamtanzahl
-        total_fees_query = select(func.count(BuildWiseFee.id))
-        total_fees_result = await db.execute(total_fees_query)
-        total_fees = total_fees_result.scalar()
+        try:
+            if service_provider_id:
+                print(f"[DEBUG] Lade BuildWise-Gebühren Statistiken für Dienstleister {service_provider_id}...")
+            else:
+                print("[DEBUG] Lade BuildWise-Gebühren Statistiken (alle)...")
+            
+            # Base query mit optionalem Service Provider Filter
+            base_query = select(BuildWiseFee)
+            if service_provider_id:
+                base_query = base_query.where(BuildWiseFee.service_provider_id == service_provider_id)
+            
+            # Gesamtanzahl
+            total_fees_query = select(func.count(BuildWiseFee.id))
+            if service_provider_id:
+                total_fees_query = total_fees_query.where(BuildWiseFee.service_provider_id == service_provider_id)
+            total_fees_result = await db.execute(total_fees_query)
+            total_fees = total_fees_result.scalar() or 0
+            print(f"   - Gesamtanzahl Gebühren: {total_fees}")
+            
+            # Gesamtbetrag
+            total_amount_query = select(func.sum(BuildWiseFee.fee_amount))
+            if service_provider_id:
+                total_amount_query = total_amount_query.where(BuildWiseFee.service_provider_id == service_provider_id)
+            total_amount_result = await db.execute(total_amount_query)
+            total_amount = total_amount_result.scalar() or Decimal("0.0")
+            print(f"   - Gesamtbetrag: {total_amount}")
+            
+            # Bezahlte Gebühren
+            paid_query = select(func.sum(BuildWiseFee.fee_amount)).where(BuildWiseFee.status == 'paid')
+            if service_provider_id:
+                paid_query = paid_query.where(BuildWiseFee.service_provider_id == service_provider_id)
+            paid_result = await db.execute(paid_query)
+            total_paid = paid_result.scalar() or Decimal("0.0")
+            print(f"   - Bezahlt: {total_paid}")
+            
+            # Aktuelles Datum für Fälligkeitsberechnung
+            today = date.today()
+            
+            # Offene Gebühren - Status 'open'
+            open_query = select(func.sum(BuildWiseFee.fee_amount)).where(BuildWiseFee.status == 'open')
+            if service_provider_id:
+                open_query = open_query.where(BuildWiseFee.service_provider_id == service_provider_id)
+            open_result = await db.execute(open_query)
+            total_open = open_result.scalar() or Decimal("0.0")
+            print(f"   - Offen: {total_open}")
+            
+            # Überfällige Gebühren - basierend auf Fälligkeitsdatum, nicht Status
+            overdue_query = select(func.sum(BuildWiseFee.fee_amount)).where(
+                BuildWiseFee.due_date < today,
+                BuildWiseFee.status != 'paid'  # Bezahlte Gebühren sind nicht überfällig
+            )
+            if service_provider_id:
+                overdue_query = overdue_query.where(BuildWiseFee.service_provider_id == service_provider_id)
+            overdue_result = await db.execute(overdue_query)
+            total_overdue = overdue_result.scalar() or Decimal("0.0")
+            print(f"   - Überfällig: {total_overdue}")
         
-        # Gesamtbetrag
-        total_amount_query = select(func.sum(BuildWiseFee.fee_amount))
-        total_amount_result = await db.execute(total_amount_query)
-        total_amount = total_amount_result.scalar() or 0.0
+        except Exception as e:
+            print(f"[ERROR] Debug: Fehler bei Basis-Statistiken: {e}")
+            # Fallback-Werte
+            total_fees = 0
+            total_amount = Decimal("0.0")
+            total_paid = Decimal("0.0")
+            total_open = Decimal("0.0")
+            total_overdue = Decimal("0.0")
         
-        # Bezahlte Gebühren
-        paid_query = select(func.sum(BuildWiseFee.fee_amount)).where(BuildWiseFee.status == 'paid')
-        paid_result = await db.execute(paid_query)
-        total_paid = paid_result.scalar() or 0.0
-        
-        # Offene Gebühren
-        open_query = select(func.sum(BuildWiseFee.fee_amount)).where(BuildWiseFee.status == 'open')
-        open_result = await db.execute(open_query)
-        total_open = open_result.scalar() or 0.0
-        
-        # Überfällige Gebühren
-        overdue_query = select(func.sum(BuildWiseFee.fee_amount)).where(BuildWiseFee.status == 'overdue')
-        overdue_result = await db.execute(overdue_query)
-        total_overdue = overdue_result.scalar() or 0.0
-        
-        # Monatliche Aufschlüsselung
-        monthly_query = select(
-            extract('month', BuildWiseFee.invoice_date).label('month'),
-            extract('year', BuildWiseFee.invoice_date).label('year'),
-            func.sum(BuildWiseFee.fee_amount).label('amount'),
-            func.count(BuildWiseFee.id).label('count')
-        ).group_by(
-            extract('month', BuildWiseFee.invoice_date),
-            extract('year', BuildWiseFee.invoice_date)
-        ).order_by(
-            extract('year', BuildWiseFee.invoice_date).desc(),
-            extract('month', BuildWiseFee.invoice_date).desc()
-        ).limit(12)
-        
-        monthly_result = await db.execute(monthly_query)
+        # Monatliche Aufschlüsselung - mit Fehlerbehandlung
         monthly_breakdown = []
-        for row in monthly_result:
-            if row.month is not None and row.year is not None:
-                monthly_breakdown.append({
-                    'month': int(row.month),
-                    'year': int(row.year),
-                    'amount': float(row.amount or 0),
-                    'count': int(row.count or 0)
-                })
+        try:
+            monthly_query = select(
+                extract('month', BuildWiseFee.invoice_date).label('month'),
+                extract('year', BuildWiseFee.invoice_date).label('year'),
+                func.sum(BuildWiseFee.fee_amount).label('amount'),
+                func.count(BuildWiseFee.id).label('count')
+            ).where(
+                BuildWiseFee.invoice_date.is_not(None)
+            )
+            
+            if service_provider_id:
+                monthly_query = monthly_query.where(BuildWiseFee.service_provider_id == service_provider_id)
+            
+            monthly_query = monthly_query.group_by(
+                extract('month', BuildWiseFee.invoice_date),
+                extract('year', BuildWiseFee.invoice_date)
+            ).order_by(
+                extract('year', BuildWiseFee.invoice_date).desc(),
+                extract('month', BuildWiseFee.invoice_date).desc()
+            ).limit(12)
+            
+            monthly_result = await db.execute(monthly_query)
+            for row in monthly_result:
+                if row.month is not None and row.year is not None:
+                    monthly_breakdown.append({
+                        'month': int(row.month),
+                        'year': int(row.year),
+                        'amount': float(row.amount or 0),
+                        'count': int(row.count or 0)
+                    })
+            print(f"   - Monatliche Aufschlüsselung: {len(monthly_breakdown)} Einträge")
         
-        # Status-Aufschlüsselung
-        status_query = select(
-            BuildWiseFee.status,
-            func.count(BuildWiseFee.id).label('count'),
-            func.sum(BuildWiseFee.fee_amount).label('amount')
-        ).group_by(BuildWiseFee.status)
+        except Exception as e:
+            print(f"[ERROR] Debug: Fehler bei monatlicher Aufschlüsselung: {e}")
+            monthly_breakdown = []
         
-        status_result = await db.execute(status_query)
+        # Status-Aufschlüsselung - mit Fehlerbehandlung
         status_breakdown = {}
-        for row in status_result:
-            status_breakdown[row.status] = {
-                'count': int(row.count),
-                'amount': float(row.amount)
-            }
+        try:
+            status_query = select(
+                BuildWiseFee.status,
+                func.count(BuildWiseFee.id).label('count'),
+                func.sum(BuildWiseFee.fee_amount).label('amount')
+            )
+            
+            if service_provider_id:
+                status_query = status_query.where(BuildWiseFee.service_provider_id == service_provider_id)
+            
+            status_query = status_query.group_by(BuildWiseFee.status)
+            
+            status_result = await db.execute(status_query)
+            for row in status_result:
+                status_breakdown[row.status] = {
+                    'count': int(row.count),
+                    'amount': float(row.amount or 0)
+                }
+            print(f"   - Status-Aufschlüsselung: {len(status_breakdown)} Einträge")
+        
+        except Exception as e:
+            print(f"[ERROR] Debug: Fehler bei Status-Aufschlüsselung: {e}")
+            status_breakdown = {}
         
         return BuildWiseFeeStatistics(
             total_fees=total_fees,
@@ -738,21 +870,35 @@ class BuildWiseFeeService:
             List[BuildWiseFee]: Liste aller Gebühren für diesen Dienstleister
         """
         
-        print(f"🔍 [BuildWiseFeeService] Lade Gebühren für Dienstleister {service_provider_id}")
+        print(f"[DEBUG] [BuildWiseFeeService] Lade Gebühren für Dienstleister {service_provider_id}")
         
-        query = select(BuildWiseFee).where(
-            BuildWiseFee.service_provider_id == service_provider_id
-        )
-        
-        if status:
-            query = query.where(BuildWiseFee.status == status)
-            print(f"   - Filter: Status = {status}")
-        
-        query = query.order_by(BuildWiseFee.due_date.desc())
-        
-        result = await db.execute(query)
-        fees = result.scalars().all()
-        
-        print(f"✅ [BuildWiseFeeService] {len(fees)} Gebühren gefunden")
-        
-        return list(fees) 
+        try:
+            # Einfache Query ohne komplexe Joins - robuster Ansatz
+            query = select(BuildWiseFee).where(
+                BuildWiseFee.service_provider_id == service_provider_id
+            )
+            
+            if status:
+                query = query.where(BuildWiseFee.status == status)
+                print(f"   - Filter: Status = {status}")
+            
+            # Sortierung nach created_at falls due_date NULL ist
+            query = query.order_by(
+                BuildWiseFee.due_date.desc().nulls_last(),
+                BuildWiseFee.created_at.desc()
+            )
+            
+            result = await db.execute(query)
+            fees = result.scalars().all()
+            
+            print(f"[SUCCESS] [BuildWiseFeeService] {len(fees)} Gebühren gefunden")
+            
+            return list(fees)
+            
+        except Exception as e:
+            print(f"[ERROR] [BuildWiseFeeService] Fehler beim Laden der Gebühren für Dienstleister {service_provider_id}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            
+            # Fallback: Leere Liste zurückgeben statt Exception zu werfen
+            return [] 

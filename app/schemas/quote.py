@@ -9,7 +9,7 @@ class QuoteBase(BaseModel):
     description: Optional[str] = None
     status: QuoteStatus = QuoteStatus.DRAFT
     total_amount: float
-    currency: str = "EUR"
+    currency: str = "CHF"
     valid_until: Optional[date] = None
     labor_cost: Optional[float] = None
     material_cost: Optional[float] = None

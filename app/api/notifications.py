@@ -82,6 +82,37 @@ async def acknowledge_notification(
     
     return {"message": "Benachrichtigung quittiert", "notification_id": notification_id}
 
+@router.delete("/{notification_id}")
+async def delete_notification(
+    notification_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Löscht eine spezifische Benachrichtigung"""
+    success = await NotificationService.delete_notification(
+        db=db,
+        notification_id=notification_id,
+        user_id=current_user.id
+    )
+    
+    if not success:
+        raise HTTPException(status_code=404, detail="Benachrichtigung nicht gefunden")
+    
+    return {"message": "Benachrichtigung gelöscht", "notification_id": notification_id}
+
+@router.delete("/delete-all")
+async def delete_all_notifications(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Löscht alle Benachrichtigungen des aktuellen Benutzers"""
+    count = await NotificationService.delete_all_notifications(
+        db=db,
+        user_id=current_user.id
+    )
+    
+    return {"message": f"{count} Benachrichtigungen gelöscht", "count": count}
+
 @router.patch("/mark-all-read")
 async def mark_all_notifications_as_read(
     current_user: User = Depends(get_current_user),

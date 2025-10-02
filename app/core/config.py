@@ -42,6 +42,25 @@ class Settings(BaseSettings):
     # Environment Mode
     environment_mode: Literal["beta", "production"] = "beta"
     
+    # Stripe Configuration
+    stripe_secret_key: str = "sk_test_51RmqhBD1cfnpqPDcNBjCVI3uNYCuvpqU2bdrTF2sugjOi5BiGtMF1kaiiHVpxR8dzkgXO634carUE57oyEDdmiQV00XaE5SZfO"
+    stripe_publishable_key: str = "pk_test_51RmqhBD1cfnpqPDcdZxBM4ZNiPrqhu6w4oiTMQGbTnxfbAzN0Lq6Q0yJOmtags79C2R8SLUmLd4n3oUurQ71ryBp00yCLKw9UK"
+    stripe_webhook_secret: str = "whsec_1c361ea289d12a6be58b3d1229fb4a1ef619936d5dbd22463a9f9099c3348eac"  # Stripe CLI Webhook Secret (lokal), wird in Production über ENV gesetzt
+    stripe_webhook_tolerance: int = 300  # 5 Minuten Toleranz für Webhook-Zeitstempel
+    
+    # Frontend Base URL (wird in Production über ENV gesetzt, z.B. FRONTEND_URL=https://yourdomain.com)
+    frontend_url: str = "http://localhost:5173"
+    
+    @property
+    def stripe_payment_success_url(self) -> str:
+        """Dynamische Success URL basierend auf Frontend URL"""
+        return f"{self.frontend_url}/service-provider/buildwise-fees?payment=success"
+    
+    @property
+    def stripe_payment_cancel_url(self) -> str:
+        """Dynamische Cancel URL basierend auf Frontend URL"""
+        return f"{self.frontend_url}/service-provider/buildwise-fees?payment=cancelled"
+    
     # Sicherheit
     bcrypt_rounds: int = 12
     max_login_attempts: int = 5
@@ -78,7 +97,7 @@ class Settings(BaseSettings):
                     self.environment_mode = config["environment_mode"]
                     
             except Exception as e:
-                print(f"⚠️  Warnung: Konnte environment_config.json nicht laden: {e}")
+                print(f"[WARNING] Konnte environment_config.json nicht laden: {e}")
     
     def get_fee_percentage(self) -> float:
         """Gibt den aktuellen Gebühren-Prozentsatz basierend auf der Phase zurück."""

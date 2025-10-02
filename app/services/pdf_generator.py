@@ -193,7 +193,7 @@ class BuildWisePDFGenerator:
             
             # Berechne Steuer
             net_amount = fee_data.get('fee_amount', 0)
-            tax_rate = fee_data.get('tax_rate', 19.0)
+            tax_rate = fee_data.get('tax_rate', 8.1)
             tax_amount = net_amount * (tax_rate / 100)
             gross_amount = net_amount + tax_amount
             
@@ -344,7 +344,7 @@ class BuildWisePDFGenerator:
             
             # Berechne Steuer
             net_amount = fee_data.get('fee_amount', 0)
-            tax_rate = fee_data.get('tax_rate', 19.0)
+            tax_rate = fee_data.get('tax_rate', 8.1)
             tax_amount = net_amount * (tax_rate / 100)
             gross_amount = net_amount + tax_amount
             
