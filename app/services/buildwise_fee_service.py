@@ -105,7 +105,10 @@ class BuildWiseFeeService:
         
         # Berechne die Gebühr
         quote_amount = float(quote.total_amount)
-        fee_amount = quote_amount * (fee_percentage / 100.0)
+        fee_amount_raw = quote_amount * (fee_percentage / 100.0)
+        
+        # WICHTIG: Runde auf 2 Dezimalstellen, um Pydantic-Validierungsfehler zu vermeiden
+        fee_amount = round(fee_amount_raw, 2)
         
         # Validierung: Gebühr darf nicht negativ sein
         if fee_amount < 0:

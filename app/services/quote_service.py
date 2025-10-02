@@ -261,22 +261,28 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
         from ..services.buildwise_fee_service import BuildWiseFeeService
         from ..core.config import settings, get_fee_percentage
         
-        print(f"[QuoteService] Erstelle BuildWise Gebuehr fuer akzeptiertes Angebot {quote.id}")
-        print(f"   - Quote ID: {quote.id}")
-        print(f"   - Quote Amount: {quote.total_amount} {quote.currency}")
-        print(f"   - Environment Mode: {getattr(settings, 'environment_mode', 'production')}")
-        print(f"   - Fee Percentage: {get_fee_percentage()}%")
+        print(f"\n{'='*80}")
+        print(f"[QuoteService] ERSTELLE BUILDWISE GEBUEHR FÜR QUOTE {quote.id}")
+        print(f"{'='*80}")
+        print(f"   Quote ID: {quote.id}")
+        print(f"   Quote Amount: {quote.total_amount} {quote.currency}")
+        print(f"   Service Provider ID: {quote.service_provider_id}")
+        print(f"   Project ID: {quote.project_id}")
+        print(f"   Milestone ID: {quote.milestone_id}")
+        print(f"   Environment Mode: {getattr(settings, 'environment_mode', 'production')}")
+        print(f"   Fee Percentage: {get_fee_percentage()}%")
         
         # ✅ FIX: Da create_cost_position_from_quote deaktiviert wurde, verwende Quote-ID direkt
         # Die BuildWise Fee Service kann mit der Quote-ID arbeiten, ohne eine echte CostPosition zu benötigen
         cost_position_id = quote.id
-        print(f"   - Verwende Quote-ID als Cost Position Referenz: {cost_position_id}")
-        print(f"   - Hinweis: create_cost_position_from_quote ist deaktiviert, verwende direkte Quote-Referenz")
+        print(f"   Cost Position ID: {cost_position_id} (verwendet Quote-ID als Referenz)")
         
         # Erstelle BuildWise Gebühr mit Retry-Logik
         max_retries = 3
         for attempt in range(max_retries):
             try:
+                print(f"\n[QuoteService] Versuch {attempt + 1}/{max_retries}...")
+                
                 buildwise_fee = await BuildWiseFeeService.create_fee_from_quote(
                     db=db,
                     quote_id=quote.id,
@@ -284,52 +290,84 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
                     fee_percentage=None  # Verwende automatisch den aktuellen Modus (4.7% in Production, 0% in Beta)
                 )
                 
-                print(f"[QuoteService] BuildWise Gebuehr erfolgreich erstellt (ID: {buildwise_fee.id})")
-                print(f"   - Rechnungsnummer: {buildwise_fee.invoice_number}")
-                print(f"   - Nettobetrag: {buildwise_fee.fee_amount} {buildwise_fee.currency}")
-                print(f"   - Bruttobetrag: {buildwise_fee.gross_amount} {buildwise_fee.currency}")
-                print(f"   - Provisionssatz: {buildwise_fee.fee_percentage}%")
-                print(f"   - Faelligkeitsdatum: {buildwise_fee.due_date}")
+                print(f"\n{'='*80}")
+                print(f"[QuoteService] ERFOLG: BUILDWISE GEBUEHR ERSTELLT!")
+                print(f"{'='*80}")
+                print(f"   Fee ID: {buildwise_fee.id}")
+                print(f"   Rechnungsnummer: {buildwise_fee.invoice_number}")
+                print(f"   Nettobetrag: {buildwise_fee.fee_amount} {buildwise_fee.currency}")
+                print(f"   Bruttobetrag (inkl. MwSt): {buildwise_fee.gross_amount} {buildwise_fee.currency}")
+                print(f"   Provisionssatz: {buildwise_fee.fee_percentage}%")
+                print(f"   Rechnungsdatum: {buildwise_fee.invoice_date}")
+                print(f"   Faelligkeitsdatum: {buildwise_fee.due_date}")
+                print(f"   Status: {buildwise_fee.status}")
+                print(f"{'='*80}\n")
                 
                 buildwise_fee_created = True
                 break  # Erfolgreich erstellt, verlasse Retry-Schleife
                 
             except ValueError as ve:
-                if "bereits" in str(ve).lower():
+                error_msg = str(ve)
+                if "bereits" in error_msg.lower() or "existiert" in error_msg.lower():
                     # Gebühr existiert bereits - das ist OK
-                    print(f"[QuoteService] BuildWise Gebuehr existiert bereits: {ve}")
+                    print(f"[QuoteService] INFO: BuildWise Gebuehr existiert bereits für Quote {quote.id}")
                     buildwise_fee_created = True
                     break
+                elif "Pydantic" in error_msg or "validation" in error_msg.lower():
+                    # Validierungsfehler - dies ist ein Programmierfehler
+                    print(f"[QuoteService] FEHLER: Pydantic-Validierungsfehler bei Gebuehr-Erstellung:")
+                    print(f"   {error_msg}")
+                    print(f"   Dies deutet auf einen Rundungsfehler oder ungueltige Daten hin")
+                    if attempt < max_retries - 1:
+                        print(f"[QuoteService] Versuche erneut...")
+                        continue
+                    else:
+                        print(f"[QuoteService] KRITISCH: Gebuehr konnte nach {max_retries} Versuchen nicht erstellt werden")
+                        raise ve
                 elif attempt < max_retries - 1:
-                    print(f"[QuoteService] Versuch {attempt + 1} fehlgeschlagen: {ve}, versuche erneut...")
-                    # Kein Rollback hier - das verursacht DB-Probleme
+                    print(f"[QuoteService] Versuch {attempt + 1} fehlgeschlagen: {ve}")
+                    print(f"[QuoteService] Versuche erneut...")
                     continue
                 else:
-                    raise ve  # Letzter Versuch fehlgeschlagen
+                    print(f"[QuoteService] FEHLER: Alle {max_retries} Versuche fehlgeschlagen")
+                    raise ve
+                    
             except Exception as e:
+                print(f"[QuoteService] FEHLER bei Versuch {attempt + 1}: {type(e).__name__}: {e}")
                 if attempt < max_retries - 1:
-                    print(f"[QuoteService] Versuch {attempt + 1} fehlgeschlagen: {e}, versuche erneut...")
-                    # Kein Rollback hier - das verursacht DB-Probleme
+                    print(f"[QuoteService] Versuche erneut...")
+                    import traceback
+                    traceback.print_exc()
                     continue
                 else:
-                    raise e  # Letzter Versuch fehlgeschlagen
+                    print(f"[QuoteService] KRITISCH: Alle {max_retries} Versuche fehlgeschlagen")
+                    raise e
         
     except ValueError as ve:
         # ValueError bedeutet, dass die Gebühr bereits existiert oder ein Validierungsfehler vorliegt
-        print(f"[QuoteService] BuildWise Gebuehr konnte nicht erstellt werden: {ve}")
-        # Dies ist nicht kritisch - das Angebot wurde bereits akzeptiert
+        print(f"\n[QuoteService] WARNUNG: BuildWise Gebuehr konnte nicht erstellt werden")
+        print(f"   Fehlertyp: ValueError")
+        print(f"   Fehlermeldung: {ve}")
+        print(f"   Das Angebot wurde dennoch akzeptiert")
+        import traceback
+        traceback.print_exc()
         
     except Exception as e:
-        print(f"[QuoteService] Unerwarteter Fehler beim Erstellen der BuildWise Gebuehr: {e}")
+        print(f"\n[QuoteService] FEHLER: Unerwarteter Fehler beim Erstellen der BuildWise Gebuehr")
+        print(f"   Fehlertyp: {type(e).__name__}")
+        print(f"   Fehlermeldung: {e}")
+        print(f"   Das Angebot wurde dennoch akzeptiert")
         import traceback
         traceback.print_exc()
         # Fehler beim Erstellen der Gebühr sollte nicht die Quote-Akzeptierung blockieren
         
     # Logging für Monitoring
     if buildwise_fee_created:
-        print(f"[QuoteService] BuildWise-Rechnungsstellung erfolgreich abgeschlossen fuer Quote {quote.id}")
+        print(f"\n[QuoteService] ERFOLG: BuildWise-Rechnungsstellung erfolgreich abgeschlossen fuer Quote {quote.id}")
     else:
-        print(f"[QuoteService] BuildWise-Rechnungsstellung fuer Quote {quote.id} nicht erfolgreich - manueller Eingriff erforderlich")
+        print(f"\n[QuoteService] ACHTUNG: BuildWise-Rechnungsstellung fuer Quote {quote.id} fehlgeschlagen")
+        print(f"   Manueller Eingriff erforderlich!")
+        print(f"   Verwenden Sie: python create_buildwise_fee_manually.py")
     
     # Credit-Zuordnung für Bauträger - ERWEITERT FÜR BESICHTIGUNGSSYSTEM
     try:

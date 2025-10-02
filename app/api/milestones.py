@@ -1080,16 +1080,42 @@ async def get_all_milestones_for_user(db: AsyncSession, user_id: int):
 
 async def create_resource_allocations_for_milestone(db: AsyncSession, milestone_id: int, resource_allocations: list):
     """Erstellt ResourceAllocations für ein neues Milestone"""
-    from ..models.resource import ResourceAllocation, AllocationStatus
+    from ..models.resource import ResourceAllocation, AllocationStatus, Resource
+    from ..models.milestone import Milestone
+    from ..models.project import Project
     from datetime import datetime
+    from sqlalchemy import select
+    from ..services.notification_service import NotificationService
     
     try:
         created_allocations = []
         
+        # Lade Milestone für Benachrichtigungs-Details
+        milestone_result = await db.execute(select(Milestone).where(Milestone.id == milestone_id))
+        milestone = milestone_result.scalar_one_or_none()
+        
+        if not milestone:
+            print(f"⚠️ Milestone {milestone_id} nicht gefunden")
+            return []
+        
+        # Lade Projekt für Benachrichtigungs-Details
+        project_result = await db.execute(select(Project).where(Project.id == milestone.project_id))
+        project = project_result.scalar_one_or_none()
+        
         for allocation_data in resource_allocations:
+            resource_id = allocation_data.get('resource_id')
+            
+            # Lade Resource für Service Provider ID
+            resource_result = await db.execute(select(Resource).where(Resource.id == resource_id))
+            resource = resource_result.scalar_one_or_none()
+            
+            if not resource:
+                print(f"⚠️ Resource {resource_id} nicht gefunden")
+                continue
+            
             # Erstelle ResourceAllocation mit milestone_id als trade_id
             allocation = ResourceAllocation(
-                resource_id=allocation_data.get('resource_id'),
+                resource_id=resource_id,
                 trade_id=milestone_id,  # Verwende milestone_id als trade_id
                 allocated_person_count=allocation_data.get('allocated_person_count', 1),
                 allocated_start_date=datetime.fromisoformat(allocation_data.get('allocated_start_date')),
@@ -1101,7 +1127,27 @@ async def create_resource_allocations_for_milestone(db: AsyncSession, milestone_
             )
             
             db.add(allocation)
+            await db.flush()  # Flush um allocation.id zu erhalten
+            
+            # Aktualisiere Resource Status auf "allocated" (Angezogen)
+            from ..models.resource import ResourceStatus
+            resource.status = ResourceStatus.ALLOCATED
+            
             created_allocations.append(allocation)
+            
+            # ✅ Erstelle Benachrichtigung für Dienstleister
+            try:
+                await NotificationService.create_resource_allocated_notification(
+                    db=db,
+                    allocation_id=allocation.id,
+                    service_provider_id=resource.service_provider_id
+                )
+                print(f"✅ Benachrichtigung für Dienstleister {resource.service_provider_id} erstellt (Allocation {allocation.id})")
+            except Exception as notif_error:
+                print(f"⚠️ Fehler beim Erstellen der Benachrichtigung: {notif_error}")
+                import traceback
+                traceback.print_exc()
+                # Fehler wird geloggt, aber Allocation-Erstellung läuft weiter
         
         await db.commit()
         

@@ -213,6 +213,82 @@ async def get_buildwise_fee_statistics(
             "status_breakdown": {}
         }
 
+@router.get("/check-account-status")
+async def check_account_status(
+    db: AsyncSession = Depends(get_db),
+    current_user = Depends(get_current_user)
+):
+    """
+    Prüft ob der aktuelle Benutzer (Dienstleister) überfällige Rechnungen hat.
+    Wenn ja, wird der Account als gesperrt markiert.
+    """
+    from ..models.user import UserRole
+    from datetime import date
+    
+    # Nur für Dienstleister relevant
+    if current_user.user_role != UserRole.DIENSTLEISTER:
+        return {
+            "account_locked": False,
+            "has_overdue_fees": False,
+            "overdue_fees": [],
+            "message": "Nur für Dienstleister relevant"
+        }
+    
+    try:
+        print(f"[API] Prüfe Account-Status für Dienstleister {current_user.id}")
+        
+        # Hole alle Gebühren des Dienstleisters mit Status "overdue" oder "open"
+        fees = await BuildWiseFeeService.get_fees_for_service_provider(
+            db=db,
+            service_provider_id=current_user.id,
+            status=None  # Alle Status
+        )
+        
+        print(f"[API] {len(fees)} Gebühren für Dienstleister {current_user.id} gefunden")
+        
+        # Filtere überfällige Gebühren
+        today = date.today()
+        overdue_fees = []
+        
+        for fee in fees:
+            # Prüfe ob Gebühr überfällig ist
+            if fee.status == 'overdue' or (fee.status == 'open' and fee.due_date and fee.due_date < today):
+                overdue_fees.append({
+                    "id": fee.id,
+                    "invoice_number": fee.invoice_number,
+                    "due_date": fee.due_date.isoformat() if fee.due_date else None,
+                    "fee_amount": float(fee.fee_amount),
+                    "gross_amount": float(fee.gross_amount) if fee.gross_amount else float(fee.fee_amount),
+                    "currency": fee.currency,
+                    "days_overdue": (today - fee.due_date).days if fee.due_date else 0,
+                    "stripe_payment_link_url": fee.stripe_payment_link_url
+                })
+        
+        # Account ist gesperrt wenn überfällige Gebühren existieren
+        account_locked = len(overdue_fees) > 0
+        
+        return {
+            "account_locked": account_locked,
+            "has_overdue_fees": account_locked,
+            "overdue_fees": overdue_fees,
+            "total_overdue_amount": sum(f["gross_amount"] for f in overdue_fees),
+            "message": "Account gesperrt - Bitte bezahlen Sie Ihre überfälligen Rechnungen" if account_locked else "Account aktiv"
+        }
+        
+    except Exception as e:
+        print(f"[ERROR] Fehler bei Account-Status-Prüfung: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        
+        # Robuste Fehlerbehandlung - gib sicheren Fallback zurück statt 500 Fehler
+        return {
+            "account_locked": False,
+            "has_overdue_fees": False,
+            "overdue_fees": [],
+            "total_overdue_amount": 0.0,
+            "message": f"Account-Status konnte nicht geprüft werden: {str(e)}"
+        }
+
 @router.get("/{fee_id}", response_model=BuildWiseFee)
 async def get_buildwise_fee(
     fee_id: int,
@@ -378,82 +454,6 @@ async def check_overdue_fees(
     """
     result = await BuildWiseFeeService.check_overdue_fees(db=db)
     return result
-
-@router.get("/check-account-status")
-async def check_account_status(
-    db: AsyncSession = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
-    """
-    Prüft ob der aktuelle Benutzer (Dienstleister) überfällige Rechnungen hat.
-    Wenn ja, wird der Account als gesperrt markiert.
-    """
-    from ..models.user import UserRole
-    from datetime import date
-    
-    # Nur für Dienstleister relevant
-    if current_user.user_role != UserRole.DIENSTLEISTER:
-        return {
-            "account_locked": False,
-            "has_overdue_fees": False,
-            "overdue_fees": [],
-            "message": "Nur für Dienstleister relevant"
-        }
-    
-    try:
-        print(f"[API] Prüfe Account-Status für Dienstleister {current_user.id}")
-        
-        # Hole alle Gebühren des Dienstleisters mit Status "overdue" oder "open"
-        fees = await BuildWiseFeeService.get_fees_for_service_provider(
-            db=db,
-            service_provider_id=current_user.id,
-            status=None  # Alle Status
-        )
-        
-        print(f"[API] {len(fees)} Gebühren für Dienstleister {current_user.id} gefunden")
-        
-        # Filtere überfällige Gebühren
-        today = date.today()
-        overdue_fees = []
-        
-        for fee in fees:
-            # Prüfe ob Gebühr überfällig ist
-            if fee.status == 'overdue' or (fee.status == 'open' and fee.due_date and fee.due_date < today):
-                overdue_fees.append({
-                    "id": fee.id,
-                    "invoice_number": fee.invoice_number,
-                    "due_date": fee.due_date.isoformat() if fee.due_date else None,
-                    "fee_amount": float(fee.fee_amount),
-                    "gross_amount": float(fee.gross_amount) if fee.gross_amount else float(fee.fee_amount),
-                    "currency": fee.currency,
-                    "days_overdue": (today - fee.due_date).days if fee.due_date else 0,
-                    "stripe_payment_link_url": fee.stripe_payment_link_url
-                })
-        
-        # Account ist gesperrt wenn überfällige Gebühren existieren
-        account_locked = len(overdue_fees) > 0
-        
-        return {
-            "account_locked": account_locked,
-            "has_overdue_fees": account_locked,
-            "overdue_fees": overdue_fees,
-            "total_overdue_amount": sum(f["gross_amount"] for f in overdue_fees),
-            "message": "Account gesperrt - Bitte bezahlen Sie Ihre überfälligen Rechnungen" if account_locked else "Account aktiv"
-        }
-        
-    except Exception as e:
-        print(f"[ERROR] Fehler bei Account-Status-Prüfung: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        
-        # Robuste Fehlerbehandlung - gib sicheren Fallback zurück statt 500 Fehler
-        return {
-            "account_locked": False,
-            "has_overdue_fees": False,
-            "overdue_fees": [],
-            "total_overdue_amount": 0.0,
-            "message": f"Account-Status konnte nicht geprüft werden: {str(e)}"
-        }
 
 @router.get("/monthly/{month}/{year}", response_model=List[BuildWiseFee])
 async def get_monthly_fees(
