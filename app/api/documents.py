@@ -1369,6 +1369,7 @@ async def get_service_provider_category_statistics(
 
 @router.get("/bautraeger/overview")
 async def get_bautraeger_documents_overview(
+    project_id: int = Query(..., description="ID des Projekts für das die Dokumente geladen werden sollen"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
@@ -1407,20 +1408,23 @@ async def get_bautraeger_documents_overview(
                 detail="Nur Bauträger können diese Übersicht einsehen"
             )
         
-        # Lade alle Projekte des Bauträgers
-        projects_query = text("""
+        # Prüfe ob das Projekt dem Bauträger gehört
+        project_query = text("""
             SELECT id, name 
             FROM projects 
-            WHERE owner_id = :user_id
+            WHERE id = :project_id AND owner_id = :user_id
         """)
-        projects_result = await db.execute(projects_query, {"user_id": current_user.id})
-        projects = projects_result.fetchall()
+        project_result = await db.execute(project_query, {"project_id": project_id, "user_id": current_user.id})
+        project = project_result.fetchone()
         
-        if not projects:
-            return {"documents": [], "total_count": 0}
+        if not project:
+            raise HTTPException(
+                status_code=404,
+                detail="Projekt nicht gefunden oder Sie haben keine Berechtigung"
+            )
         
-        project_ids = [p.id for p in projects]
-        project_map = {p.id: p.name for p in projects}
+        project_ids = [project.id]
+        project_map = {project.id: project.name}
         
         # Lade alle Milestones (Ausschreibungen) für diese Projekte
         # Erstelle Platzhalter für IN-Clause
@@ -1540,7 +1544,8 @@ async def get_bautraeger_documents_overview(
         return {
             "documents": formatted_documents,
             "total_count": len(formatted_documents),
-            "projects_count": len(projects),
+            "project_name": project.name,
+            "project_id": project.id,
             "milestones_count": len(milestones)
         }
         
