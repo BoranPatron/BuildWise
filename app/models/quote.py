@@ -25,7 +25,7 @@ class Quote(Base):
     
     title = Column(String, nullable=False)
     description = Column(Text, nullable=True)
-    status = Column(Enum(QuoteStatus), nullable=False, default=QuoteStatus.DRAFT)
+    status = Column(Enum(QuoteStatus, values_callable=lambda obj: [e.value for e in obj]), nullable=False, default=QuoteStatus.DRAFT)
     
     # Angebotsdetails
     total_amount = Column(Float, nullable=False)
@@ -91,6 +91,12 @@ class Quote(Base):
     
     # Ablehnungsgrund
     rejection_reason = Column(Text, nullable=True)  # Grund für Ablehnung
+    
+    # Revisions-Felder (für Angebotsüberarbeitung nach Besichtigung)
+    revised_after_inspection = Column(Boolean, default=False)  # Wurde nach Besichtigung überarbeitet
+    revision_count = Column(Integer, default=0)  # Anzahl der Überarbeitungen
+    last_revised_at = Column(DateTime(timezone=True), nullable=True)  # Zeitpunkt der letzten Überarbeitung
+    is_revised_quote = Column(Boolean, default=False)  # Kennzeichnet ob Ersteingereicht oder überarbeitet
     
     # Timestamps
     created_at = Column(DateTime(timezone=True), server_default=func.now())

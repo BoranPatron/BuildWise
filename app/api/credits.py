@@ -10,6 +10,7 @@ from ..schemas.user_credits import (
     CreditBalanceResponse, CreditSystemStatus, CreditAdjustmentRequest,
     CreditEventRead, CreditPurchaseRead, CreditPackageInfo
 )
+from ..config.credit_config import credit_config
 from ..api.deps import get_current_user
 from ..models.user import User, UserRole
 from ..models.credit_event import CreditEventType
@@ -28,13 +29,17 @@ async def get_credit_balance(
     """Holt den aktuellen Credit-Status des Benutzers"""
     
     try:
+        logger.info(f"Abrufen der Credit-Balance für User {current_user.id}")
         balance = await CreditService.get_credit_balance(db, current_user.id)
+        logger.info(f"Credit-Balance erfolgreich abgerufen für User {current_user.id}: {balance.credits} Credits")
         return balance
     except Exception as e:
         logger.error(f"Fehler beim Abrufen der Credit-Balance für User {current_user.id}: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Fehler beim Abrufen der Credit-Balance"
+            detail=f"Fehler beim Abrufen der Credit-Balance: {str(e)}"
         )
 
 
@@ -234,4 +239,221 @@ async def admin_process_daily_deductions(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Fehler bei täglichen Abzügen"
+        )
+
+
+# =============================================================================
+# KONFIGURATIONS-MANAGEMENT ENDPUNKTE
+# =============================================================================
+
+@router.get("/admin/config")
+async def get_credit_config(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Admin: Holt die aktuelle Credit-Konfiguration"""
+    
+    try:
+        # Prüfe Admin-Berechtigung
+        if current_user.user_role != UserRole.ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Nur Admins können die Credit-Konfiguration einsehen"
+            )
+        
+        config = CreditService.get_credit_config()
+        return config
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Fehler beim Abrufen der Credit-Konfiguration: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Fehler beim Abrufen der Credit-Konfiguration"
+        )
+
+
+@router.post("/admin/config/update")
+async def update_credit_config(
+    event_type: CreditEventType,
+    new_amount: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Admin: Aktualisiert die Credit-Konfiguration für einen Event-Typ"""
+    
+    try:
+        # Prüfe Admin-Berechtigung
+        if current_user.user_role != UserRole.ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Nur Admins können die Credit-Konfiguration ändern"
+            )
+        
+        # Validiere Eingabe
+        if new_amount < 0:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Credit-Beträge müssen nicht-negativ sein"
+            )
+        
+        success = await CreditService.update_credit_config(
+            event_type=event_type,
+            new_amount=new_amount,
+            admin_user_id=current_user.id
+        )
+        
+        if success:
+            return CreditSystemStatus(
+                status="success",
+                message=f"Credit-Konfiguration für {event_type.value} aktualisiert: {new_amount} Credits"
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Credit-Konfiguration konnte nicht aktualisiert werden"
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Fehler bei Credit-Konfiguration Update: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Fehler bei Credit-Konfiguration Update"
+        )
+
+
+@router.post("/admin/config/validate")
+async def validate_credit_config(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Admin: Validiert die aktuelle Credit-Konfiguration"""
+    
+    try:
+        # Prüfe Admin-Berechtigung
+        if current_user.user_role != UserRole.ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Nur Admins können die Credit-Konfiguration validieren"
+            )
+        
+        is_valid = CreditService.validate_credit_config()
+        
+        if is_valid:
+            return CreditSystemStatus(
+                status="success",
+                message="Credit-Konfiguration ist gültig"
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Credit-Konfiguration ist ungültig - siehe Logs für Details"
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Fehler bei Credit-Konfiguration Validierung: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Fehler bei Credit-Konfiguration Validierung"
+        )
+
+
+@router.post("/admin/config/reset")
+async def reset_credit_config(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Admin: Setzt die Credit-Konfiguration auf Standardwerte zurück"""
+    
+    try:
+        # Prüfe Admin-Berechtigung
+        if current_user.user_role != UserRole.ADMIN:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Nur Admins können die Credit-Konfiguration zurücksetzen"
+            )
+        
+        # Setze alle Werte auf Standard zurück
+        default_rewards = {
+            CreditEventType.QUOTE_ACCEPTED: 5,
+            CreditEventType.INSPECTION_QUOTE_ACCEPTED: 15,
+            CreditEventType.INVOICE_RECEIVED: 3,
+            CreditEventType.PROJECT_COMPLETED: 10,
+            CreditEventType.PROVIDER_REVIEW: 2,
+            CreditEventType.MILESTONE_COMPLETED: 3,
+            CreditEventType.DOCUMENT_UPLOADED: 1,
+            CreditEventType.EXPENSE_ADDED: 1,
+            CreditEventType.REGISTRATION_BONUS: 90,
+            CreditEventType.REFERRAL_BONUS: 20,
+            CreditEventType.LOYALTY_BONUS: 10,
+        }
+        
+        for event_type, amount in default_rewards.items():
+            await CreditService.update_credit_config(
+                event_type=event_type,
+                new_amount=amount,
+                admin_user_id=current_user.id
+            )
+        
+        return CreditSystemStatus(
+            status="success",
+            message="Credit-Konfiguration wurde auf Standardwerte zurückgesetzt"
+        )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Fehler beim Zurücksetzen der Credit-Konfiguration: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Fehler beim Zurücksetzen der Credit-Konfiguration"
+        )
+
+
+@router.post("/daily-login-deduction")
+async def process_daily_login_deduction(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Verarbeitet täglichen Credit-Abzug beim Login (nur einmal pro Tag)"""
+    
+    try:
+        logger.info(f"Verarbeitung des täglichen Login-Credit-Abzugs für User {current_user.id}")
+        
+        # Prüfe ob User Bauträger ist
+        if current_user.user_role != UserRole.BAUTRAEGER:
+            logger.info(f"User {current_user.id} ist kein Bauträger, kein Credit-Abzug nötig")
+            return CreditSystemStatus(
+                status="skipped",
+                message="Nur Bauträger haben tägliche Credit-Abzüge"
+            )
+        
+        # Verarbeite täglichen Credit-Abzug
+        success = await CreditService.process_daily_credit_deduction(db, current_user.id)
+        
+        if success:
+            logger.info(f"Täglicher Credit-Abzug erfolgreich verarbeitet für User {current_user.id}")
+            return CreditSystemStatus(
+                status="success",
+                message="Täglicher Credit-Abzug verarbeitet"
+            )
+        else:
+            logger.info(f"Kein Credit-Abzug nötig für User {current_user.id}")
+            return CreditSystemStatus(
+                status="skipped",
+                message="Kein Credit-Abzug nötig (nicht im Pro-Status oder bereits heute abgezogen)"
+            )
+            
+    except Exception as e:
+        logger.error(f"Fehler bei täglichem Login-Credit-Abzug für User {current_user.id}: {e}")
+        import traceback
+        logger.error(f"Traceback: {traceback.format_exc()}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler bei täglichem Credit-Abzug: {str(e)}"
         ) 

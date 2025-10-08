@@ -26,6 +26,7 @@ class UserCredits(Base):
     pro_start_date = Column(DateTime(timezone=True), server_default=func.now())
     last_pro_day = Column(DateTime(timezone=True), nullable=True)  # Letzter Tag im Pro-Status
     total_pro_days = Column(Integer, default=0)  # Gesamte Pro-Tage
+    last_daily_deduction = Column(DateTime(timezone=True), nullable=True)  # Letzter täglicher Credit-Abzug
     
     # Automatische Downgrade-Einstellungen
     auto_downgrade_enabled = Column(Boolean, default=True)
@@ -73,12 +74,25 @@ class UserCredits(Base):
         """Upgraded den Benutzer auf Pro-Status"""
         if self.credits > 0:
             self.plan_status = PlanStatus.PRO
-            self.pro_start_date = func.now()
+            from datetime import datetime
+            self.pro_start_date = datetime.now()
             return True
         return False
     
     def downgrade_to_basic(self) -> bool:
         """Downgraded den Benutzer auf Basic-Status"""
         self.plan_status = PlanStatus.BASIC
-        self.last_pro_day = func.now()
-        return True 
+        from datetime import datetime
+        self.last_pro_day = datetime.now()
+        return True
+    
+    def has_daily_deduction_today(self) -> bool:
+        """Prüft ob heute bereits ein täglicher Credit-Abzug stattgefunden hat"""
+        if not self.last_daily_deduction:
+            return False
+        
+        from datetime import datetime, timezone
+        today = datetime.now(timezone.utc).date()
+        last_deduction_date = self.last_daily_deduction.date()
+        
+        return today == last_deduction_date 

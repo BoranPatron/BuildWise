@@ -37,18 +37,18 @@ async def debug_progress_update(
 ):
     """Debug Endpoint um zu sehen was ankommt"""
     
-    print(f"🎯 [DEBUG] Endpoint erreicht! milestone_id={milestone_id}")
-    print(f"🎯 [DEBUG] current_user={current_user.id}")
+    print(f"[INFO] [DEBUG] Endpoint erreicht! milestone_id={milestone_id}")
+    print(f"[INFO] [DEBUG] current_user={current_user.id}")
     
     try:
-        print(f"🔍 [DEBUG] Received Data: {data}")
+        print(f"[DEBUG] [DEBUG] Received Data: {data}")
         parsed_data = data
         
         # Versuche Pydantic-Validierung
         from ..schemas.milestone_progress import MilestoneProgressCreate
         try:
             validated_data = MilestoneProgressCreate(**parsed_data)
-            print(f"🔍 [DEBUG] Pydantic OK: {validated_data.model_dump()}")
+            print(f"[DEBUG] [DEBUG] Pydantic OK: {validated_data.model_dump()}")
             
             # Versuche Datenbank-Insert
             from ..models.milestone_progress import MilestoneProgress
@@ -66,16 +66,16 @@ async def debug_progress_update(
             db.add(progress_update)
             await db.commit()
             await db.refresh(progress_update)
-            print(f"🔍 [DEBUG] DB Insert OK: ID {progress_update.id}")
+            print(f"[DEBUG] [DEBUG] DB Insert OK: ID {progress_update.id}")
             
             return {"status": "ok", "data": validated_data.model_dump(), "id": progress_update.id}
             
         except Exception as pydantic_error:
-            print(f"❌ [DEBUG] Pydantic Fehler: {pydantic_error}")
+            print(f"[ERROR] [DEBUG] Pydantic Fehler: {pydantic_error}")
             return {"status": "pydantic_error", "error": str(pydantic_error)}
         
     except Exception as e:
-        print(f"❌ [DEBUG] Allgemeiner Fehler: {e}")
+        print(f"[ERROR] [DEBUG] Allgemeiner Fehler: {e}")
         import traceback
         traceback.print_exc()
         return {"status": "error", "error": str(e)}
@@ -90,9 +90,9 @@ async def create_progress_update(
 ) -> MilestoneProgressResponse:
     """Erstellt ein neues Progress Update"""
     
-    print(f"🔍 [PROGRESS] Milestone ID: {milestone_id}")
-    print(f"🔍 [PROGRESS] User ID: {current_user.id}")
-    print(f"🔍 [PROGRESS] Raw Data: {data}")
+    print(f"[DEBUG] [PROGRESS] Milestone ID: {milestone_id}")
+    print(f"[DEBUG] [PROGRESS] User ID: {current_user.id}")
+    print(f"[DEBUG] [PROGRESS] Raw Data: {data}")
     
     try:
         # Prüfe ob User ein Dienstleister ist (sowohl user_type als auch user_role)
@@ -102,7 +102,7 @@ async def create_progress_update(
             (hasattr(current_user, 'user_role') and current_user.user_role == UserRole.DIENSTLEISTER)
         )
         is_bautraeger = not is_service_provider
-        print(f"🔍 [PROGRESS] Is Bauträger: {is_bautraeger}")
+        print(f"[DEBUG] [PROGRESS] Is Bauträger: {is_bautraeger}")
         
         # Prüfe Zugriff auf Kommunikation
         has_access = await milestone_progress_service.check_communication_access(
@@ -113,7 +113,7 @@ async def create_progress_update(
         )
         
         if not has_access:
-            print(f"❌ [PROGRESS] Zugriff verweigert für User {current_user.id} auf Milestone {milestone_id}")
+            print(f"[ERROR] [PROGRESS] Zugriff verweigert für User {current_user.id} auf Milestone {milestone_id}")
             raise HTTPException(
                 status_code=403,
                 detail="Zugriff auf diese Kommunikation nicht mehr möglich. Die Ausschreibung wurde bereits vergeben."
@@ -121,7 +121,7 @@ async def create_progress_update(
         
         # Validiere und konvertiere die Daten zu MilestoneProgressCreate
         validated_data = MilestoneProgressCreate(**data)
-        print(f"🔍 [PROGRESS] Validated Data: {validated_data.model_dump()}")
+        print(f"[DEBUG] [PROGRESS] Validated Data: {validated_data.model_dump()}")
         
         progress_update = await milestone_progress_service.create_progress_update(
             db=db,
@@ -130,13 +130,13 @@ async def create_progress_update(
             data=validated_data
         )
     except ValidationError as e:
-        print(f"❌ [PROGRESS] Validation Error: {e}")
+        print(f"[ERROR] [PROGRESS] Validation Error: {e}")
         raise HTTPException(
             status_code=400,
             detail=f"Ungültige Daten: {e}"
         )
     except Exception as e:
-        print(f"❌ [PROGRESS] Unexpected Error: {e}")
+        print(f"[ERROR] [PROGRESS] Unexpected Error: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(
@@ -158,9 +158,9 @@ async def get_progress_updates(
 ) -> List[MilestoneProgressResponse]:
     """Holt alle Progress Updates für ein Milestone mit Zugriffskontrolle"""
     
-    print(f"🔍 [GET_PROGRESS] Milestone ID: {milestone_id}")
-    print(f"🔍 [GET_PROGRESS] User ID: {current_user.id}")
-    print(f"🔍 [GET_PROGRESS] User Type: {current_user.user_type}")
+    print(f"[DEBUG] [GET_PROGRESS] Milestone ID: {milestone_id}")
+    print(f"[DEBUG] [GET_PROGRESS] User ID: {current_user.id}")
+    print(f"[DEBUG] [GET_PROGRESS] User Type: {current_user.user_type}")
     
     # Prüfe ob User ein Dienstleister ist (sowohl user_type als auch user_role)
     from ..models.user import UserRole
@@ -169,16 +169,16 @@ async def get_progress_updates(
         (hasattr(current_user, 'user_role') and current_user.user_role == UserRole.DIENSTLEISTER)
     )
     is_bautraeger = not is_service_provider
-    print(f"🔍 [GET_PROGRESS] Is Bauträger: {is_bautraeger}")
+    print(f"[DEBUG] [GET_PROGRESS] Is Bauträger: {is_bautraeger}")
     
     # Debug: Prüfe ob Milestone existiert
     from ..models import Milestone
     milestone_result = await db.execute(select(Milestone).where(Milestone.id == milestone_id))
     milestone = milestone_result.scalar_one_or_none()
     if milestone:
-        print(f"🔍 [GET_PROGRESS] Milestone gefunden: ID={milestone.id}, Title='{milestone.title}', Project={milestone.project_id}")
+        print(f"[DEBUG] [GET_PROGRESS] Milestone gefunden: ID={milestone.id}, Title='{milestone.title}', Project={milestone.project_id}")
     else:
-        print(f"❌ [GET_PROGRESS] Milestone mit ID {milestone_id} nicht gefunden!")
+        print(f"[ERROR] [GET_PROGRESS] Milestone mit ID {milestone_id} nicht gefunden!")
     
     # Prüfe Zugriff auf Kommunikation
     has_access = await milestone_progress_service.check_communication_access(
@@ -201,7 +201,7 @@ async def get_progress_updates(
         is_bautraeger=is_bautraeger
     )
     
-    print(f"🔍 [GET_PROGRESS] Found {len(updates)} updates")
+    print(f"[DEBUG] [GET_PROGRESS] Found {len(updates)} updates")
     
     return updates
 
@@ -239,10 +239,10 @@ async def upload_attachment(
 ) -> MilestoneProgressResponse:
     """Lädt einen Anhang zu einem Progress Update hoch"""
     
-    print(f"🔍 [ATTACHMENT] Milestone ID: {milestone_id}")
-    print(f"🔍 [ATTACHMENT] Progress ID: {progress_id}")
-    print(f"🔍 [ATTACHMENT] User ID: {current_user.id}")
-    print(f"🔍 [ATTACHMENT] File: {file.filename}, Type: {file.content_type}")
+    print(f"[DEBUG] [ATTACHMENT] Milestone ID: {milestone_id}")
+    print(f"[DEBUG] [ATTACHMENT] Progress ID: {progress_id}")
+    print(f"[DEBUG] [ATTACHMENT] User ID: {current_user.id}")
+    print(f"[DEBUG] [ATTACHMENT] File: {file.filename}, Type: {file.content_type}")
     
     # Validiere Dateityp
     allowed_types = ['image/jpeg', 'image/png', 'image/jpg', 'application/pdf']

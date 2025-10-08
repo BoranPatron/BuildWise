@@ -89,7 +89,7 @@ class OAuthService:
             "redirect_uri": settings.google_redirect_uri
         }
         
-        print(f"🔍 Google OAuth Debug:")
+        print(f"[DEBUG] Google OAuth Debug:")
         print(f"  - Client ID: {settings.google_client_id}")
         print(f"  - Redirect URI: {settings.google_redirect_uri}")
         print(f"  - Code length: {len(code)}")
@@ -107,7 +107,7 @@ class OAuthService:
                 else:
                     try:
                         error_data = await response.json()
-                        print(f"❌ Google token exchange failed: {error_data}")
+                        print(f"[ERROR] Google token exchange failed: {error_data}")
                         
                         # Spezifische Fehlerbehandlung
                         error_type = error_data.get('error')
@@ -128,7 +128,7 @@ class OAuthService:
                             raise ValueError(f"Google OAuth Fehler: {error_data.get('error_description', 'Unbekannter Fehler')}")
                         
                     except Exception as e:
-                        print(f"❌ Failed to parse error response: {e}")
+                        print(f"[ERROR] Failed to parse error response: {e}")
                         print(f"  - Raw response: {response_text}")
                         raise e
     
@@ -137,7 +137,7 @@ class OAuthService:
         """Tauscht Microsoft Authorization Code gegen Token"""
         
         if not settings.microsoft_client_id or not settings.microsoft_client_secret:
-            print(f"❌ Microsoft OAuth nicht konfiguriert:")
+            print(f"[ERROR] Microsoft OAuth nicht konfiguriert:")
             print(f"  - Client ID: {settings.microsoft_client_id}")
             print(f"  - Client Secret: {'gesetzt' if settings.microsoft_client_secret else 'nicht gesetzt'}")
             raise ValueError("Microsoft OAuth ist nicht konfiguriert. Bitte setzen Sie microsoft_client_id und microsoft_client_secret in der Konfiguration.")
@@ -151,7 +151,7 @@ class OAuthService:
             "redirect_uri": settings.microsoft_redirect_uri
         }
         
-        print(f"🔍 Microsoft OAuth Debug:")
+        print(f"[DEBUG] Microsoft OAuth Debug:")
         print(f"  - Client ID: {settings.microsoft_client_id}")
         print(f"  - Redirect URI: {settings.microsoft_redirect_uri}")
         print(f"  - Code length: {len(code)}")
@@ -171,7 +171,7 @@ class OAuthService:
                     else:
                         try:
                             error_data = await response.json()
-                            print(f"❌ Microsoft token exchange failed: {error_data}")
+                            print(f"[ERROR] Microsoft token exchange failed: {error_data}")
                             
                             # Spezifische Fehlerbehandlung
                             error_type = error_data.get('error')
@@ -192,14 +192,14 @@ class OAuthService:
                                 raise ValueError(f"Microsoft OAuth Fehler: {error_data.get('error_description', 'Unbekannter Fehler')}")
                             
                         except Exception as e:
-                            print(f"❌ Failed to parse error response: {e}")
+                            print(f"[ERROR] Failed to parse error response: {e}")
                             print(f"  - Raw response: {response_text}")
                             raise e
         except aiohttp.ClientError as e:
-            print(f"❌ Network error during Microsoft token exchange: {e}")
+            print(f"[ERROR] Network error during Microsoft token exchange: {e}")
             raise ValueError(f"Netzwerkfehler beim Microsoft OAuth: {e}")
         except Exception as e:
-            print(f"❌ Unexpected error during Microsoft token exchange: {e}")
+            print(f"[ERROR] Unexpected error during Microsoft token exchange: {e}")
             raise e
     
     @staticmethod
@@ -224,7 +224,7 @@ class OAuthService:
         userinfo_url = "https://graph.microsoft.com/v1.0/me"
         headers = {"Authorization": f"Bearer {access_token}"}
         
-        print(f"🔍 Microsoft User Info Debug:")
+        print(f"[DEBUG] Microsoft User Info Debug:")
         print(f"  - URL: {userinfo_url}")
         print(f"  - Access Token: {access_token[:20]}...")
         
@@ -239,7 +239,7 @@ class OAuthService:
                     print(f"  - User info erfolgreich abgerufen")
                     return user_data
                 else:
-                    print(f"❌ Microsoft userinfo failed: {response.status}")
+                    print(f"[ERROR] Microsoft userinfo failed: {response.status}")
                     print(f"  - Error response: {response_text}")
                     return None
     
@@ -258,7 +258,7 @@ class OAuthService:
             # Fallback: Versuche verschiedene Standard-Felder
             email = user_info.get("email") or user_info.get("mail")
         
-        print(f"🔍 E-Mail-Extraktion für {auth_provider.value}:")
+        print(f"[DEBUG] E-Mail-Extraktion für {auth_provider.value}:")
         print(f"  - Verfügbare Felder: {list(user_info.keys())}")
         print(f"  - Gefundene E-Mail: {email}")
         
@@ -278,7 +278,7 @@ class OAuthService:
         if not email:
             raise ValueError("E-Mail-Adresse konnte nicht aus Social-Login-Daten extrahiert werden")
         
-        print(f"🔍 Suche nach existierendem User mit E-Mail: {email}")
+        print(f"[DEBUG] Suche nach existierendem User mit E-Mail: {email}")
         
         # Retry-Mechanismus für Database Lock Issues
         max_retries = 3
@@ -293,7 +293,7 @@ class OAuthService:
                 existing_user = result.scalar_one_or_none()
                 
                 if existing_user:
-                    print(f"✅ Existierender User gefunden: {existing_user.id}")
+                    print(f"[SUCCESS] Existierender User gefunden: {existing_user.id}")
                     
                     # Aktualisiere Last-Login und Social-Login-Informationen
                     try:
@@ -311,7 +311,7 @@ class OAuthService:
                         
                         await db.commit()
                         await db.refresh(existing_user)
-                        print(f"✅ User {existing_user.id} erfolgreich aktualisiert")
+                        print(f"[SUCCESS] User {existing_user.id} erfolgreich aktualisiert")
                         
                         # Audit-Log für Social-Login (separater Try-Block)
                         try:
@@ -324,23 +324,23 @@ class OAuthService:
                                 legal_basis="Einwilligung"
                             )
                         except Exception as e:
-                            print(f"⚠️ Warnung: Audit-Log konnte nicht erstellt werden: {e}")
+                            print(f"[WARNING] Warnung: Audit-Log konnte nicht erstellt werden: {e}")
                         
                         return existing_user
                         
                     except Exception as e:
                         await db.rollback()
                         if "database is locked" in str(e) and attempt < max_retries - 1:
-                            print(f"⚠️ Database Lock bei User-Update (Versuch {attempt + 1}/{max_retries}): {e}")
+                            print(f"[WARNING] Database Lock bei User-Update (Versuch {attempt + 1}/{max_retries}): {e}")
                             await asyncio.sleep(retry_delay * (attempt + 1))  # Exponential backoff
                             continue
                         else:
-                            print(f"❌ Fehler beim Aktualisieren des existierenden Users: {e}")
+                            print(f"[ERROR] Fehler beim Aktualisieren des existierenden Users: {e}")
                             # Fallback: Gib den User ohne Update zurück
                             return existing_user
                 
                 # Erstelle neuen Benutzer
-                print(f"🔄 Erstelle neuen User für E-Mail: {email}")
+                print(f"[UPDATE] Erstelle neuen User für E-Mail: {email}")
                 new_user = User(
                     email=email,
                     first_name=user_info.get("given_name", user_info.get("givenName", "")),
@@ -382,7 +382,7 @@ class OAuthService:
                     await db.flush()  # Flush vor commit um ID zu generieren
                     await db.commit()
                     await db.refresh(new_user)
-                    print(f"✅ Neuer OAuth-User erfolgreich erstellt: {new_user.id}")
+                    print(f"[SUCCESS] Neuer OAuth-User erfolgreich erstellt: {new_user.id}")
                     
                     # Audit-Log für Benutzerregistrierung (separater Try-Block)
                     try:
@@ -395,27 +395,27 @@ class OAuthService:
                             legal_basis="Einwilligung"
                         )
                     except Exception as e:
-                        print(f"⚠️ Warnung: Audit-Log konnte nicht erstellt werden: {e}")
+                        print(f"[WARNING] Warnung: Audit-Log konnte nicht erstellt werden: {e}")
                     
                     return new_user
                     
                 except Exception as e:
                     await db.rollback()
                     if "database is locked" in str(e) and attempt < max_retries - 1:
-                        print(f"⚠️ Database Lock bei User-Erstellung (Versuch {attempt + 1}/{max_retries}): {e}")
+                        print(f"[WARNING] Database Lock bei User-Erstellung (Versuch {attempt + 1}/{max_retries}): {e}")
                         await asyncio.sleep(retry_delay * (attempt + 1))  # Exponential backoff
                         continue
                     else:
-                        print(f"❌ Fehler beim Erstellen des neuen OAuth-Users: {e}")
+                        print(f"[ERROR] Fehler beim Erstellen des neuen OAuth-Users: {e}")
                         raise ValueError(f"Social-Login fehlgeschlagen: Benutzer konnte nicht erstellt werden")
                         
             except Exception as e:
                 if "database is locked" in str(e) and attempt < max_retries - 1:
-                    print(f"⚠️ Database Lock bei User-Suche (Versuch {attempt + 1}/{max_retries}): {e}")
+                    print(f"[WARNING] Database Lock bei User-Suche (Versuch {attempt + 1}/{max_retries}): {e}")
                     await asyncio.sleep(retry_delay * (attempt + 1))
                     continue
                 else:
-                    print(f"❌ Unerwarteter Fehler bei Social-Login: {e}")
+                    print(f"[ERROR] Unerwarteter Fehler bei Social-Login: {e}")
                     raise ValueError(f"Social-Login fehlgeschlagen: {str(e)}")
         
         # Wenn alle Retries fehlgeschlagen sind

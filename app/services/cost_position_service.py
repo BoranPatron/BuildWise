@@ -116,37 +116,79 @@ async def get_cost_position_by_quote_id(db: AsyncSession, quote_id: int):
 
 
 async def get_cost_positions_for_project(db: AsyncSession, project_id: int) -> List[CostPositionListItem]:
-    """Holt alle Kostenpositionen für ein Projekt über die verknüpften Rechnungen"""
-    result = await db.execute(
-        select(
-            CostPosition.id,
-            CostPosition.title,
-            CostPosition.amount,
-            CostPosition.created_at,
-            Milestone.id.label("milestone_id"),
-            Milestone.title.label("milestone_title"),
-            Invoice.service_provider_id,
-            User.company_name.label("service_provider_name"),
-            CostPosition.contractor_name
+    """Holt alle Kostenpositionen für ein Projekt (inkl. Angebots-Kostenpositionen ohne Rechnungen)"""
+    try:
+        # Lade Kostenpositionen mit Rechnungen
+        result_with_invoices = await db.execute(
+            select(
+                CostPosition.id,
+                CostPosition.title,
+                CostPosition.amount,
+                CostPosition.created_at,
+                CostPosition.category,
+                CostPosition.contractor_name,
+                CostPosition.quote_id,
+                CostPosition.milestone_id,
+                Milestone.id.label("milestone_id"),
+                Milestone.title.label("milestone_title"),
+                Invoice.service_provider_id,
+                User.company_name.label("service_provider_name")
+            )
+            .join(Invoice, CostPosition.invoice_id == Invoice.id)
+            .join(Milestone, Invoice.milestone_id == Milestone.id)
+            .join(User, User.id == Invoice.service_provider_id)
+            .where((Invoice.project_id == project_id) | (CostPosition.project_id == project_id))
+            .order_by(CostPosition.created_at.desc())
         )
-        .join(Invoice, CostPosition.invoice_id == Invoice.id)
-        .join(Milestone, Invoice.milestone_id == Milestone.id)
-        .join(User, User.id == Invoice.service_provider_id)
-        .where((Invoice.project_id == project_id) | (CostPosition.project_id == project_id))
-        .order_by(CostPosition.created_at.desc())
-    )
-    rows = result.all()
-    items: List[CostPositionListItem] = []
-    for row in rows:
-        items.append(CostPositionListItem(
-            id=row.id,
-            title=row.title,
-            amount=float(row.amount or 0),
-            created_at=row.created_at,
-            milestone_id=row.milestone_id,
-            milestone_title=row.milestone_title,
-            service_provider_id=row.service_provider_id,
-            service_provider_name=row.service_provider_name,
-            contractor_name=row.contractor_name
-        ))
-    return items
+        rows_with_invoices = result_with_invoices.all()
+        
+        # Lade Kostenpositionen ohne Rechnungen (direkt verknüpfte Angebots-Kostenpositionen)
+        result_without_invoices = await db.execute(
+            select(
+                CostPosition.id,
+                CostPosition.title,
+                CostPosition.amount,
+                CostPosition.created_at,
+                CostPosition.category,
+                CostPosition.contractor_name,
+                CostPosition.quote_id,
+                CostPosition.milestone_id,
+                Milestone.id.label("milestone_id"),
+                Milestone.title.label("milestone_title"),
+                Quote.service_provider_id,
+                User.company_name.label("service_provider_name")
+            )
+            .join(Milestone, CostPosition.milestone_id == Milestone.id)
+            .join(Quote, CostPosition.quote_id == Quote.id)
+            .join(User, User.id == Quote.service_provider_id)
+            .where(CostPosition.project_id == project_id)
+            .where(CostPosition.invoice_id.is_(None))  # Nur Kostenpositionen ohne Rechnung
+            .order_by(CostPosition.created_at.desc())
+        )
+        rows_without_invoices = result_without_invoices.all()
+        
+        # Kombiniere beide Ergebnisse
+        all_rows = list(rows_with_invoices) + list(rows_without_invoices)
+        
+        items: List[CostPositionListItem] = []
+        for row in all_rows:
+            items.append(CostPositionListItem(
+                id=row.id,
+                title=row.title,
+                amount=float(row.amount or 0),
+                created_at=row.created_at,
+                milestone_id=row.milestone_id,
+                milestone_title=row.milestone_title,
+                service_provider_id=getattr(row, 'service_provider_id', None),
+                service_provider_name=getattr(row, 'service_provider_name', None),
+                contractor_name=row.contractor_name
+            ))
+        
+        # Sortiere nach Erstellungsdatum (neueste zuerst)
+        items.sort(key=lambda x: x.created_at, reverse=True)
+        
+        return items
+    except Exception as e:
+        print(f"[ERROR] Fehler beim Laden der Kostenpositionen für Projekt {project_id}: {e}")
+        # Return empty list instead of raising exception to prevent 500 errors
+        return []

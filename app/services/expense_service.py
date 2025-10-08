@@ -86,12 +86,12 @@ class ExpenseService:
                     related_entity_id=expense.id,
                     ip_address=ip_address
                 )
-                print(f"✅ Credits für Bauträger {user_id} hinzugefügt: Ausgabe hinzugefügt")
+                print(f"[SUCCESS] Credits für Bauträger {user_id} hinzugefügt: Ausgabe hinzugefügt")
             else:
                 print(f"ℹ️  User {user_id} ist kein Bauträger, keine Credits hinzugefügt")
                 
         except Exception as e:
-            print(f"❌ Fehler bei Credit-Zuordnung: {e}")
+            print(f"[ERROR] Fehler bei Credit-Zuordnung: {e}")
             # Fehler bei Credit-Zuordnung sollte nicht die Ausgabe-Erstellung blockieren
         
         return ExpenseRead.model_validate(expense)

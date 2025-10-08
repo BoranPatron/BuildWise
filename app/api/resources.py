@@ -999,25 +999,25 @@ async def create_allocation(
     await db.commit()
     await db.refresh(allocation)
     
-    print(f"✅ Allocation erstellt: ID={allocation.id}, Resource={allocation.resource_id}, Trade={allocation.trade_id}, Status={allocation.allocation_status.value if allocation.allocation_status else 'None'}")
+    print(f"[SUCCESS] Allocation erstellt: ID={allocation.id}, Resource={allocation.resource_id}, Trade={allocation.trade_id}, Status={allocation.allocation_status.value if allocation.allocation_status else 'None'}")
     
     # Benachrichtigung senden wenn Status pre_selected ist
     from ..services.notification_service import NotificationService
     
     try:
         if allocation.allocation_status == AllocationStatus.PRE_SELECTED:
-            print(f"🔔 Erstelle Benachrichtigung für Allocation {allocation.id}, Service Provider {resource.service_provider_id}")
+            print(f"[INFO] Erstelle Benachrichtigung für Allocation {allocation.id}, Service Provider {resource.service_provider_id}")
             # Ressource wurde einer Ausschreibung zugeordnet
             await NotificationService.create_resource_allocated_notification(
                 db=db,
                 allocation_id=allocation.id,
                 service_provider_id=resource.service_provider_id
             )
-            print(f"✅ Benachrichtigung erfolgreich erstellt für Service Provider {resource.service_provider_id}")
+            print(f"[SUCCESS] Benachrichtigung erfolgreich erstellt für Service Provider {resource.service_provider_id}")
     except Exception as e:
         import traceback
-        print(f"❌ Fehler beim Erstellen der Benachrichtigung: {e}")
-        print(f"Traceback: {traceback.format_exc()}")
+        print(f"[ERROR] Fehler beim Erstellen der Benachrichtigung: {e}")
+        print(f"[ERROR] Traceback details omitted due to encoding issues")
         # Fehler nicht weiterwerfen, da die Hauptfunktion erfolgreich war
     
     return allocation
@@ -1046,7 +1046,7 @@ async def bulk_create_allocations(
             resource = resource_result.scalar_one_or_none()
             
             if not resource:
-                print(f"⚠️ Ressource {allocation_data.resource_id} nicht gefunden - überspringe")
+                print(f"[WARNING] Ressource {allocation_data.resource_id} nicht gefunden - überspringe")
                 continue
                 
             resource_map[allocation_data.resource_id] = resource
@@ -1066,7 +1066,7 @@ async def bulk_create_allocations(
     for allocation, resource in created_allocations:
         await db.refresh(allocation)
     
-    print(f"✅ Bulk: {len(created_allocations)} Allocations erstellt")
+    print(f"[SUCCESS] Bulk: {len(created_allocations)} Allocations erstellt")
     
     # Benachrichtigungen senden für alle erstellten Allocations
     from ..services.notification_service import NotificationService
@@ -1074,17 +1074,17 @@ async def bulk_create_allocations(
     for allocation, resource in created_allocations:
         try:
             if allocation.allocation_status == AllocationStatus.PRE_SELECTED:
-                print(f"🔔 Bulk: Erstelle Benachrichtigung für Allocation {allocation.id}, Service Provider {resource.service_provider_id}")
+                print(f"[INFO] Bulk: Erstelle Benachrichtigung für Allocation {allocation.id}, Service Provider {resource.service_provider_id}")
                 await NotificationService.create_resource_allocated_notification(
                     db=db,
                     allocation_id=allocation.id,
                     service_provider_id=resource.service_provider_id
                 )
-                print(f"✅ Bulk: Benachrichtigung erfolgreich erstellt für Service Provider {resource.service_provider_id}")
+                print(f"[SUCCESS] Bulk: Benachrichtigung erfolgreich erstellt für Service Provider {resource.service_provider_id}")
         except Exception as e:
             import traceback
-            print(f"❌ Bulk: Fehler beim Erstellen der Benachrichtigung für Allocation {allocation.id}: {e}")
-            print(f"Traceback: {traceback.format_exc()}")
+            print(f"[ERROR] Bulk: Fehler beim Erstellen der Benachrichtigung für Allocation {allocation.id}: {e}")
+            print(f"[ERROR] Traceback details omitted due to encoding issues")
     
     # Return nur die Allocations (ohne Resource-Tupel)
     return [alloc for alloc, _ in created_allocations]
@@ -1300,7 +1300,7 @@ async def update_allocation_status(
                 deadline=deadline_dt
             )
     except Exception as e:
-        print(f"⚠️ Fehler beim Erstellen der Benachrichtigung: {e}")
+        print(f"[WARNING] Fehler beim Erstellen der Benachrichtigung: {e}")
         # Fehler nicht weiterwerfen, da die Hauptfunktion erfolgreich war
     
     return allocation
@@ -1592,7 +1592,7 @@ async def reject_allocation(
         
     except Exception as e:
         await db.rollback()
-        print(f"❌ Fehler beim Ablehnen der Zuordnung: {e}")
+        print(f"[ERROR] Fehler beim Ablehnen der Zuordnung: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Fehler beim Ablehnen: {str(e)}"

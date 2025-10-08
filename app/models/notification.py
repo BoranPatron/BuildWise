@@ -9,10 +9,12 @@ class NotificationType(enum.Enum):
     QUOTE_SUBMITTED = "quote_submitted"  # Neues Angebot eingereicht
     QUOTE_ACCEPTED = "quote_accepted"    # Angebot angenommen
     QUOTE_REJECTED = "quote_rejected"    # Angebot abgelehnt
+    QUOTE_REVISED = "quote_revised"      # Angebot überarbeitet nach Besichtigung
     APPOINTMENT_REQUEST = "appointment_request"  # Terminanfrage
     APPOINTMENT_CONFIRMED = "appointment_confirmed"  # Termin bestätigt
     MILESTONE_COMPLETED = "milestone_completed"  # Meilenstein abgeschlossen
     DEFECTS_RESOLVED = "defects_resolved"  # Mängelbehebung gemeldet
+    ACCEPTANCE_WITH_DEFECTS = "acceptance_with_defects"  # Abnahme unter Vorbehalt
     INVOICE_SUBMITTED = "invoice_submitted"  # Rechnung eingereicht
     PAYMENT_RECEIVED = "payment_received"  # Zahlung erhalten
     DOCUMENT_UPLOADED = "document_uploaded"  # Dokument hochgeladen

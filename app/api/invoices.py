@@ -65,7 +65,7 @@ async def get_my_invoices_simple(
 ):
     """Lade alle Rechnungen des aktuellen Dienstleisters (vereinfacht)"""
     try:
-        print(f"🔍 Lade Rechnungen für User: {current_user.id} (Type: {current_user.user_type}, Role: {current_user.user_role})")
+        print(f"[DEBUG] Lade Rechnungen für User: {current_user.id} (Type: {current_user.user_type}, Role: {current_user.user_role})")
         
         # Prüfe ob User ein Dienstleister ist
         is_service_provider = (
@@ -76,7 +76,7 @@ async def get_my_invoices_simple(
         )
         
         if not is_service_provider:
-            print(f"❌ Zugriff verweigert - User Type: {current_user.user_type}, User Role: {current_user.user_role}")
+            print(f"[ERROR] Zugriff verweigert - User Type: {current_user.user_type}, User Role: {current_user.user_role}")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Nur Dienstleister können ihre Rechnungen einsehen"
@@ -92,7 +92,7 @@ async def get_my_invoices_simple(
         result = await db.execute(stmt)
         invoices = result.scalars().all()
         
-        print(f"✅ {len(invoices)} Rechnungen gefunden für Dienstleister {current_user.id}")
+        print(f"[SUCCESS] {len(invoices)} Rechnungen gefunden für Dienstleister {current_user.id}")
         
         invoice_list = []
         for invoice in invoices:
@@ -116,7 +116,7 @@ async def get_my_invoices_simple(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Fehler beim Laden der Rechnungen: {e}")
+        print(f"[ERROR] Fehler beim Laden der Rechnungen: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Fehler beim Laden der Rechnungen: {str(e)}"
@@ -140,7 +140,7 @@ async def create_manual_invoice(
     )
     
     if not is_service_provider:
-        print(f"❌ Zugriff verweigert - User Type: {current_user.user_type}, User Role: {current_user.user_role}")
+        print(f"[ERROR] Zugriff verweigert - User Type: {current_user.user_type}, User Role: {current_user.user_role}")
         raise HTTPException(
             status_code=403,
             detail="Nur Dienstleister können Rechnungen erstellen"
@@ -168,9 +168,9 @@ async def create_manual_invoice(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        print(f"❌ Fehler beim Erstellen der Rechnung: {e}")
+        print(f"[ERROR] Fehler beim Erstellen der Rechnung: {e}")
         import traceback
-        print(f"🔍 Traceback: {traceback.format_exc()}")
+        print(f"[ERROR] Traceback details omitted due to encoding issues")
         raise HTTPException(status_code=500, detail=f"Interner Server-Fehler: {str(e)}")
 
 @router.post("/upload", response_model=InvoiceRead)
@@ -185,8 +185,16 @@ async def upload_invoice_pdf(
 ):
     """Lade eine PDF-Rechnung hoch"""
     
-    # Berechtigung prüfen
-    if current_user.user_type not in [UserType.SERVICE_PROVIDER]:
+    # Berechtigung prüfen: Nur Dienstleister können Rechnungen hochladen
+    is_service_provider = (
+        current_user.user_type == UserType.SERVICE_PROVIDER or
+        current_user.user_role == UserRole.DIENSTLEISTER or
+        str(current_user.user_type).lower() == 'service_provider' or
+        str(current_user.user_role).lower() == 'dienstleister'
+    )
+    
+    if not is_service_provider:
+        print(f"[ERROR] Zugriff verweigert - User Type: {current_user.user_type}, User Role: {current_user.user_role}")
         raise HTTPException(
             status_code=403,
             detail="Nur Dienstleister können Rechnungen hochladen"
@@ -230,7 +238,7 @@ async def upload_invoice_pdf(
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
-        print(f"❌ Fehler beim Hochladen der Rechnung: {e}")
+        print(f"[ERROR] Fehler beim Hochladen der Rechnung: {e}")
         raise HTTPException(status_code=500, detail="Interner Server-Fehler")
 
 @router.get("/{invoice_id}", response_model=InvoiceRead)
@@ -307,16 +315,16 @@ async def get_milestone_invoice(
     """Hole die Rechnung für einen Meilenstein"""
     
     try:
-        print(f"🔍 Lade Rechnung für Milestone {milestone_id}, User: {current_user.id}")
+        print(f"[DEBUG] Lade Rechnung für Milestone {milestone_id}, User: {current_user.id}")
         
         invoice = await InvoiceService.get_invoice_by_milestone(db, milestone_id)
         if not invoice:
             print(f"ℹ️ Keine Rechnung für Milestone {milestone_id} gefunden")
             raise HTTPException(status_code=404, detail="Keine Rechnung für diesen Meilenstein gefunden")
         
-        print(f"✅ Rechnung gefunden: {invoice.id}, Service Provider: {invoice.service_provider_id}")
-        print(f"🔍 Project Owner ID: {getattr(invoice.project, 'owner_id', 'NOT_LOADED')}")
-        print(f"🔍 Current User: {current_user.id}, Role: {current_user.user_role}, Type: {current_user.user_type}")
+        print(f"[SUCCESS] Rechnung gefunden: {invoice.id}, Service Provider: {invoice.service_provider_id}")
+        print(f"[DEBUG] Project Owner ID: {getattr(invoice.project, 'owner_id', 'NOT_LOADED')}")
+        print(f"[DEBUG] Current User: {current_user.id}, Role: {current_user.user_role}, Type: {current_user.user_type}")
         
         # Erweiterte Berechtigung prüfen - auch für Bauträger
         from ..models.user import UserRole, UserType
@@ -333,18 +341,18 @@ async def get_milestone_invoice(
         )
         
         if not is_authorized:
-            print(f"❌ Berechtigung verweigert für User {current_user.id}")
+            print(f"[ERROR] Berechtigung verweigert für User {current_user.id}")
             raise HTTPException(status_code=403, detail="Keine Berechtigung")
         
-        print(f"✅ Berechtigung gewährt für User {current_user.id}")
+        print(f"[SUCCESS] Berechtigung gewährt für User {current_user.id}")
         return invoice
         
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Fehler beim Laden der Rechnung für Milestone {milestone_id}: {e}")
+        print(f"[ERROR] Fehler beim Laden der Rechnung für Milestone {milestone_id}: {e}")
         import traceback
-        print(f"🔍 Traceback: {traceback.format_exc()}")
+        print(f"[ERROR] Traceback details omitted due to encoding issues")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Fehler beim Laden der Rechnung: {str(e)}"
@@ -398,14 +406,14 @@ async def mark_invoice_viewed(
     """Markiere eine Rechnung als angesehen"""
     
     try:
-        print(f"🔍 Mark-viewed für Rechnung {invoice_id}, User: {current_user.id}")
+        print(f"[DEBUG] Mark-viewed für Rechnung {invoice_id}, User: {current_user.id}")
         
         invoice = await InvoiceService.get_invoice_by_id(db, invoice_id)
         if not invoice:
             raise HTTPException(status_code=404, detail="Rechnung nicht gefunden")
         
-        print(f"✅ Rechnung gefunden: {invoice.id}, Service Provider: {invoice.service_provider_id}")
-        print(f"🔍 Current User: {current_user.id}, Role: {current_user.user_role}, Type: {current_user.user_type}")
+        print(f"[SUCCESS] Rechnung gefunden: {invoice.id}, Service Provider: {invoice.service_provider_id}")
+        print(f"[DEBUG] Current User: {current_user.id}, Role: {current_user.user_role}, Type: {current_user.user_type}")
         
         # Erweiterte Berechtigung prüfen - auch für Bauträger
         from ..models.user import UserRole, UserType
@@ -422,38 +430,38 @@ async def mark_invoice_viewed(
         )
         
         if not is_authorized:
-            print(f"❌ Berechtigung verweigert für User {current_user.id}")
+            print(f"[ERROR] Berechtigung verweigert für User {current_user.id}")
             raise HTTPException(status_code=403, detail="Keine Berechtigung")
         
-        print(f"✅ Berechtigung gewährt für User {current_user.id}")
+        print(f"[SUCCESS] Berechtigung gewährt für User {current_user.id}")
         
-        # ✅ Automatische DMS-Integration falls noch nicht vorhanden
+        # [SUCCESS] Automatische DMS-Integration falls noch nicht vorhanden
         try:
             # Generiere PDF falls nicht vorhanden
             if not invoice.pdf_file_path or not Path(invoice.pdf_file_path).exists():
-                print(f"🔍 Generiere PDF für Rechnung {invoice_id}")
+                print(f"[DEBUG] Generiere PDF für Rechnung {invoice_id}")
                 pdf_path = await InvoiceService.generate_invoice_pdf(db, invoice_id)
                 invoice.pdf_file_path = pdf_path
                 invoice.pdf_file_name = f"Rechnung_{invoice.invoice_number}.pdf"
                 await db.commit()
-                print(f"✅ PDF generiert: {pdf_path}")
+                print(f"[SUCCESS] PDF generiert: {pdf_path}")
             else:
                 print(f"ℹ️ PDF bereits vorhanden: {invoice.pdf_file_path}")
             
             # DMS-Integration (optional - Fehler blockiert nicht)
             if not hasattr(invoice, 'dms_document_id') or not getattr(invoice, 'dms_document_id', None):
                 try:
-                    print(f"🔍 Starte DMS-Integration für Rechnung {invoice_id}")
+                    print(f"[DEBUG] Starte DMS-Integration für Rechnung {invoice_id}")
                     await InvoiceService.create_dms_document(db, invoice, invoice.pdf_file_path)
-                    print(f"✅ DMS-Dokument für Rechnung {invoice_id} erstellt und kategorisiert")
+                    print(f"[SUCCESS] DMS-Dokument für Rechnung {invoice_id} erstellt und kategorisiert")
                 except Exception as dms_error:
-                    print(f"⚠️ DMS-Integration fehlgeschlagen (nicht kritisch): {dms_error}")
+                    print(f"[WARNING] DMS-Integration fehlgeschlagen (nicht kritisch): {dms_error}")
                     # DMS-Fehler blockiert nicht die Hauptfunktion
             else:
                 print(f"ℹ️ DMS-Dokument bereits vorhanden für Rechnung {invoice_id}")
                 
         except Exception as e:
-            print(f"❌ Fehler bei PDF-Generierung: {e}")
+            print(f"[ERROR] Fehler bei PDF-Generierung: {e}")
             # Auch PDF-Fehler sollten nicht blockieren, wenn die Rechnung bereits existiert
         
         return invoice
@@ -461,9 +469,9 @@ async def mark_invoice_viewed(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Fehler beim mark-viewed für Rechnung {invoice_id}: {e}")
+        print(f"[ERROR] Fehler beim mark-viewed für Rechnung {invoice_id}: {e}")
         import traceback
-        print(f"🔍 Traceback: {traceback.format_exc()}")
+        print(f"[ERROR] Traceback details omitted due to encoding issues")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Fehler beim Markieren als angesehen: {str(e)}"
@@ -554,14 +562,14 @@ async def download_invoice_pdf(
     """Lade die PDF-Rechnung herunter"""
     
     try:
-        print(f"🔍 Download-Request für Rechnung {invoice_id}, User: {current_user.id}")
+        print(f"[DEBUG] Download-Request für Rechnung {invoice_id}, User: {current_user.id}")
         
         invoice = await InvoiceService.get_invoice_by_id(db, invoice_id)
         if not invoice:
             raise HTTPException(status_code=404, detail="Rechnung nicht gefunden")
         
-        print(f"✅ Rechnung gefunden: {invoice.id}, Service Provider: {invoice.service_provider_id}")
-        print(f"🔍 Current User: {current_user.id}, Role: {current_user.user_role}, Type: {current_user.user_type}")
+        print(f"[SUCCESS] Rechnung gefunden: {invoice.id}, Service Provider: {invoice.service_provider_id}")
+        print(f"[DEBUG] Current User: {current_user.id}, Role: {current_user.user_role}, Type: {current_user.user_type}")
         
         # Erweiterte Berechtigung prüfen - auch für Bauträger
         from ..models.user import UserRole, UserType
@@ -578,15 +586,15 @@ async def download_invoice_pdf(
         )
         
         if not is_authorized:
-            print(f"❌ Berechtigung verweigert für User {current_user.id}")
+            print(f"[ERROR] Berechtigung verweigert für User {current_user.id}")
             raise HTTPException(status_code=403, detail="Keine Berechtigung")
         
-        print(f"✅ Berechtigung gewährt für User {current_user.id}")
+        print(f"[SUCCESS] Berechtigung gewährt für User {current_user.id}")
         
         # Prüfe ob PDF-Datei existiert
         if not invoice.pdf_file_path or not Path(invoice.pdf_file_path).exists():
-            # ✅ PDF generieren falls nicht vorhanden (für manuelle Rechnungen)
-            print(f"🔍 PDF nicht gefunden für Rechnung {invoice_id}, generiere...")
+            # [SUCCESS] PDF generieren falls nicht vorhanden (für manuelle Rechnungen)
+            print(f"[DEBUG] PDF nicht gefunden für Rechnung {invoice_id}, generiere...")
             pdf_path = await InvoiceService.generate_invoice_pdf(db, invoice_id)
             
             # Update invoice mit PDF-Pfad
@@ -595,15 +603,15 @@ async def download_invoice_pdf(
             await db.commit()
             await db.refresh(invoice)
             
-            # ✅ Automatische DMS-Integration für bestehende Rechnungen
+            # [SUCCESS] Automatische DMS-Integration für bestehende Rechnungen
             try:
                 if not hasattr(invoice, 'dms_document_id') or not getattr(invoice, 'dms_document_id', None):
                     await InvoiceService.create_dms_document(db, invoice, pdf_path)
-                    print(f"✅ DMS-Dokument erstellt für Rechnung {invoice_id}")
+                    print(f"[SUCCESS] DMS-Dokument erstellt für Rechnung {invoice_id}")
             except Exception as dms_error:
-                print(f"⚠️ DMS-Integration fehlgeschlagen (nicht kritisch): {dms_error}")
+                print(f"[WARNING] DMS-Integration fehlgeschlagen (nicht kritisch): {dms_error}")
             
-            print(f"✅ PDF generiert: {pdf_path}")
+            print(f"[SUCCESS] PDF generiert: {pdf_path}")
         else:
             print(f"ℹ️ PDF bereits vorhanden: {invoice.pdf_file_path}")
         
@@ -620,9 +628,9 @@ async def download_invoice_pdf(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Fehler beim Download für Rechnung {invoice_id}: {e}")
+        print(f"[ERROR] Fehler beim Download für Rechnung {invoice_id}: {e}")
         import traceback
-        print(f"🔍 Traceback: {traceback.format_exc()}")
+        print(f"[ERROR] Traceback details omitted due to encoding issues")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Fehler beim Herunterladen der Rechnung: {str(e)}"
@@ -678,15 +686,15 @@ async def mark_invoice_dms_integrated(
     """Markiere eine Rechnung als DMS-integriert"""
     
     try:
-        print(f"🔍 Mark-DMS-Integrated für Rechnung {invoice_id}, User: {current_user.id}")
-        print(f"🔍 DMS-Daten: {dms_data}")
+        print(f"[DEBUG] Mark-DMS-Integrated für Rechnung {invoice_id}, User: {current_user.id}")
+        print(f"[DEBUG] DMS-Daten: {dms_data}")
         
         invoice = await InvoiceService.get_invoice_by_id(db, invoice_id)
         if not invoice:
             raise HTTPException(status_code=404, detail="Rechnung nicht gefunden")
         
-        print(f"✅ Rechnung gefunden: {invoice.id}, Service Provider: {invoice.service_provider_id}")
-        print(f"🔍 Current User: {current_user.id}, Role: {current_user.user_role}, Type: {current_user.user_type}")
+        print(f"[SUCCESS] Rechnung gefunden: {invoice.id}, Service Provider: {invoice.service_provider_id}")
+        print(f"[DEBUG] Current User: {current_user.id}, Role: {current_user.user_role}, Type: {current_user.user_type}")
         
         # Erweiterte Berechtigung prüfen - auch für Bauträger
         from ..models.user import UserRole, UserType
@@ -703,10 +711,10 @@ async def mark_invoice_dms_integrated(
         )
         
         if not is_authorized:
-            print(f"❌ Berechtigung verweigert für User {current_user.id}")
+            print(f"[ERROR] Berechtigung verweigert für User {current_user.id}")
             raise HTTPException(status_code=403, detail="Keine Berechtigung")
         
-        print(f"✅ Berechtigung gewährt für User {current_user.id}")
+        print(f"[SUCCESS] Berechtigung gewährt für User {current_user.id}")
         
         # Update invoice mit DMS-Daten
         invoice.dms_document_id = dms_data.get('dms_document_id')
@@ -714,7 +722,7 @@ async def mark_invoice_dms_integrated(
         invoice.dms_subcategory = dms_data.get('subcategory')
         invoice.dms_tags = json.dumps(dms_data.get('tags', []))
         
-        # ✅ Aktualisiere auch das DMS-Dokument mit der korrekten Unterkategorie
+        # [SUCCESS] Aktualisiere auch das DMS-Dokument mit der korrekten Unterkategorie
         if invoice.dms_document_id:
             try:
                 from ..services.document_service import update_document
@@ -732,16 +740,16 @@ async def mark_invoice_dms_integrated(
                     document_update=document_update
                 )
                 
-                print(f"✅ DMS-Dokument {invoice.dms_document_id} mit Unterkategorie '{dms_data.get('subcategory')}' aktualisiert")
+                print(f"[SUCCESS] DMS-Dokument {invoice.dms_document_id} mit Unterkategorie '{dms_data.get('subcategory')}' aktualisiert")
                 
             except Exception as update_error:
-                print(f"⚠️ Fehler beim Aktualisieren des DMS-Dokuments: {update_error}")
+                print(f"[WARNING] Fehler beim Aktualisieren des DMS-Dokuments: {update_error}")
                 # Fehler blockiert nicht die Hauptfunktion
         
         await db.commit()
         await db.refresh(invoice)
         
-        print(f"✅ Rechnung {invoice_id} als DMS-integriert markiert")
+        print(f"[SUCCESS] Rechnung {invoice_id} als DMS-integriert markiert")
         
         return {
             "message": "Rechnung erfolgreich als DMS-integriert markiert",
@@ -752,9 +760,9 @@ async def mark_invoice_dms_integrated(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Fehler beim mark-dms-integrated für Rechnung {invoice_id}: {e}")
+        print(f"[ERROR] Fehler beim mark-dms-integrated für Rechnung {invoice_id}: {e}")
         import traceback
-        print(f"🔍 Traceback: {traceback.format_exc()}")
+        print(f"[ERROR] Traceback details omitted due to encoding issues")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Fehler beim Markieren als DMS-integriert: {str(e)}"
@@ -768,7 +776,7 @@ async def get_service_provider_invoices(
 ):
     """Lade alle Rechnungen eines Dienstleisters"""
     try:
-        print(f"🔍 Lade Rechnungen für Dienstleister: {current_user.id}")
+        print(f"[DEBUG] Lade Rechnungen für Dienstleister: {current_user.id}")
         
         # Nur für Dienstleister
         is_service_provider = (
@@ -778,7 +786,7 @@ async def get_service_provider_invoices(
         )
         
         if not is_service_provider:
-            print(f"❌ Zugriff verweigert - User Type: {current_user.user_type}, User Role: {current_user.user_role}")
+            print(f"[ERROR] Zugriff verweigert - User Type: {current_user.user_type}, User Role: {current_user.user_role}")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Nur Dienstleister können ihre Rechnungen einsehen"
@@ -812,13 +820,13 @@ async def get_service_provider_invoices(
             
             invoice_list.append(invoice_data)
         
-        print(f"✅ {len(invoice_list)} Rechnungen für Dienstleister gefunden")
+        print(f"[SUCCESS] {len(invoice_list)} Rechnungen für Dienstleister gefunden")
         return invoice_list
         
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Fehler beim Laden der Rechnungen: {e}")
+        print(f"[ERROR] Fehler beim Laden der Rechnungen: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Fehler beim Laden der Rechnungen: {str(e)}"

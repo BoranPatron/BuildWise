@@ -60,35 +60,35 @@ async def delete_all_appointments(
 @router.get("/test-simple")
 async def test_simple():
     """Einfacher Test ohne Dependencies"""
-    print("🔧 TEST: test_simple aufgerufen")
+    print("[DEBUG] TEST: test_simple aufgerufen")
     return {"message": "test_simple funktioniert"}
 
 
 @router.get("/test-with-user")
 async def test_with_user(current_user: User = Depends(get_current_user)):
     """Test mit User Dependency"""
-    print(f"🔧 TEST: test_with_user aufgerufen, user_id={current_user.id}")
+    print(f"[DEBUG] TEST: test_with_user aufgerufen, user_id={current_user.id}")
     return {"message": "test_with_user funktioniert", "user_id": current_user.id}
 
 
 @router.get("/test-with-db")
 async def test_with_db(db: AsyncSession = Depends(get_db)):
     """Test mit DB Dependency"""
-    print("🔧 TEST: test_with_db aufgerufen")
+    print("[DEBUG] TEST: test_with_db aufgerufen")
     return {"message": "test_with_db funktioniert"}
 
 
 @router.get("/test-with-query")
 async def test_with_query(project_id: Optional[int] = Query(None)):
     """Test mit Query Parameter"""
-    print(f"🔧 TEST: test_with_query aufgerufen, project_id={project_id}")
+    print(f"[DEBUG] TEST: test_with_query aufgerufen, project_id={project_id}")
     return {"message": "test_with_query funktioniert", "project_id": project_id}
 
 
 @router.get("/test-no-deps")
 async def test_no_deps():
     """Test ohne JEGLICHE Dependencies"""
-    print("🎯 TEST-NO-DEPS: Endpoint wurde erreicht!")
+    print("[INFO] TEST-NO-DEPS: Endpoint wurde erreicht!")
     return {"message": "test-no-deps funktioniert", "timestamp": str(datetime.utcnow())}
 
 
@@ -99,7 +99,7 @@ async def get_my_appointments_dienstleister(
 ):
     """SPEZIELLER Endpoint für Dienstleister - filtert nach invited_service_providers"""
     try:
-        print(f"🔧 get_my_appointments_dienstleister called for user_id={current_user.id}")
+        print(f"[DEBUG] get_my_appointments_dienstleister called for user_id={current_user.id}")
         
         from sqlalchemy import text
         import json
@@ -107,10 +107,10 @@ async def get_my_appointments_dienstleister(
         # Lade alle Termine
         query = text("""
             SELECT 
-                id, project_id, trade_id, milestone_id, created_by, 
+                id, project_id, milestone_id, created_by, 
                 title, description, appointment_type, status,
                 scheduled_date, duration_minutes, location, location_details,
-                notes, invited_service_providers, responses,
+                invited_service_providers, responses,
                 inspection_completed, inspection_notes,
                 selected_service_provider_id, requires_renegotiation,
                 renegotiation_details, notification_sent,
@@ -123,7 +123,7 @@ async def get_my_appointments_dienstleister(
         result = await db.execute(query)
         all_appointments = result.fetchall()
         
-        print(f"🔍 Found {len(all_appointments)} total appointments")
+        print(f"[DEBUG] Found {len(all_appointments)} total appointments")
         
         # Filtere nur Termine, zu denen der Dienstleister eingeladen ist
         filtered_appointments = []
@@ -141,12 +141,12 @@ async def get_my_appointments_dienstleister(
                         invited_ids = [provider.get('id') for provider in invited_providers if isinstance(provider, dict)]
                         if current_user.id in invited_ids:
                             filtered_appointments.append(apt)
-                            print(f"✅ User {current_user.id} ist zu Termin {apt.id} eingeladen")
+                            print(f"[SUCCESS] User {current_user.id} ist zu Termin {apt.id} eingeladen")
                 except (json.JSONDecodeError, TypeError) as e:
-                    print(f"⚠️ JSON-Fehler bei Termin {apt.id}: {e}")
+                    print(f"[WARNING] JSON-Fehler bei Termin {apt.id}: {e}")
                     continue
         
-        print(f"🔧 Dienstleister {current_user.id} hat Zugriff auf {len(filtered_appointments)} Termine")
+        print(f"[DEBUG] Dienstleister {current_user.id} hat Zugriff auf {len(filtered_appointments)} Termine")
         
         # Konvertiere zu einfachem Dictionary
         simple_appointments = []
@@ -165,7 +165,6 @@ async def get_my_appointments_dienstleister(
             simple_appointment = {
                 "id": apt.id,
                 "project_id": apt.project_id,
-                "trade_id": apt.trade_id,
                 "milestone_id": apt.milestone_id,
                 "created_by": apt.created_by,
                 "title": apt.title,
@@ -176,7 +175,6 @@ async def get_my_appointments_dienstleister(
                 "duration_minutes": apt.duration_minutes,
                 "location": apt.location,
                 "location_details": apt.location_details,
-                "notes": apt.notes,
                 "invited_service_providers": apt.invited_service_providers,
                 "responses": apt.responses,
                 "inspection_completed": bool(apt.inspection_completed),
@@ -193,13 +191,13 @@ async def get_my_appointments_dienstleister(
             }
             simple_appointments.append(simple_appointment)
         
-        print(f"✅ Successfully converted {len(simple_appointments)} appointments for Dienstleister")
+        print(f"[SUCCESS] Successfully converted {len(simple_appointments)} appointments for Dienstleister")
         return {"appointments": simple_appointments, "count": len(simple_appointments)}
         
     except Exception as e:
-        print(f"❌ Error in get_my_appointments_dienstleister: {e}")
+        print(f"[ERROR] Error in get_my_appointments_dienstleister: {e}")
         import traceback
-        print(f"❌ Traceback: {traceback.format_exc()}")
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
         return {"appointments": [], "count": 0, "error": str(e)}
 
 
@@ -216,20 +214,20 @@ async def get_my_appointments(
     - Admin: Alle Termine
     """
     try:
-        print(f"🔍 get_my_appointments called for user_id={current_user.id}, user_role={current_user.user_role}")
-        print(f"🔍 DEBUG: current_user object: {current_user}")
-        print(f"🔍 DEBUG: current_user.user_role type: {type(current_user.user_role)}")
-        print(f"🔍 DEBUG: current_user.user_role value: '{current_user.user_role}'")
+        print(f"[DEBUG] get_my_appointments called for user_id={current_user.id}, user_role={current_user.user_role}")
+        print(f"[DEBUG] DEBUG: current_user object: {current_user}")
+        print(f"[DEBUG] DEBUG: current_user.user_role type: {type(current_user.user_role)}")
+        print(f"[DEBUG] DEBUG: current_user.user_role value: '{current_user.user_role}'")
         
-        print(f"🔍 Rufe AppointmentService.get_appointments_for_user auf...")
+        print(f"[DEBUG] Rufe AppointmentService.get_appointments_for_user auf...")
         appointments = await AppointmentService.get_appointments_for_user(
             db=db,
             user=current_user,
             project_id=None  # Kein Projekt-Filter für jetzt
         )
-        print(f"✅ AppointmentService.get_appointments_for_user abgeschlossen")
+        print(f"[SUCCESS] AppointmentService.get_appointments_for_user abgeschlossen")
         
-        print(f"✅ Found {len(appointments)} appointments for user {current_user.id}")
+        print(f"[SUCCESS] Found {len(appointments)} appointments for user {current_user.id}")
         
         # Konvertiere zu AppointmentResponse-Objekten
         response_appointments = []
@@ -281,15 +279,15 @@ async def get_my_appointments(
                 response_appointments.append(response_appointment)
                 
             except Exception as e:
-                print(f"⚠️ Fehler beim Konvertieren von Appointment {appointment.id}: {e}")
+                print(f"[WARNING] Fehler beim Konvertieren von Appointment {appointment.id}: {e}")
                 continue
         
-        print(f"✅ Successfully converted {len(response_appointments)} appointments")
+        print(f"[SUCCESS] Successfully converted {len(response_appointments)} appointments")
         return response_appointments
         
     except Exception as e:
-        print(f"❌ Error in get_my_appointments: {e}")
-        print(f"🔄 Fallback: Returning empty list for user {current_user.id}")
+        print(f"[ERROR] Error in get_my_appointments: {e}")
+        print(f"[UPDATE] Fallback: Returning empty list for user {current_user.id}")
         # Fallback: Leere Liste zurückgeben statt Fehler
         return []
 
@@ -304,7 +302,7 @@ async def get_my_appointments_simple(
     Arbeitet direkt mit der echten Datenbankstruktur
     """
     try:
-        print(f"🔍 get_my_appointments_simple called for user_id={current_user.id}")
+        print(f"[DEBUG] get_my_appointments_simple called for user_id={current_user.id}")
         
         # Erweiterte Abfrage mit AppointmentResponse Tabelle
         from sqlalchemy import text, select
@@ -313,14 +311,14 @@ async def get_my_appointments_simple(
         # Für Dienstleister: Alle Termine laden und dann in Python filtern
         # (da JSON-Filterung in SQLite komplex ist)
         if current_user.user_role.value == "DIENSTLEISTER":
-            print(f"🔧 Dienstleister: Lade alle Termine für JSON-Filterung")
+            print(f"[DEBUG] Dienstleister: Lade alle Termine für JSON-Filterung")
             query = text("""
                 SELECT 
-                    id, project_id, trade_id, milestone_id, created_by, 
+                    id, project_id, milestone_id, created_by, 
                     title, description, appointment_type, status,
                     scheduled_date, duration_minutes, location, location_details,
                     contact_person, contact_phone, preparation_notes,
-                    notes, invited_service_providers, responses,
+                    invited_service_providers, responses,
                     inspection_completed, inspection_notes,
                     selected_service_provider_id, requires_renegotiation,
                     renegotiation_details, notification_sent,
@@ -331,14 +329,14 @@ async def get_my_appointments_simple(
             """)
         else:
             # Für Bauträger: Nur eigene Termine
-            print(f"🏗️ Bauträger: Lade nur eigene Termine")
+            print(f"[BUILD] Bauträger: Lade nur eigene Termine")
             query = text("""
                 SELECT 
-                    id, project_id, trade_id, milestone_id, created_by, 
+                    id, project_id, milestone_id, created_by, 
                     title, description, appointment_type, status,
                     scheduled_date, duration_minutes, location, location_details,
                     contact_person, contact_phone, preparation_notes,
-                    notes, invited_service_providers, responses,
+                    invited_service_providers, responses,
                     inspection_completed, inspection_notes,
                     selected_service_provider_id, requires_renegotiation,
                     renegotiation_details, notification_sent,
@@ -352,7 +350,7 @@ async def get_my_appointments_simple(
         result = await db.execute(query, {"user_id": current_user.id})
         appointments = result.fetchall()
         
-        print(f"✅ Found {len(appointments)} appointments via SQL query")
+        print(f"[SUCCESS] Found {len(appointments)} appointments via SQL query")
         
         # Konvertiere zu einfachem Dictionary
         simple_appointments = []
@@ -371,7 +369,6 @@ async def get_my_appointments_simple(
             simple_appointment = {
                 "id": apt.id,
                 "project_id": apt.project_id,
-                "trade_id": apt.trade_id,
                 "milestone_id": apt.milestone_id,
                 "created_by": apt.created_by,
                 "title": apt.title,
@@ -385,7 +382,6 @@ async def get_my_appointments_simple(
                 "contact_person": apt.contact_person,
                 "contact_phone": apt.contact_phone,
                 "preparation_notes": apt.preparation_notes,
-                "notes": apt.notes,
                 "invited_service_providers": apt.invited_service_providers,
                 "responses": apt.responses,
                 "inspection_completed": bool(apt.inspection_completed),
@@ -433,7 +429,7 @@ async def get_my_appointments_simple(
                 
                 responses_by_appointment[response.appointment_id].append(response_dict)
             
-            print(f"📊 Loaded {len(all_responses)} responses from appointment_responses table")
+            print(f"[INFO] Loaded {len(all_responses)} responses from appointment_responses table")
             
             # Update appointments mit neuen Responses
             for apt in simple_appointments:
@@ -441,7 +437,7 @@ async def get_my_appointments_simple(
                 if new_responses:
                     apt["responses"] = json.dumps(new_responses)  # Für Kompatibilität als JSON String
                     apt["responses_array"] = new_responses  # Zusätzlich als Array
-                    print(f"✅ Updated appointment {apt['id']} with {len(new_responses)} responses from new table")
+                    print(f"[SUCCESS] Updated appointment {apt['id']} with {len(new_responses)} responses from new table")
                 elif apt["responses"]:
                     print(f"📦 Using legacy JSON responses for appointment {apt['id']}")
                     # Parse legacy JSON responses und füge service_provider_name hinzu
@@ -471,9 +467,9 @@ async def get_my_appointments_simple(
                         
                         apt["responses"] = json.dumps(enhanced_responses)
                         apt["responses_array"] = enhanced_responses
-                        print(f"✅ Enhanced legacy responses for appointment {apt['id']}")
+                        print(f"[SUCCESS] Enhanced legacy responses for appointment {apt['id']}")
                     except Exception as e:
-                        print(f"⚠️ Error enhancing legacy responses for appointment {apt['id']}: {e}")
+                        print(f"[WARNING] Error enhancing legacy responses for appointment {apt['id']}: {e}")
         
         # Für Dienstleister: Filtere nur Termine, zu denen sie eingeladen wurden
         if current_user.user_role.value == "DIENSTLEISTER":
@@ -497,23 +493,23 @@ async def get_my_appointments_simple(
                     
                     if is_invited:
                         filtered_appointments.append(apt)
-                        print(f"✅ Dienstleister {current_user.id} ist zu Termin {apt['id']} eingeladen")
+                        print(f"[SUCCESS] Dienstleister {current_user.id} ist zu Termin {apt['id']} eingeladen")
                     else:
-                        print(f"⚠️ Dienstleister {current_user.id} ist NICHT zu Termin {apt['id']} eingeladen")
+                        print(f"[WARNING] Dienstleister {current_user.id} ist NICHT zu Termin {apt['id']} eingeladen")
                         
                 except Exception as e:
-                    print(f"❌ Fehler beim Filtern von Termin {apt.get('id', 'unknown')}: {e}")
+                    print(f"[ERROR] Fehler beim Filtern von Termin {apt.get('id', 'unknown')}: {e}")
                     
             simple_appointments = filtered_appointments
-            print(f"🔧 Nach Filterung: {len(simple_appointments)} relevante Termine für Dienstleister")
+            print(f"[DEBUG] Nach Filterung: {len(simple_appointments)} relevante Termine für Dienstleister")
         
-        print(f"✅ Successfully converted {len(simple_appointments)} appointments")
+        print(f"[SUCCESS] Successfully converted {len(simple_appointments)} appointments")
         return {"appointments": simple_appointments, "count": len(simple_appointments)}
         
     except Exception as e:
-        print(f"❌ Error in get_my_appointments_simple: {e}")
+        print(f"[ERROR] Error in get_my_appointments_simple: {e}")
         import traceback
-        print(f"❌ Traceback: {traceback.format_exc()}")
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
         return {"appointments": [], "count": 0, "error": str(e)}
 
 
@@ -525,7 +521,7 @@ async def create_appointment(
 ):
     """Erstelle einen neuen Termin"""
     try:
-        print(f"📅 Creating appointment: {appointment_data}")
+        print(f"[INFO] Creating appointment: {appointment_data}")
         
         appointment = await AppointmentService.create_appointment(
             db=db,
@@ -533,11 +529,11 @@ async def create_appointment(
             created_by=current_user.id
         )
         
-        print(f"✅ Appointment created successfully: {appointment.id}")
+        print(f"[SUCCESS] Appointment created successfully: {appointment.id}")
         return appointment
         
     except Exception as e:
-        print(f"❌ Error creating appointment: {e}")
+        print(f"[ERROR] Error creating appointment: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Fehler beim Erstellen des Termins: {str(e)}"
@@ -633,7 +629,7 @@ async def respond_to_appointment(
 ):
     """Service Provider Antwort auf Termineinladung"""
     try:
-        print(f"🔍 respond_to_appointment called:")
+        print(f"[DEBUG] respond_to_appointment called:")
         print(f"  - appointment_id: {appointment_id}")
         print(f"  - current_user.id: {current_user.id}")
         print(f"  - response_data: {response_data}")
@@ -642,22 +638,22 @@ async def respond_to_appointment(
         print(f"  - response_data.suggested_date: {response_data.suggested_date}")
         
         # Prüfe ob Service Provider zu diesem Termin eingeladen ist
-        print(f"🔍 Checking access for user {current_user.id} to appointment {appointment_id}")
+        print(f"[DEBUG] Checking access for user {current_user.id} to appointment {appointment_id}")
         has_access = await AppointmentService.check_user_appointment_access(
             db=db,
             appointment_id=appointment_id,
             user=current_user
         )
-        print(f"🔍 Access check result: {has_access}")
+        print(f"[DEBUG] Access check result: {has_access}")
         
         if not has_access:
-            print(f"❌ Access denied for user {current_user.id} to appointment {appointment_id}")
+            print(f"[ERROR] Access denied for user {current_user.id} to appointment {appointment_id}")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Sie sind nicht zu diesem Termin eingeladen"
             )
         
-        print(f"✅ Access granted, calling AppointmentService.respond_to_appointment")
+        print(f"[SUCCESS] Access granted, calling AppointmentService.respond_to_appointment")
         appointment = await AppointmentService.respond_to_appointment(
             db=db,
             appointment_id=appointment_id,
@@ -666,7 +662,7 @@ async def respond_to_appointment(
             message=response_data.message,
             suggested_date=response_data.suggested_date
         )
-        print(f"✅ AppointmentService.respond_to_appointment completed successfully")
+        print(f"[SUCCESS] AppointmentService.respond_to_appointment completed successfully")
         return {"message": "Antwort erfolgreich gespeichert", "appointment": appointment}
     except ValueError as e:
         raise HTTPException(

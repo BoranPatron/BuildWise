@@ -108,6 +108,86 @@ class NotificationService:
         return notification
     
     @staticmethod
+    async def create_quote_revised_notification(
+        db: AsyncSession,
+        quote_id: int,
+        recipient_id: int,
+        milestone_id: Optional[int] = None
+    ) -> Notification:
+        """
+        Erstellt eine Benachrichtigung für ein überarbeitetes Angebot nach Besichtigung
+        
+        Args:
+            db: Datenbank-Session
+            quote_id: ID des überarbeiteten Angebots
+            recipient_id: ID des Empfängers (normalerweise der Bauträger)
+            milestone_id: ID des Gewerks (optional)
+        """
+        # Lade Quote mit allen relevanten Daten
+        from ..models.user import User
+        result = await db.execute(
+            select(Quote)
+            .options(
+                selectinload(Quote.milestone),
+                selectinload(Quote.project)
+            )
+            .where(Quote.id == quote_id)
+        )
+        quote = result.scalar_one_or_none()
+        
+        if not quote:
+            raise ValueError(f"Quote mit ID {quote_id} nicht gefunden")
+        
+        # Lade Service Provider separat
+        service_provider = None
+        if quote.service_provider_id:
+            sp_result = await db.execute(
+                select(User).where(User.id == quote.service_provider_id)
+            )
+            service_provider = sp_result.scalar_one_or_none()
+        
+        # Erstelle Service Provider Name
+        service_provider_name = "Unbekannter Dienstleister"
+        if service_provider:
+            if service_provider.company_name:
+                service_provider_name = service_provider.company_name
+            else:
+                service_provider_name = f"{service_provider.first_name or ''} {service_provider.last_name or ''}".strip()
+                if not service_provider_name:
+                    service_provider_name = f"Benutzer #{service_provider.id}"
+        
+        # Erstelle Benachrichtigungsdaten mit Revisions-Info
+        notification_data = QuoteNotificationData(
+            quote_id=quote.id,
+            quote_title=quote.title or f"Angebot #{quote.id}",
+            service_provider_name=service_provider_name,
+            project_name=quote.project.name if quote.project else "Unbekanntes Projekt",
+            milestone_title=quote.milestone.title if quote.milestone else "Unbekanntes Gewerk",
+            total_amount=quote.total_amount,
+            currency=quote.currency or "CHF"
+        )
+        
+        # Erstelle Benachrichtigung mit neuem Typ
+        notification = Notification(
+            recipient_id=recipient_id,
+            type=NotificationType.QUOTE_REVISED,  # Neuer Benachrichtigungstyp
+            priority=NotificationPriority.HIGH,
+            title=f"Angebot nach Besichtigung überarbeitet",
+            message=f"{notification_data.service_provider_name} hat sein Angebot für '{notification_data.milestone_title}' nach der Besichtigung überarbeitet. Neue Angebotssumme: {notification_data.total_amount} {notification_data.currency} (Überarbeitung #{quote.revision_count})",
+            data=notification_data.json(),
+            related_quote_id=quote_id,
+            related_project_id=quote.project_id,
+            related_milestone_id=milestone_id or quote.milestone_id
+        )
+        
+        db.add(notification)
+        await db.commit()
+        await db.refresh(notification)
+        
+        print(f"[SUCCESS] Benachrichtigung für überarbeitetes Angebot {quote_id} erstellt (Revision #{quote.revision_count})")
+        return notification
+    
+    @staticmethod
     async def create_resource_allocated_notification(
         db: AsyncSession,
         allocation_id: int,
@@ -529,3 +609,196 @@ class NotificationService:
         
         await db.commit()
         return result.rowcount
+    
+    @staticmethod
+    async def notify_service_providers_for_new_tender(
+        db: AsyncSession,
+        milestone: Milestone,
+        bautraeger_id: int
+    ) -> List[Notification]:
+        """
+        Benachrichtigt Dienstleister über neue Ausschreibung basierend auf ihren Präferenzen
+        
+        Args:
+            db: Datenbank-Session
+            milestone: Das neu erstellte Milestone/Gewerk
+            bautraeger_id: ID des Bauträgers, der die Ausschreibung erstellt hat
+            
+        Returns:
+            Liste der erstellten Benachrichtigungen
+        """
+        from ..models.notification_preference import NotificationPreference
+        from ..models.contact import Contact
+        
+        # Prüfe ob Milestone eine Kategorie hat
+        if not milestone.category:
+            return []
+        
+        # Finde alle aktiven Benachrichtigungspräferenzen des Bauträgers
+        result = await db.execute(
+            select(NotificationPreference)
+            .where(
+                and_(
+                    NotificationPreference.user_id == bautraeger_id,
+                    NotificationPreference.enabled == True
+                )
+            )
+        )
+        all_preferences = result.scalars().all()
+        
+        # Filtere Präferenzen nach Kategorie
+        matching_preferences = []
+        for pref in all_preferences:
+            try:
+                categories = json.loads(pref.categories) if isinstance(pref.categories, str) else pref.categories
+                if milestone.category in categories:
+                    matching_preferences.append(pref)
+            except (json.JSONDecodeError, TypeError):
+                continue
+        
+        # Erstelle Benachrichtigungen für jeden passenden Dienstleister
+        notifications = []
+        for pref in matching_preferences:
+            try:
+                # Hole Projekt-Informationen
+                project_name = "Unbekanntes Projekt"
+                if milestone.project_id:
+                    project_result = await db.execute(
+                        select(Project).where(Project.id == milestone.project_id)
+                    )
+                    project = project_result.scalar_one_or_none()
+                    if project:
+                        project_name = project.name
+                
+                # Hole Kontakt-Informationen
+                contact_result = await db.execute(
+                    select(Contact).where(Contact.id == pref.contact_id)
+                )
+                contact = contact_result.scalar_one_or_none()
+                company_name = contact.company_name if contact else "Unbekannte Firma"
+                
+                # Erstelle Benachrichtigung
+                notification = Notification(
+                    recipient_id=pref.service_provider_id,
+                    type=NotificationType.TENDER_INVITATION,
+                    priority=NotificationPriority.MEDIUM,
+                    title=f"Neue Ausschreibung: {milestone.title}",
+                    message=f"Eine neue Ausschreibung in der Kategorie '{milestone.category}' wurde von {company_name} erstellt. Projekt: {project_name}",
+                    data=json.dumps({
+                        "milestone_id": milestone.id,
+                        "milestone_title": milestone.title,
+                        "project_id": milestone.project_id,
+                        "project_name": project_name,
+                        "category": milestone.category,
+                        "bautraeger_id": bautraeger_id
+                    }),
+                    related_milestone_id=milestone.id,
+                    related_project_id=milestone.project_id,
+                    created_at=datetime.utcnow()
+                )
+                
+                db.add(notification)
+                notifications.append(notification)
+                
+            except Exception as e:
+                print(f"Fehler beim Erstellen der Benachrichtigung fuer Dienstleister {pref.service_provider_id}: {e}")
+                continue
+        
+        if notifications:
+            await db.commit()
+            print(f"=> {len(notifications)} Benachrichtigungen fuer neue Ausschreibung erstellt")
+        
+        return notifications
+    
+    @staticmethod
+    async def create_acceptance_with_defects_notification(
+        db: AsyncSession,
+        milestone_id: int,
+        service_provider_id: int,
+        bautraeger_id: int
+    ) -> Notification:
+        """
+        Erstellt eine Benachrichtigung für den Dienstleister über eine Abnahme unter Vorbehalt
+        
+        Args:
+            db: Datenbank-Session
+            milestone_id: ID des betroffenen Milestones/Gewerks
+            service_provider_id: ID des Dienstleisters (Empfänger)
+            bautraeger_id: ID des Bauträgers, der die Abnahme durchgeführt hat
+        """
+        try:
+            # Lade Milestone mit Projekt-Informationen
+            from ..models.milestone import Milestone
+            from ..models.project import Project
+            from ..models.user import User
+            
+            result = await db.execute(
+                select(Milestone)
+                .options(selectinload(Milestone.project))
+                .where(Milestone.id == milestone_id)
+            )
+            milestone = result.scalar_one_or_none()
+            
+            if not milestone:
+                raise ValueError(f"Milestone mit ID {milestone_id} nicht gefunden")
+            
+            # Lade Bauträger-Informationen
+            bautraeger_result = await db.execute(
+                select(User).where(User.id == bautraeger_id)
+            )
+            bautraeger = bautraeger_result.scalar_one_or_none()
+            
+            # Erstelle Bauträger Name
+            bautraeger_name = "Unbekannter Bauträger"
+            if bautraeger:
+                if bautraeger.company_name:
+                    bautraeger_name = bautraeger.company_name
+                else:
+                    bautraeger_name = f"{bautraeger.first_name or ''} {bautraeger.last_name or ''}".strip()
+                    if not bautraeger_name:
+                        bautraeger_name = f"Bauträger #{bautraeger.id}"
+            
+            # Projekt-Name
+            project_name = milestone.project.name if milestone.project else "Unbekanntes Projekt"
+            
+            # Erstelle Benachrichtigungsdaten
+            notification_data = {
+                "milestone_id": milestone_id,
+                "milestone_title": milestone.title,
+                "project_id": milestone.project_id,
+                "project_name": project_name,
+                "bautraeger_id": bautraeger_id,
+                "bautraeger_name": bautraeger_name,
+                "service_provider_id": service_provider_id,
+                "acceptance_type": "under_reservation",
+                "defects_count": 0,  # Wird später aktualisiert wenn Mängel hinzugefügt werden
+                "review_date": None,  # Wird später gesetzt wenn Review-Datum verfügbar ist
+                "tradeId": milestone_id,  # Für Frontend-Kompatibilität
+                "tradeTitle": milestone.title,  # Für Frontend-Kompatibilität
+                "projectName": project_name  # Für Frontend-Kompatibilität
+            }
+            
+            # Erstelle Benachrichtigung
+            notification = Notification(
+                recipient_id=service_provider_id,
+                type=NotificationType.ACCEPTANCE_WITH_DEFECTS,
+                priority=NotificationPriority.HIGH,
+                title=f"Abnahme unter Vorbehalt: {milestone.title}",
+                message=f"Das Gewerk '{milestone.title}' im Projekt '{project_name}' wurde von {bautraeger_name} unter Vorbehalt abgenommen. Bitte überprüfen Sie die dokumentierten Mängel und beheben Sie diese zeitnah.",
+                data=json.dumps(notification_data),
+                related_milestone_id=milestone_id,
+                related_project_id=milestone.project_id,
+                created_at=datetime.utcnow()
+            )
+            
+            db.add(notification)
+            await db.commit()
+            await db.refresh(notification)
+            
+            print(f"[SUCCESS] Benachrichtigung für Abnahme unter Vorbehalt erstellt: Milestone {milestone_id}, Service Provider {service_provider_id}")
+            return notification
+            
+        except Exception as e:
+            print(f"[ERROR] Fehler beim Erstellen der Abnahme-unter-Vorbehalt-Benachrichtigung: {e}")
+            await db.rollback()
+            raise e

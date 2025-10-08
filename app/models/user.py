@@ -167,6 +167,14 @@ class User(Base):
     data_encrypted = Column(Boolean, default=True)  # Sind sensible Daten verschlüsselt
     encryption_key_id = Column(String, nullable=True)  # ID des Verschlüsselungsschlüssels
     
+    # Statistik-Felder
+    completed_offers_count = Column(Integer, default=0)  # Anzahl abgeschlossener Angebote/Aufträge
+    
+    # Gamification-Felder
+    current_rank_key = Column(String(50), nullable=True)  # Aktueller Rang-Schlüssel
+    current_rank_title = Column(String(100), nullable=True)  # Aktueller Rang-Titel
+    rank_updated_at = Column(DateTime(timezone=True), nullable=True)  # Letzte Rang-Aktualisierung
+    
     # Timestamps mit DSGVO-Konformität
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

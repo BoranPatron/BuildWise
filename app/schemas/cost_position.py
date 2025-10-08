@@ -14,7 +14,11 @@ class CostPositionBase(BaseModel):
 
 class CostPositionCreate(CostPositionBase):
     """Schema für das Erstellen einer Kostenposition"""
-    invoice_id: int
+    project_id: Optional[int] = None
+    invoice_id: Optional[int] = None
+    quote_id: Optional[int] = None
+    milestone_id: Optional[int] = None
+    contractor_name: Optional[str] = None
 
 class CostPositionUpdate(BaseModel):
     """Schema für das Aktualisieren einer Kostenposition"""
@@ -49,11 +53,13 @@ class CostPositionListItem(BaseModel):
     title: Optional[str] = None
     amount: float
     created_at: datetime
+    category: Optional[str] = None
     milestone_id: Optional[int] = None
     milestone_title: Optional[str] = None
     service_provider_id: Optional[int] = None
     service_provider_name: Optional[str] = None
     contractor_name: Optional[str] = None
+    quote_id: Optional[int] = None
 
 class CostPositionStatistics(BaseModel):
     """Schema für Statistiken von Kostenpositionen"""

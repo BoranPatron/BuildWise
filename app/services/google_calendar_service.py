@@ -57,7 +57,7 @@ class GoogleCalendarService:
             return authorization_url
             
         except Exception as e:
-            logger.error(f"❌ Fehler beim Erstellen der Google Authorization URL: {e}")
+            logger.error(f"[ERROR] Fehler beim Erstellen der Google Authorization URL: {e}")
             raise
     
     async def handle_oauth_callback(self, code: str, state: str, db: AsyncSession) -> Dict[str, Any]:
@@ -88,7 +88,7 @@ class GoogleCalendarService:
             )
             await db.commit()
             
-            logger.info(f"✅ Google Calendar erfolgreich für User {user_id} aktiviert")
+            logger.info(f"[SUCCESS] Google Calendar erfolgreich für User {user_id} aktiviert")
             
             return {
                 "success": True,
@@ -97,7 +97,7 @@ class GoogleCalendarService:
             }
             
         except Exception as e:
-            logger.error(f"❌ Fehler beim OAuth Callback: {e}")
+            logger.error(f"[ERROR] Fehler beim OAuth Callback: {e}")
             raise
     
     async def get_user_credentials(self, user: User) -> Optional[Credentials]:
@@ -124,7 +124,7 @@ class GoogleCalendarService:
             return credentials
             
         except Exception as e:
-            logger.error(f"❌ Fehler beim Laden der Google Credentials: {e}")
+            logger.error(f"[ERROR] Fehler beim Laden der Google Credentials: {e}")
             return None
     
     async def create_calendar_event(self, user: User, event_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -168,7 +168,7 @@ class GoogleCalendarService:
                 sendUpdates='all'  # Sendet Einladungen an alle Teilnehmer
             ).execute()
             
-            logger.info(f"✅ Google Calendar Event erstellt: {created_event['id']}")
+            logger.info(f"[SUCCESS] Google Calendar Event erstellt: {created_event['id']}")
             
             return {
                 'event_id': created_event['id'],
@@ -177,10 +177,10 @@ class GoogleCalendarService:
             }
             
         except HttpError as e:
-            logger.error(f"❌ Google Calendar API Fehler: {e}")
+            logger.error(f"[ERROR] Google Calendar API Fehler: {e}")
             return None
         except Exception as e:
-            logger.error(f"❌ Fehler beim Erstellen des Events: {e}")
+            logger.error(f"[ERROR] Fehler beim Erstellen des Events: {e}")
             return None
     
     async def sync_milestone_to_calendar(self, user: User, milestone: Milestone, db: AsyncSession) -> bool:
@@ -197,9 +197,9 @@ class GoogleCalendarService:
             
             # Event-Daten zusammenstellen
             event_data = {
-                'title': f"📋 {milestone.title} - {project.name}",
+                'title': f"[INFO] {milestone.title} - {project.name}",
                 'description': f"""
-🏗️ BuildWise Meilenstein
+[BUILD] BuildWise Meilenstein
 
 Projekt: {project.name}
 Meilenstein: {milestone.title}
@@ -220,7 +220,7 @@ Priorität: {milestone.priority.value}
             return result is not None
             
         except Exception as e:
-            logger.error(f"❌ Fehler beim Synchronisieren des Meilensteins: {e}")
+            logger.error(f"[ERROR] Fehler beim Synchronisieren des Meilensteins: {e}")
             return False
     
     async def sync_task_to_calendar(self, user: User, task: Task, db: AsyncSession) -> bool:
@@ -240,9 +240,9 @@ Priorität: {milestone.priority.value}
             
             # Event-Daten zusammenstellen
             event_data = {
-                'title': f"✅ {task.title} - {project.name}",
+                'title': f"[SUCCESS] {task.title} - {project.name}",
                 'description': f"""
-🏗️ BuildWise Aufgabe
+[BUILD] BuildWise Aufgabe
 
 Projekt: {project.name}
 Aufgabe: {task.title}
@@ -264,7 +264,7 @@ Fortschritt: {task.progress_percentage}%
             return result is not None
             
         except Exception as e:
-            logger.error(f"❌ Fehler beim Synchronisieren der Aufgabe: {e}")
+            logger.error(f"[ERROR] Fehler beim Synchronisieren der Aufgabe: {e}")
             return False
     
     async def send_project_update_email(self, user: User, project: Project, recipients: List[str], 
@@ -294,11 +294,11 @@ Projekt: {project.name}
             # E-Mail senden (vereinfacht - würde in echter Implementation MIME formatting benötigen)
             # Hier würde die tatsächliche Gmail API Implementation stehen
             
-            logger.info(f"✅ Projekt-Update E-Mail gesendet für Projekt {project.id}")
+            logger.info(f"[SUCCESS] Projekt-Update E-Mail gesendet für Projekt {project.id}")
             return True
             
         except Exception as e:
-            logger.error(f"❌ Fehler beim Senden der E-Mail: {e}")
+            logger.error(f"[ERROR] Fehler beim Senden der E-Mail: {e}")
             return False
     
     async def create_meeting_invitation(self, user: User, meeting_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -308,11 +308,11 @@ Projekt: {project.name}
             event_data = {
                 'title': f"🤝 {meeting_data.get('title', 'BuildWise Meeting')}",
                 'description': f"""
-🏗️ BuildWise Meeting
+[BUILD] BuildWise Meeting
 
 {meeting_data.get('description', '')}
 
-📋 Agenda:
+[INFO] Agenda:
 {meeting_data.get('agenda', 'Keine Agenda angegeben')}
 
 🔗 BuildWise: {settings.base_url}
@@ -332,7 +332,7 @@ Projekt: {project.name}
             return result
             
         except Exception as e:
-            logger.error(f"❌ Fehler beim Erstellen der Meeting-Einladung: {e}")
+            logger.error(f"[ERROR] Fehler beim Erstellen der Meeting-Einladung: {e}")
             return None
     
     async def _setup_meeting_reminders(self, user: User, event_id: str, meeting_data: Dict[str, Any]):
@@ -340,10 +340,10 @@ Projekt: {project.name}
         try:
             # Hier könnten zusätzliche Reminder-Logik implementiert werden
             # z.B. SMS-Reminders, Slack-Notifications, etc.
-            logger.info(f"📅 Meeting-Reminders eingerichtet für Event {event_id}")
+            logger.info(f"[INFO] Meeting-Reminders eingerichtet für Event {event_id}")
             
         except Exception as e:
-            logger.error(f"❌ Fehler beim Einrichten der Meeting-Reminders: {e}")
+            logger.error(f"[ERROR] Fehler beim Einrichten der Meeting-Reminders: {e}")
     
     async def get_calendar_availability(self, user: User, start_time: datetime, 
                                       end_time: datetime) -> Dict[str, Any]:
@@ -374,7 +374,7 @@ Projekt: {project.name}
             }
             
         except Exception as e:
-            logger.error(f"❌ Fehler beim Prüfen der Verfügbarkeit: {e}")
+            logger.error(f"[ERROR] Fehler beim Prüfen der Verfügbarkeit: {e}")
             return {"available": False, "reason": str(e)}
     
     async def _suggest_alternative_times(self, service, original_start: datetime, 
@@ -420,7 +420,7 @@ Projekt: {project.name}
             return suggestions[:3]  # Maximal 3 Vorschläge
             
         except Exception as e:
-            logger.error(f"❌ Fehler beim Erstellen von Zeitvorschlägen: {e}")
+            logger.error(f"[ERROR] Fehler beim Erstellen von Zeitvorschlägen: {e}")
             return []
 
 

@@ -82,11 +82,11 @@ class CalendarWebhookService:
                 'expiry': datetime.fromtimestamp(int(response['expiration']) / 1000)
             }
             
-            logger.info(f"✅ Google Calendar Webhook eingerichtet für User {user.id}")
+            logger.info(f"[SUCCESS] Google Calendar Webhook eingerichtet für User {user.id}")
             return True
             
         except Exception as e:
-            logger.error(f"❌ Fehler beim Einrichten des Google Webhooks: {e}")
+            logger.error(f"[ERROR] Fehler beim Einrichten des Google Webhooks: {e}")
             return False
     
     async def setup_microsoft_webhook(self, user: User, db: AsyncSession) -> bool:
@@ -148,11 +148,11 @@ class CalendarWebhookService:
                     'expiry': datetime.fromisoformat(subscription['expirationDateTime'].replace('Z', '+00:00'))
                 }
                 
-                logger.info(f"✅ Microsoft Calendar Webhook eingerichtet für User {user.id}")
+                logger.info(f"[SUCCESS] Microsoft Calendar Webhook eingerichtet für User {user.id}")
                 return True
                 
         except Exception as e:
-            logger.error(f"❌ Fehler beim Einrichten des Microsoft Webhooks: {e}")
+            logger.error(f"[ERROR] Fehler beim Einrichten des Microsoft Webhooks: {e}")
             return False
     
     async def handle_google_webhook(self, user_id: int, headers: Dict[str, str], 
@@ -175,7 +175,7 @@ class CalendarWebhookService:
             if not user or not user.google_calendar_enabled:
                 return False
                 
-            logger.info(f"📅 Google Calendar Webhook empfangen für User {user_id}: {resource_state}")
+            logger.info(f"[INFO] Google Calendar Webhook empfangen für User {user_id}: {resource_state}")
             
             # Synchronisiere Kalender-Events
             await self._sync_calendar_changes(user, 'google', db)
@@ -183,7 +183,7 @@ class CalendarWebhookService:
             return True
             
         except Exception as e:
-            logger.error(f"❌ Fehler beim Verarbeiten des Google Webhooks: {e}")
+            logger.error(f"[ERROR] Fehler beim Verarbeiten des Google Webhooks: {e}")
             return False
     
     async def handle_microsoft_webhook(self, user_id: int, notification_data: Dict[str, Any], 
@@ -203,14 +203,14 @@ class CalendarWebhookService:
             if not user or not user.microsoft_calendar_enabled:
                 return False
                 
-            logger.info(f"📅 Microsoft Calendar Webhook empfangen für User {user_id}")
+            logger.info(f"[INFO] Microsoft Calendar Webhook empfangen für User {user_id}")
             
             # Verarbeite jede Notification
             for notification in notification_data['value']:
                 change_type = notification.get('changeType')
                 resource = notification.get('resource')
                 
-                logger.info(f"📝 Change: {change_type} für Resource: {resource}")
+                logger.info(f"[INFO] Change: {change_type} für Resource: {resource}")
                 
                 # Synchronisiere basierend auf Change Type
                 if change_type in ['created', 'updated', 'deleted']:
@@ -219,7 +219,7 @@ class CalendarWebhookService:
             return True
             
         except Exception as e:
-            logger.error(f"❌ Fehler beim Verarbeiten des Microsoft Webhooks: {e}")
+            logger.error(f"[ERROR] Fehler beim Verarbeiten des Microsoft Webhooks: {e}")
             return False
     
     async def _sync_calendar_changes(self, user: User, provider: str, db: AsyncSession):
@@ -249,10 +249,10 @@ class CalendarWebhookService:
             for event in buildwise_events:
                 await self._sync_event_with_buildwise(event, user, projects, db)
                 
-            logger.info(f"✅ {len(buildwise_events)} BuildWise Events synchronisiert für User {user.id}")
+            logger.info(f"[SUCCESS] {len(buildwise_events)} BuildWise Events synchronisiert für User {user.id}")
             
         except Exception as e:
-            logger.error(f"❌ Fehler bei Kalender-Synchronisation: {e}")
+            logger.error(f"[ERROR] Fehler bei Kalender-Synchronisation: {e}")
     
     async def _get_google_events(self, user: User) -> List[Dict[str, Any]]:
         """Lädt aktuelle Events von Google Calendar"""
@@ -295,7 +295,7 @@ class CalendarWebhookService:
             return standardized_events
             
         except Exception as e:
-            logger.error(f"❌ Fehler beim Laden der Google Events: {e}")
+            logger.error(f"[ERROR] Fehler beim Laden der Google Events: {e}")
             return []
     
     async def _get_microsoft_events(self, user: User) -> List[Dict[str, Any]]:
@@ -352,7 +352,7 @@ class CalendarWebhookService:
                 return standardized_events
                 
         except Exception as e:
-            logger.error(f"❌ Fehler beim Laden der Microsoft Events: {e}")
+            logger.error(f"[ERROR] Fehler beim Laden der Microsoft Events: {e}")
             return []
     
     def _is_buildwise_event(self, event: Dict[str, Any]) -> bool:
@@ -378,7 +378,7 @@ class CalendarWebhookService:
                 return True
                 
         # Prüfe auf BuildWise Icons/Emojis
-        buildwise_icons = ['📋', '✅', '🏗️', '🤝', '📅']
+        buildwise_icons = ['[INFO]', '[SUCCESS]', '[BUILD]', '🤝', '[INFO]']
         for icon in buildwise_icons:
             if icon in title or icon in description:
                 return True
@@ -407,16 +407,16 @@ class CalendarWebhookService:
                 return
                 
             # Prüfe ob es ein Meilenstein oder Task ist
-            if '📋' in title or 'meilenstein' in title.lower():
+            if '[INFO]' in title or 'meilenstein' in title.lower():
                 await self._sync_as_milestone(event, identified_project, user, db)
-            elif '✅' in title or 'aufgabe' in title.lower() or 'task' in title.lower():
+            elif '[SUCCESS]' in title or 'aufgabe' in title.lower() or 'task' in title.lower():
                 await self._sync_as_task(event, identified_project, user, db)
             else:
                 # Erstelle als allgemeines Projekt-Event
                 await self._create_project_event(event, identified_project, user, db)
                 
         except Exception as e:
-            logger.error(f"❌ Fehler bei Event-Synchronisation: {e}")
+            logger.error(f"[ERROR] Fehler bei Event-Synchronisation: {e}")
     
     async def _sync_as_milestone(self, event: Dict[str, Any], project: Project, 
                                user: User, db: AsyncSession):
@@ -427,7 +427,7 @@ class CalendarWebhookService:
                 select(Milestone).where(
                     and_(
                         Milestone.project_id == project.id,
-                        Milestone.title.ilike(f"%{event.get('title', '').replace('📋', '').strip()}%")
+                        Milestone.title.ilike(f"%{event.get('title', '').replace('[INFO]', '').strip()}%")
                     )
                 )
             )
@@ -440,7 +440,7 @@ class CalendarWebhookService:
                 new_milestone = Milestone(
                     project_id=project.id,
                     created_by=user.id,
-                    title=event.get('title', '').replace('📋', '').strip(),
+                    title=event.get('title', '').replace('[INFO]', '').strip(),
                     description=f"Automatisch synchronisiert aus {event.get('provider')} Calendar\n\n{event.get('description', '')}",
                     planned_date=start_date,
                     status='PLANNED',
@@ -450,10 +450,10 @@ class CalendarWebhookService:
                 db.add(new_milestone)
                 await db.commit()
                 
-                logger.info(f"✅ Meilenstein '{new_milestone.title}' automatisch erstellt")
+                logger.info(f"[SUCCESS] Meilenstein '{new_milestone.title}' automatisch erstellt")
                 
         except Exception as e:
-            logger.error(f"❌ Fehler bei Meilenstein-Synchronisation: {e}")
+            logger.error(f"[ERROR] Fehler bei Meilenstein-Synchronisation: {e}")
     
     async def _sync_as_task(self, event: Dict[str, Any], project: Project, 
                           user: User, db: AsyncSession):
@@ -464,7 +464,7 @@ class CalendarWebhookService:
                 select(Task).where(
                     and_(
                         Task.project_id == project.id,
-                        Task.title.ilike(f"%{event.get('title', '').replace('✅', '').strip()}%")
+                        Task.title.ilike(f"%{event.get('title', '').replace('[SUCCESS]', '').strip()}%")
                     )
                 )
             )
@@ -477,7 +477,7 @@ class CalendarWebhookService:
                 new_task = Task(
                     project_id=project.id,
                     created_by=user.id,
-                    title=event.get('title', '').replace('✅', '').strip(),
+                    title=event.get('title', '').replace('[SUCCESS]', '').strip(),
                     description=f"Automatisch synchronisiert aus {event.get('provider')} Calendar\n\n{event.get('description', '')}",
                     due_date=due_date,
                     status='TODO',
@@ -487,10 +487,10 @@ class CalendarWebhookService:
                 db.add(new_task)
                 await db.commit()
                 
-                logger.info(f"✅ Task '{new_task.title}' automatisch erstellt")
+                logger.info(f"[SUCCESS] Task '{new_task.title}' automatisch erstellt")
                 
         except Exception as e:
-            logger.error(f"❌ Fehler bei Task-Synchronisation: {e}")
+            logger.error(f"[ERROR] Fehler bei Task-Synchronisation: {e}")
     
     async def _create_project_event(self, event: Dict[str, Any], project: Project, 
                                   user: User, db: AsyncSession):
@@ -498,10 +498,10 @@ class CalendarWebhookService:
         try:
             # Hier könnte eine Event-Tabelle erstellt werden für allgemeine Projekt-Events
             # Für jetzt loggen wir nur
-            logger.info(f"📅 Projekt-Event erkannt: '{event.get('title')}' für Projekt '{project.name}'")
+            logger.info(f"[INFO] Projekt-Event erkannt: '{event.get('title')}' für Projekt '{project.name}'")
             
         except Exception as e:
-            logger.error(f"❌ Fehler bei Projekt-Event-Erstellung: {e}")
+            logger.error(f"[ERROR] Fehler bei Projekt-Event-Erstellung: {e}")
     
     async def renew_expiring_webhooks(self, db: AsyncSession):
         """Erneuert ablaufende Webhook-Subscriptions"""
@@ -522,7 +522,7 @@ class CalendarWebhookService:
             
             for user in google_users.scalars():
                 await self.setup_google_webhook(user, db)
-                logger.info(f"🔄 Google Webhook erneuert für User {user.id}")
+                logger.info(f"[UPDATE] Google Webhook erneuert für User {user.id}")
             
             # Microsoft Webhooks
             microsoft_users = await db.execute(
@@ -537,10 +537,10 @@ class CalendarWebhookService:
             
             for user in microsoft_users.scalars():
                 await self.setup_microsoft_webhook(user, db)
-                logger.info(f"🔄 Microsoft Webhook erneuert für User {user.id}")
+                logger.info(f"[UPDATE] Microsoft Webhook erneuert für User {user.id}")
                 
         except Exception as e:
-            logger.error(f"❌ Fehler beim Erneuern der Webhooks: {e}")
+            logger.error(f"[ERROR] Fehler beim Erneuern der Webhooks: {e}")
     
     async def cleanup_expired_webhooks(self, db: AsyncSession):
         """Räumt abgelaufene Webhook-Subscriptions auf"""
@@ -572,7 +572,7 @@ class CalendarWebhookService:
             logger.info("🧹 Abgelaufene Webhooks bereinigt")
             
         except Exception as e:
-            logger.error(f"❌ Fehler beim Bereinigen der Webhooks: {e}")
+            logger.error(f"[ERROR] Fehler beim Bereinigen der Webhooks: {e}")
 
 
 # Globale Service-Instanz

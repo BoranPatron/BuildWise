@@ -38,7 +38,7 @@ class SubscriptionService:
                 'is_pro': user.subscription_plan == SubscriptionPlan.PRO and user.subscription_status == SubscriptionStatus.ACTIVE
             }
         except Exception as e:
-            print(f"❌ Fehler beim Holen der Subscription: {e}")
+            print(f"[ERROR] Fehler beim Holen der Subscription: {e}")
             return None
     
     @staticmethod
@@ -73,7 +73,7 @@ class SubscriptionService:
             
             return customer['id']
         except Exception as e:
-            print(f"❌ Fehler beim Erstellen des Stripe Customer: {e}")
+            print(f"[ERROR] Fehler beim Erstellen des Stripe Customer: {e}")
             return None
     
     @staticmethod
@@ -110,7 +110,7 @@ class SubscriptionService:
             
             return session
         except Exception as e:
-            print(f"❌ Fehler beim Erstellen der Checkout Session: {e}")
+            print(f"[ERROR] Fehler beim Erstellen der Checkout Session: {e}")
             return None
     
     @staticmethod
@@ -155,10 +155,10 @@ class SubscriptionService:
                 resource_type="subscription", resource_id=subscription_id
             )
             
-            print(f"✅ Subscription aktiviert für User {user_id}: {subscription_id}")
+            print(f"[SUCCESS] Subscription aktiviert für User {user_id}: {subscription_id}")
             return True
         except Exception as e:
-            print(f"❌ Fehler beim Aktivieren der Subscription: {e}")
+            print(f"[ERROR] Fehler beim Aktivieren der Subscription: {e}")
             return False
     
     @staticmethod
@@ -210,10 +210,10 @@ class SubscriptionService:
                 resource_type="subscription", resource_id=user.subscription_id
             )
             
-            print(f"✅ Subscription gekündigt für User {user_id}")
+            print(f"[SUCCESS] Subscription gekündigt für User {user_id}")
             return True
         except Exception as e:
-            print(f"❌ Fehler beim Kündigen der Subscription: {e}")
+            print(f"[ERROR] Fehler beim Kündigen der Subscription: {e}")
             return False
     
     @staticmethod
@@ -251,7 +251,7 @@ class SubscriptionService:
                 'current': current_gewerke
             }
         except Exception as e:
-            print(f"❌ Fehler beim Prüfen des Gewerke-Limits: {e}")
+            print(f"[ERROR] Fehler beim Prüfen des Gewerke-Limits: {e}")
             return {'allowed': False, 'reason': 'Fehler bei der Prüfung'}
     
     @staticmethod
@@ -305,8 +305,8 @@ class SubscriptionService:
             )
             await db.commit()
             
-            print(f"✅ Subscription synchronisiert für User {user_id}: {new_status.value}")
+            print(f"[SUCCESS] Subscription synchronisiert für User {user_id}: {new_status.value}")
             return True
         except Exception as e:
-            print(f"❌ Fehler beim Synchronisieren der Subscription: {e}")
+            print(f"[ERROR] Fehler beim Synchronisieren der Subscription: {e}")
             return False 

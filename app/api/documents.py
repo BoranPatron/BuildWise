@@ -208,7 +208,7 @@ async def upload_document(
     """Lädt ein neues Dokument mit erweiterten DMS-Features hoch"""
     try:
         # Debug-Logging
-        logger.info(f"📤 Upload-Request erhalten:")
+        logger.info(f"[INFO] Upload-Request erhalten:")
         logger.info(f"   - project_id: {project_id}")
         logger.info(f"   - title: {title}")
         logger.info(f"   - document_type: {document_type} (type: {type(document_type)})")
@@ -248,7 +248,7 @@ async def upload_document(
         file_path, file_size = await save_uploaded_file(file_content, filename, project_id)
         
         # Erstelle Dokument-Eintrag - Validierung erfolgt im Schema
-        logger.info("🔧 Erstelle DocumentCreate Schema...")
+        logger.info("[DEBUG] Erstelle DocumentCreate Schema...")
         try:
             document_in = DocumentCreate(
                 title=title.strip(),
@@ -1199,133 +1199,245 @@ async def get_document_content(
 
 
 # Dienstleister-spezifische Endpunkte
-@router.get("/service-provider", response_model=List[DocumentSummary])
+# WICHTIG: Diese Endpunkte MÜSSEN vor den allgemeinen GET-Endpunkten definiert werden!
+@router.get("/sp/documents", response_model=List[DocumentSummary])
 async def read_service_provider_documents(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Lade Dokumente für Dienstleister (Rechnungen, etc.)"""
-    logger.info(f"🔍 Service provider documents request - User: {current_user.email}, Type: {current_user.user_type}, Role: {current_user.user_role}")
+    logger.info(f"[DEBUG] Service provider documents request - User: {current_user.email}, User ID: {current_user.id}")
+    
     try:
+        # Importiere UserRole und UserType für Enum-Vergleiche
+        from ..models.user import UserRole, UserType
+        
         # Prüfe ob User ein Dienstleister ist
         is_service_provider = (
-            current_user.user_type == "service_provider" or
-            current_user.user_role == "DIENSTLEISTER"
+            current_user.user_type == UserType.SERVICE_PROVIDER or
+            current_user.user_role == UserRole.DIENSTLEISTER
         )
         
+        logger.info(f"[DEBUG] is_service_provider: {is_service_provider}")
+        
         if not is_service_provider:
+            logger.error(f"[ERROR] User {current_user.id} ist kein Dienstleister")
             raise HTTPException(
                 status_code=403,
                 detail="Nur Dienstleister können ihre Dokumente einsehen"
             )
         
-        # Lade Dienstleister-spezifische Dokumente (vereinfacht)
-        stmt = select(Document).options(
-            selectinload(Document.versions),
-            selectinload(Document.status_history),
-            selectinload(Document.shares),
-            selectinload(Document.access_logs)
-        ).where(
-            Document.uploaded_by == current_user.id
-        ).order_by(Document.created_at.desc()).limit(100)
+        # Lade alle Dokumente von Projekten, wo der Dienstleister akzeptierte Quotes hat
+        from sqlalchemy import text
         
-        result = await db.execute(stmt)
-        documents = result.scalars().all()
+        logger.info(f"[DEBUG] Lade akzeptierte Quotes für User {current_user.id}")
         
-        # Erweitere Dokumente um Ausschreibungsinformationen (falls sie zu einem Projekt gehören)
-        documents_with_milestone_info = []
-        for doc in documents:
-            if doc.project_id:
-                # Versuche Milestone-Informationen für dieses Dokument zu finden
-                try:
-                    from sqlalchemy import text
-                    import json
-                    
-                    milestone_query = text("""
-                        SELECT id, title, description, status, category, shared_document_ids, documents 
-                        FROM milestones 
-                        WHERE project_id = :project_id 
-                        AND (shared_document_ids LIKE :doc_id_pattern OR documents LIKE :doc_id_pattern)
-                    """)
-                    
-                    doc_id_pattern = f'%{doc.id}%'
-                    milestone_result = await db.execute(milestone_query, {
-                        "project_id": doc.project_id,
-                        "doc_id_pattern": doc_id_pattern
-                    })
-                    
-                    milestone_row = milestone_result.fetchone()
-                    if milestone_row:
-                        doc.milestone_id = milestone_row.id
-                        doc.milestone_title = milestone_row.title
-                        doc.milestone_status = milestone_row.status
-                        doc.milestone_category = milestone_row.category
-                    else:
-                        doc.milestone_id = None
-                        doc.milestone_title = None
-                        doc.milestone_status = None
-                        doc.milestone_category = None
-                except Exception as e:
-                    logger.warning(f"Fehler beim Laden der Milestone-Info für Dokument {doc.id}: {e}")
-                    doc.milestone_id = None
-                    doc.milestone_title = None
-                    doc.milestone_status = None
-                    doc.milestone_category = None
-            else:
-                doc.milestone_id = None
-                doc.milestone_title = None
-                doc.milestone_status = None
-                doc.milestone_category = None
+        # ZUERST: Prüfe alle Quotes des Dienstleisters (unabhängig vom Status)
+        all_quotes_query = text("""
+            SELECT q.id, q.project_id, q.status, q.created_at
+            FROM quotes q
+            WHERE q.service_provider_id = :service_provider_id
+            ORDER BY q.created_at DESC
+        """)
+        
+        all_quotes_result = await db.execute(all_quotes_query, {
+            "service_provider_id": current_user.id
+        })
+        all_quotes = all_quotes_result.fetchall()
+        
+        logger.info(f"[DEBUG] Alle Quotes des Dienstleisters: {len(all_quotes)}")
+        for quote in all_quotes:
+            logger.info(f"[DEBUG] Quote {quote.id}: project_id={quote.project_id}, status={quote.status}")
+        
+        # Query für akzeptierte Quotes des Dienstleisters
+        accepted_quotes_query = text("""
+            SELECT DISTINCT q.project_id
+            FROM quotes q
+            WHERE q.service_provider_id = :service_provider_id
+            AND q.status = 'accepted'
+        """)
+        
+        quotes_result = await db.execute(accepted_quotes_query, {
+            "service_provider_id": current_user.id
+        })
+        accepted_quotes = quotes_result.fetchall()
+        
+        logger.info(f"[DEBUG] Gefundene akzeptierte Quotes: {len(accepted_quotes)}")
+        
+        # TEMPORÄRE LÖSUNG: Falls keine akzeptierten Quotes gefunden werden,
+        # lade alle Dokumente des Dienstleisters (unabhängig vom Quote-Status)
+        if not accepted_quotes:
+            logger.info(f"[DEBUG] Keine akzeptierten Quotes - lade ALLE Dokumente des Dienstleisters")
             
-            documents_with_milestone_info.append(doc)
+            # Lade alle Dokumente, die der Dienstleister hochgeladen hat
+            all_docs_query = text("""
+                SELECT d.id, d.title, d.description, d.file_name, d.file_path, 
+                       d.file_size, d.mime_type, d.document_type, d.category, 
+                       d.subcategory, d.is_favorite, d.tags, 
+                       d.created_at, d.updated_at, 
+                       d.project_id, d.uploaded_by
+                FROM documents d
+                WHERE d.uploaded_by = :service_provider_id
+                AND d.hidden_for_service_providers = FALSE
+                ORDER BY d.created_at DESC
+                LIMIT 200
+            """)
+            
+            docs_result = await db.execute(all_docs_query, {
+                "service_provider_id": current_user.id
+            })
+            documents = docs_result.fetchall()
+            
+            logger.info(f"[DEBUG] Gefundene eigene Dokumente: {len(documents)}")
+            
+            if not documents:
+                logger.info(f"[DEBUG] Keine eigenen Dokumente gefunden - gebe leere Liste zurück")
+                return []
+            
+            # Konvertiere zu DocumentSummary
+            document_summaries = []
+            for doc in documents:
+                try:
+                    summary = DocumentSummary(
+                        id=doc.id,
+                        title=doc.title,
+                        description=doc.description,
+                        file_name=doc.file_name,
+                        file_path=doc.file_path,
+                        file_size=doc.file_size or 0,
+                        mime_type=doc.mime_type,
+                        document_type=doc.document_type or "other",
+                        category=doc.category,
+                        subcategory=doc.subcategory,
+                        is_favorite=doc.is_favorite or False,
+                        status="active",  # Default-Status da Spalte nicht existiert
+                        tags=doc.tags,
+                        is_encrypted=False,  # Default-Wert da Spalte nicht existiert
+                        created_at=doc.created_at,
+                        updated_at=doc.updated_at,
+                        accessed_at=None,  # Default-Wert da Spalte nicht existiert
+                        project_id=doc.project_id,
+                        uploaded_by=doc.uploaded_by,
+                        milestone_id=None,  # Default-Wert da Spalte nicht existiert
+                        milestone_title=None,
+                        milestone_status=None,
+                        milestone_category=None,
+                        # Pflichtfelder für DocumentSummary
+                        version_number="1",  # Default-Version (String!)
+                        document_status="active",  # Default-Status
+                        workflow_stage="completed",  # Default-Workflow-Stage
+                        download_count=0  # Default-Download-Count
+                    )
+                    document_summaries.append(summary)
+                except Exception as e:
+                    logger.error(f"[ERROR] Fehler beim Konvertieren von Dokument {doc.id}: {str(e)}")
+                    continue
+            
+            logger.info(f"[DEBUG] Erfolgreich {len(document_summaries)} eigene Dokumente konvertiert")
+            return document_summaries
         
-        # Konvertiere zu DocumentSummary mit allen erforderlichen Feldern
+        # Sammle alle Projekt-IDs
+        project_ids = [quote.project_id for quote in accepted_quotes if quote.project_id]
+        
+        if not project_ids:
+            logger.info(f"[DEBUG] Keine gültigen Projekt-IDs - gebe leere Liste zurück")
+            return []
+        
+        logger.info(f"[DEBUG] Lade Dokumente für {len(project_ids)} Projekte: {project_ids}")
+        
+        # ZUERST: Prüfe ob es überhaupt Dokumente in der Datenbank gibt
+        total_docs_query = text("SELECT COUNT(*) as total FROM documents")
+        total_docs_result = await db.execute(total_docs_query)
+        total_docs = total_docs_result.fetchone()
+        logger.info(f"[DEBUG] Gesamtanzahl Dokumente in DB: {total_docs.total if total_docs else 0}")
+        
+        # Lade alle Dokumente aus diesen Projekten
+        project_placeholders = ', '.join([f':pid_{i}' for i in range(len(project_ids))])
+        
+        documents_query = text(f"""
+            SELECT d.id, d.title, d.description, d.file_name, d.file_path, 
+                   d.file_size, d.mime_type, d.document_type, d.category, 
+                   d.subcategory, d.is_favorite, d.tags, 
+                   d.created_at, d.updated_at, 
+                   d.project_id, d.uploaded_by
+            FROM documents d
+            WHERE d.project_id IN ({project_placeholders})
+            AND d.hidden_for_service_providers = FALSE
+            ORDER BY d.created_at DESC
+            LIMIT 200
+        """)
+        
+        docs_params = {f'pid_{i}': pid for i, pid in enumerate(project_ids)}
+        docs_result = await db.execute(documents_query, docs_params)
+        documents = docs_result.fetchall()
+        
+        logger.info(f"[DEBUG] Gefundene Dokumente: {len(documents)}")
+        
+        # Konvertiere zu DocumentSummary
         document_summaries = []
-        for doc in documents_with_milestone_info:
-            summary = {
-                "id": doc.id,
-                "title": doc.title,
-                "document_type": doc.document_type or "other",
-                "category": doc.category,
-                "subcategory": doc.subcategory,
-                "version_number": "1.0",  # Standard-Version
-                "document_status": doc.status or "DRAFT",
-                "workflow_stage": "UPLOADED",  # Standard-Stage
-                "file_name": doc.file_name,
-                "file_size": doc.file_size or 0,
-                "created_at": doc.created_at,
-                "updated_at": doc.updated_at,
-                "is_favorite": doc.is_favorite or False,
-                "download_count": 0,  # Standard-Download-Count
-                # Ausschreibungsinformationen
-                "milestone_id": getattr(doc, 'milestone_id', None),
-                "milestone_title": getattr(doc, 'milestone_title', None),
-                "milestone_status": getattr(doc, 'milestone_status', None),
-                "milestone_category": getattr(doc, 'milestone_category', None)
-            }
-            document_summaries.append(DocumentSummary(**summary))
+        for doc in documents:
+            try:
+                summary = DocumentSummary(
+                    id=doc.id,
+                    title=doc.title,
+                    description=doc.description,
+                    file_name=doc.file_name,
+                    file_path=doc.file_path,
+                    file_size=doc.file_size or 0,
+                    mime_type=doc.mime_type,
+                    document_type=doc.document_type or "other",
+                    category=doc.category,
+                    subcategory=doc.subcategory,
+                    is_favorite=doc.is_favorite or False,
+                    status="active",  # Default-Status da Spalte nicht existiert
+                    tags=doc.tags,
+                    is_encrypted=False,  # Default-Wert da Spalte nicht existiert
+                    created_at=doc.created_at,
+                    updated_at=doc.updated_at,
+                    accessed_at=None,  # Default-Wert da Spalte nicht existiert
+                    project_id=doc.project_id,
+                    uploaded_by=doc.uploaded_by,
+                    milestone_id=None,  # Default-Wert da Spalte nicht existiert
+                    milestone_title=None,
+                    milestone_status=None,
+                    milestone_category=None,
+                    # Pflichtfelder für DocumentSummary
+                    version_number="1",  # Default-Version (String!)
+                    document_status="active",  # Default-Status
+                    workflow_stage="completed",  # Default-Workflow-Stage
+                    download_count=0  # Default-Download-Count
+                )
+                document_summaries.append(summary)
+            except Exception as e:
+                logger.error(f"[ERROR] Fehler beim Konvertieren von Dokument {doc.id}: {str(e)}")
+                continue
         
+        logger.info(f"[DEBUG] Erfolgreich {len(document_summaries)} Dokumente konvertiert")
         return document_summaries
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Fehler beim Laden der Dienstleister-Dokumente: {str(e)}")
-        raise HTTPException(status_code=500, detail="Fehler beim Laden der Dokumente")
+        logger.error(f"[ERROR] Fehler beim Laden der Dienstleister-Dokumente: {str(e)}")
+        import traceback
+        logger.error(f"[ERROR] Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Fehler beim Laden der Dokumente: {str(e)}")
 
 
-@router.get("/categories/stats/service-provider")
+@router.get("/sp/stats")
 async def get_service_provider_category_statistics(
-    project_id: Optional[int] = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Lade Kategorie-Statistiken für Dienstleister-Dokumente"""
     try:
+        # Importiere UserRole und UserType für Enum-Vergleiche
+        from ..models.user import UserRole, UserType
+        
         # Prüfe ob User ein Dienstleister ist
         is_service_provider = (
-            current_user.user_type == "service_provider" or
-            current_user.user_role == "DIENSTLEISTER"
+            current_user.user_type == UserType.SERVICE_PROVIDER or
+            current_user.user_role == UserRole.DIENSTLEISTER
         )
         
         if not is_service_provider:
@@ -1334,31 +1446,77 @@ async def get_service_provider_category_statistics(
                 detail="Nur Dienstleister können ihre Statistiken einsehen"
             )
         
-        # Lade Statistiken für Dienstleister-Dokumente
-        stmt = select(
-            Document.category,
-            func.count(Document.id).label('total_documents'),
-            func.sum(Document.file_size).label('total_size'),
-            func.sum(func.case((Document.is_favorite == True, 1), else_=0)).label('favorite_count')
-        ).where(
-            Document.uploaded_by == current_user.id
-        ).group_by(Document.category)
+        # Lade Statistiken von akzeptierten Quotes
+        from sqlalchemy import text
         
-        result = await db.execute(stmt)
-        stats = result.all()
+        # Query für akzeptierte Quotes des Dienstleisters
+        accepted_quotes_query = text("""
+            SELECT DISTINCT q.project_id
+            FROM quotes q
+            WHERE q.service_provider_id = :service_provider_id
+            AND q.status = 'accepted'
+        """)
         
-        # Formatiere Statistiken
-        category_stats = {}
-        for stat in stats:
-            category = stat.category or "other"
-            category_stats[category] = {
-                "total_documents": stat.total_documents,
-                "total_size": stat.total_size or 0,
-                "favorite_count": stat.favorite_count,
-                "subcategories": {}  # Vereinfacht für Dienstleister
-            }
+        quotes_result = await db.execute(accepted_quotes_query, {
+            "service_provider_id": current_user.id
+        })
+        accepted_quotes = quotes_result.fetchall()
         
-        return category_stats
+        if accepted_quotes:
+            # Sammle alle Projekt-IDs
+            project_ids = [quote.project_id for quote in accepted_quotes if quote.project_id]
+            
+            if project_ids:
+                project_placeholders = ', '.join([f':pid_{i}' for i in range(len(project_ids))])
+                
+                # Lade Statistiken für Dokumente aus diesen Projekten
+                stats_query = text(f"""
+                    SELECT 
+                        category,
+                        subcategory,
+                        COUNT(*) as document_count,
+                        SUM(file_size) as total_size,
+                        AVG(file_size) as avg_size,
+                        COUNT(CASE WHEN is_favorite = true THEN 1 END) as favorite_count
+                    FROM documents
+                    WHERE project_id IN ({project_placeholders})
+                    GROUP BY category, subcategory
+                    ORDER BY category, subcategory
+                """)
+                
+                stats_params = {f'pid_{i}': pid for i, pid in enumerate(project_ids)}
+                result = await db.execute(stats_query, stats_params)
+                stats = result.fetchall()
+                
+                # Formatiere Statistiken
+                category_stats = {}
+                for stat in stats:
+                    category = stat.category or "other"
+                    if category not in category_stats:
+                        category_stats[category] = {
+                            "total_documents": 0,
+                            "total_size": 0,
+                            "favorite_count": 0,
+                            "subcategories": {}
+                        }
+                    
+                    category_stats[category]["total_documents"] += stat.document_count
+                    category_stats[category]["total_size"] += stat.total_size or 0
+                    category_stats[category]["favorite_count"] += stat.favorite_count or 0
+                    
+                    if stat.subcategory:
+                        category_stats[category]["subcategories"][stat.subcategory] = {
+                            "document_count": stat.document_count,
+                            "total_size": stat.total_size or 0,
+                            "avg_size": stat.avg_size or 0,
+                            "favorite_count": stat.favorite_count or 0
+                        }
+                
+                return category_stats
+            else:
+                return {}
+        else:
+            return {}
         
     except HTTPException:
         raise
@@ -1555,3 +1713,104 @@ async def get_bautraeger_documents_overview(
         logger.error(f"Fehler beim Laden der Bauträger-Dokumenten-Übersicht: {str(e)}")
         logger.exception(e)
         raise HTTPException(status_code=500, detail="Fehler beim Laden der Dokumenten-Übersicht")
+
+
+@router.delete("/sp/documents/{document_id}")
+async def soft_delete_document_for_service_provider(
+    document_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Soft-Delete für Service Provider: Macht ein Dokument nur für Service Provider unsichtbar,
+    aber lässt es für Bauträger weiterhin sichtbar.
+    """
+    try:
+        from ..models.user import UserRole, UserType
+        
+        # Prüfe ob User ein Service Provider ist
+        is_service_provider = (
+            current_user.user_type == UserType.SERVICE_PROVIDER or
+            current_user.user_role == UserRole.DIENSTLEISTER
+        )
+        
+        if not is_service_provider:
+            logger.error(f"User {current_user.id} ist kein Service Provider")
+            raise HTTPException(
+                status_code=403,
+                detail="Nur Service Provider können Dokumente für sich verstecken"
+            )
+        
+        logger.info(f"[DEBUG] Service Provider {current_user.id} möchte Dokument {document_id} verstecken")
+        
+        # Prüfe ob das Dokument existiert und für diesen Service Provider sichtbar ist
+        from sqlalchemy import text
+        
+        # Lade das Dokument mit allen relevanten Informationen
+        doc_query = text("""
+            SELECT d.id, d.title, d.project_id, d.uploaded_by, d.hidden_for_service_providers
+            FROM documents d
+            WHERE d.id = :document_id
+        """)
+        
+        doc_result = await db.execute(doc_query, {"document_id": document_id})
+        document = doc_result.fetchone()
+        
+        if not document:
+            logger.error(f"Dokument {document_id} nicht gefunden")
+            raise HTTPException(status_code=404, detail="Dokument nicht gefunden")
+        
+        if document.hidden_for_service_providers:
+            logger.info(f"Dokument {document_id} ist bereits für Service Provider versteckt")
+            return {"message": "Dokument ist bereits versteckt", "document_id": document_id}
+        
+        # Prüfe ob der Service Provider Zugriff auf dieses Dokument hat
+        # (über akzeptierte Quotes)
+        access_query = text("""
+            SELECT COUNT(*) as count
+            FROM quotes q
+            WHERE q.service_provider_id = :service_provider_id
+            AND q.status = 'accepted'
+            AND q.project_id = :project_id
+        """)
+        
+        access_result = await db.execute(access_query, {
+            "service_provider_id": current_user.id,
+            "project_id": document.project_id
+        })
+        access_count = access_result.fetchone()
+        
+        if not access_count or access_count.count == 0:
+            logger.error(f"Service Provider {current_user.id} hat keinen Zugriff auf Dokument {document_id}")
+            raise HTTPException(
+                status_code=403,
+                detail="Kein Zugriff auf dieses Dokument"
+            )
+        
+        # Führe Soft-Delete durch
+        update_query = text("""
+            UPDATE documents 
+            SET hidden_for_service_providers = TRUE,
+                updated_at = CURRENT_TIMESTAMP
+            WHERE id = :document_id
+        """)
+        
+        await db.execute(update_query, {"document_id": document_id})
+        await db.commit()
+        
+        logger.info(f"[SUCCESS] Dokument {document_id} für Service Provider {current_user.id} versteckt")
+        
+        return {
+            "message": "Dokument wurde für Sie versteckt",
+            "document_id": document_id,
+            "title": document.title,
+            "note": "Bauträger können das Dokument weiterhin sehen"
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"[ERROR] Fehler beim Verstecken des Dokuments {document_id}: {str(e)}")
+        import traceback
+        logger.error(f"[ERROR] Traceback: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=f"Fehler beim Verstecken des Dokuments: {str(e)}")

@@ -54,7 +54,7 @@ class MicrosoftCalendarService:
             return authorization_url
             
         except Exception as e:
-            logger.error(f"❌ Fehler beim Erstellen der Microsoft Authorization URL: {e}")
+            logger.error(f"[ERROR] Fehler beim Erstellen der Microsoft Authorization URL: {e}")
             raise
     
     async def handle_oauth_callback(self, code: str, state: str, db: AsyncSession) -> Dict[str, Any]:
@@ -97,7 +97,7 @@ class MicrosoftCalendarService:
             )
             await db.commit()
             
-            logger.info(f"✅ Microsoft Calendar erfolgreich für User {user_id} aktiviert")
+            logger.info(f"[SUCCESS] Microsoft Calendar erfolgreich für User {user_id} aktiviert")
             
             return {
                 "success": True,
@@ -106,7 +106,7 @@ class MicrosoftCalendarService:
             }
             
         except Exception as e:
-            logger.error(f"❌ Fehler beim Microsoft OAuth Callback: {e}")
+            logger.error(f"[ERROR] Fehler beim Microsoft OAuth Callback: {e}")
             raise
     
     async def get_access_token(self, user: User) -> Optional[str]:
@@ -126,7 +126,7 @@ class MicrosoftCalendarService:
             return None
             
         except Exception as e:
-            logger.error(f"❌ Fehler beim Laden des Access Tokens: {e}")
+            logger.error(f"[ERROR] Fehler beim Laden des Access Tokens: {e}")
             return None
     
     async def _refresh_access_token(self, user: User) -> Optional[str]:
@@ -159,7 +159,7 @@ class MicrosoftCalendarService:
                 return token_info['access_token']
                 
         except Exception as e:
-            logger.error(f"❌ Fehler beim Token Refresh: {e}")
+            logger.error(f"[ERROR] Fehler beim Token Refresh: {e}")
             return None
     
     async def create_calendar_event(self, user: User, event_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -215,7 +215,7 @@ class MicrosoftCalendarService:
                 
                 created_event = response.json()
                 
-                logger.info(f"✅ Outlook Calendar Event erstellt: {created_event['id']}")
+                logger.info(f"[SUCCESS] Outlook Calendar Event erstellt: {created_event['id']}")
                 
                 return {
                     'event_id': created_event['id'],
@@ -224,7 +224,7 @@ class MicrosoftCalendarService:
                 }
                 
         except Exception as e:
-            logger.error(f"❌ Fehler beim Erstellen des Outlook Events: {e}")
+            logger.error(f"[ERROR] Fehler beim Erstellen des Outlook Events: {e}")
             return None
     
     async def sync_milestone_to_calendar(self, user: User, milestone: Milestone, db: AsyncSession) -> bool:
@@ -241,9 +241,9 @@ class MicrosoftCalendarService:
             
             # Event-Daten zusammenstellen
             event_data = {
-                'title': f"📋 {milestone.title} - {project.name}",
+                'title': f"[INFO] {milestone.title} - {project.name}",
                 'description': f"""
-<h3>🏗️ BuildWise Meilenstein</h3>
+<h3>[BUILD] BuildWise Meilenstein</h3>
 
 <p><strong>Projekt:</strong> {project.name}</p>
 <p><strong>Meilenstein:</strong> {milestone.title}</p>
@@ -264,7 +264,7 @@ class MicrosoftCalendarService:
             return result is not None
             
         except Exception as e:
-            logger.error(f"❌ Fehler beim Synchronisieren des Meilensteins: {e}")
+            logger.error(f"[ERROR] Fehler beim Synchronisieren des Meilensteins: {e}")
             return False
     
     async def sync_task_to_calendar(self, user: User, task: Task, db: AsyncSession) -> bool:
@@ -284,9 +284,9 @@ class MicrosoftCalendarService:
             
             # Event-Daten zusammenstellen
             event_data = {
-                'title': f"✅ {task.title} - {project.name}",
+                'title': f"[SUCCESS] {task.title} - {project.name}",
                 'description': f"""
-<h3>🏗️ BuildWise Aufgabe</h3>
+<h3>[BUILD] BuildWise Aufgabe</h3>
 
 <p><strong>Projekt:</strong> {project.name}</p>
 <p><strong>Aufgabe:</strong> {task.title}</p>
@@ -308,7 +308,7 @@ class MicrosoftCalendarService:
             return result is not None
             
         except Exception as e:
-            logger.error(f"❌ Fehler beim Synchronisieren der Aufgabe: {e}")
+            logger.error(f"[ERROR] Fehler beim Synchronisieren der Aufgabe: {e}")
             return False
     
     async def send_project_update_email(self, user: User, project: Project, recipients: List[str], 
@@ -367,11 +367,11 @@ class MicrosoftCalendarService:
                     logger.error(f"Email sending failed: {response.text}")
                     return False
                 
-                logger.info(f"✅ Projekt-Update E-Mail gesendet für Projekt {project.id}")
+                logger.info(f"[SUCCESS] Projekt-Update E-Mail gesendet für Projekt {project.id}")
                 return True
                 
         except Exception as e:
-            logger.error(f"❌ Fehler beim Senden der E-Mail: {e}")
+            logger.error(f"[ERROR] Fehler beim Senden der E-Mail: {e}")
             return False
     
     async def create_meeting_invitation(self, user: User, meeting_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
@@ -381,11 +381,11 @@ class MicrosoftCalendarService:
             event_data = {
                 'title': f"🤝 {meeting_data.get('title', 'BuildWise Meeting')}",
                 'description': f"""
-<h3>🏗️ BuildWise Meeting</h3>
+<h3>[BUILD] BuildWise Meeting</h3>
 
 <p>{meeting_data.get('description', '')}</p>
 
-<h4>📋 Agenda:</h4>
+<h4>[INFO] Agenda:</h4>
 <p>{meeting_data.get('agenda', 'Keine Agenda angegeben')}</p>
 
 <p><a href="{settings.base_url}">🔗 BuildWise öffnen</a></p>
@@ -405,7 +405,7 @@ class MicrosoftCalendarService:
             return result
             
         except Exception as e:
-            logger.error(f"❌ Fehler beim Erstellen der Meeting-Einladung: {e}")
+            logger.error(f"[ERROR] Fehler beim Erstellen der Meeting-Einladung: {e}")
             return None
     
     async def _add_teams_meeting(self, user: User, event_id: str, meeting_data: Dict[str, Any]):
@@ -434,12 +434,12 @@ class MicrosoftCalendarService:
                 )
                 
                 if response.status_code == 200:
-                    logger.info(f"✅ Teams Meeting zu Event {event_id} hinzugefügt")
+                    logger.info(f"[SUCCESS] Teams Meeting zu Event {event_id} hinzugefügt")
                 else:
-                    logger.warning(f"⚠️ Teams Meeting konnte nicht hinzugefügt werden: {response.text}")
+                    logger.warning(f"[WARNING] Teams Meeting konnte nicht hinzugefügt werden: {response.text}")
                     
         except Exception as e:
-            logger.error(f"❌ Fehler beim Hinzufügen des Teams Meetings: {e}")
+            logger.error(f"[ERROR] Fehler beim Hinzufügen des Teams Meetings: {e}")
     
     async def get_calendar_availability(self, user: User, start_time: datetime, 
                                       end_time: datetime) -> Dict[str, Any]:
@@ -490,7 +490,7 @@ class MicrosoftCalendarService:
                 }
                 
         except Exception as e:
-            logger.error(f"❌ Fehler beim Prüfen der Verfügbarkeit: {e}")
+            logger.error(f"[ERROR] Fehler beim Prüfen der Verfügbarkeit: {e}")
             return {"available": False, "reason": str(e)}
     
     async def _suggest_alternative_times(self, user: User, original_start: datetime, 
@@ -529,7 +529,7 @@ class MicrosoftCalendarService:
             return suggestions[:3]  # Maximal 3 Vorschläge
             
         except Exception as e:
-            logger.error(f"❌ Fehler beim Erstellen von Zeitvorschlägen: {e}")
+            logger.error(f"[ERROR] Fehler beim Erstellen von Zeitvorschlägen: {e}")
             return []
     
     async def get_calendar_events(self, user: User, start_date: datetime, 
@@ -580,7 +580,7 @@ class MicrosoftCalendarService:
                 return events
                 
         except Exception as e:
-            logger.error(f"❌ Fehler beim Laden der Kalender-Events: {e}")
+            logger.error(f"[ERROR] Fehler beim Laden der Kalender-Events: {e}")
             return []
 
 

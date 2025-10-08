@@ -69,7 +69,7 @@ async def google_calendar_authorize(
         return {"authorization_url": authorization_url}
         
     except Exception as e:
-        logger.error(f"❌ Google Calendar Authorization Fehler: {e}")
+        logger.error(f"[ERROR] Google Calendar Authorization Fehler: {e}")
         raise HTTPException(status_code=500, detail="Fehler beim Starten der Google Calendar Authorization")
 
 @router.get("/google/callback")
@@ -89,7 +89,7 @@ async def google_calendar_callback(
             return RedirectResponse(url=f"/dashboard?calendar_connected=google&success=false")
             
     except Exception as e:
-        logger.error(f"❌ Google Calendar Callback Fehler: {e}")
+        logger.error(f"[ERROR] Google Calendar Callback Fehler: {e}")
         return RedirectResponse(url=f"/dashboard?calendar_connected=google&success=false&error={str(e)}")
 
 @router.post("/google/create-event")
@@ -122,7 +122,7 @@ async def create_google_calendar_event(
             raise HTTPException(status_code=400, detail="Fehler beim Erstellen des Google Calendar Events")
             
     except Exception as e:
-        logger.error(f"❌ Fehler beim Erstellen des Google Calendar Events: {e}")
+        logger.error(f"[ERROR] Fehler beim Erstellen des Google Calendar Events: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.post("/google/sync-project")
@@ -176,7 +176,7 @@ async def sync_project_to_google_calendar(
         }
         
     except Exception as e:
-        logger.error(f"❌ Fehler bei Projekt-Synchronisation: {e}")
+        logger.error(f"[ERROR] Fehler bei Projekt-Synchronisation: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Microsoft Calendar Integration Endpoints
@@ -191,7 +191,7 @@ async def microsoft_calendar_authorize(
         return {"authorization_url": authorization_url}
         
     except Exception as e:
-        logger.error(f"❌ Microsoft Calendar Authorization Fehler: {e}")
+        logger.error(f"[ERROR] Microsoft Calendar Authorization Fehler: {e}")
         raise HTTPException(status_code=500, detail="Fehler beim Starten der Microsoft Calendar Authorization")
 
 @router.get("/microsoft/callback")
@@ -210,7 +210,7 @@ async def microsoft_calendar_callback(
             return RedirectResponse(url=f"/dashboard?calendar_connected=microsoft&success=false")
             
     except Exception as e:
-        logger.error(f"❌ Microsoft Calendar Callback Fehler: {e}")
+        logger.error(f"[ERROR] Microsoft Calendar Callback Fehler: {e}")
         return RedirectResponse(url=f"/dashboard?calendar_connected=microsoft&success=false&error={str(e)}")
 
 @router.post("/microsoft/create-event")
@@ -243,7 +243,7 @@ async def create_microsoft_calendar_event(
             raise HTTPException(status_code=400, detail="Fehler beim Erstellen des Microsoft Calendar Events")
             
     except Exception as e:
-        logger.error(f"❌ Fehler beim Erstellen des Microsoft Calendar Events: {e}")
+        logger.error(f"[ERROR] Fehler beim Erstellen des Microsoft Calendar Events: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Meeting Management Endpoints
@@ -284,7 +284,7 @@ async def create_meeting_invitation(
             raise HTTPException(status_code=400, detail="Fehler beim Erstellen der Meeting-Einladung")
             
     except Exception as e:
-        logger.error(f"❌ Fehler beim Erstellen der Meeting-Einladung: {e}")
+        logger.error(f"[ERROR] Fehler beim Erstellen der Meeting-Einladung: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/availability")
@@ -315,7 +315,7 @@ async def check_calendar_availability(
         }
         
     except Exception as e:
-        logger.error(f"❌ Fehler bei Verfügbarkeitsprüfung: {e}")
+        logger.error(f"[ERROR] Fehler bei Verfügbarkeitsprüfung: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # ICS Download Endpoints
@@ -364,7 +364,7 @@ async def download_project_calendar(
         )
         
     except Exception as e:
-        logger.error(f"❌ Fehler beim Download der Projekt-ICS: {e}")
+        logger.error(f"[ERROR] Fehler beim Download der Projekt-ICS: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/download/milestone/{milestone_id}")
@@ -408,7 +408,7 @@ async def download_milestone_calendar(
         )
         
     except Exception as e:
-        logger.error(f"❌ Fehler beim Download der Meilenstein-ICS: {e}")
+        logger.error(f"[ERROR] Fehler beim Download der Meilenstein-ICS: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 @router.get("/add-to-calendar")
@@ -437,7 +437,7 @@ async def get_add_to_calendar_links(
         }
         
     except Exception as e:
-        logger.error(f"❌ Fehler beim Generieren der Kalender-Links: {e}")
+        logger.error(f"[ERROR] Fehler beim Generieren der Kalender-Links: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Email Integration Endpoints
@@ -483,7 +483,7 @@ async def send_project_update_email(
             raise HTTPException(status_code=400, detail="Fehler beim Senden der E-Mail")
             
     except Exception as e:
-        logger.error(f"❌ Fehler beim Senden der Projekt-Update E-Mail: {e}")
+        logger.error(f"[ERROR] Fehler beim Senden der Projekt-Update E-Mail: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
 # Calendar Status Endpoints
@@ -548,5 +548,5 @@ async def disconnect_calendar_provider(
         }
         
     except Exception as e:
-        logger.error(f"❌ Fehler beim Trennen der Kalender-Verbindung: {e}")
+        logger.error(f"[ERROR] Fehler beim Trennen der Kalender-Verbindung: {e}")
         raise HTTPException(status_code=500, detail=str(e)) 

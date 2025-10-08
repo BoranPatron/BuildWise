@@ -58,7 +58,7 @@ class InvoiceService:
         
         # Wenn eine Rechnung existiert, überschreibe diese statt eine neue zu erstellen
         if existing_invoice:
-            print(f"✅ Bestehende Rechnung für Meilenstein {invoice_data.milestone_id} wird überschrieben")
+            print(f"[SUCCESS] Bestehende Rechnung für Meilenstein {invoice_data.milestone_id} wird überschrieben")
             
             # Lösche alle existierenden Kostenpositionen - verwende direkte SQL-Abfrage mit text()
             # ohne auf die Relation cost_positions zuzugreifen
@@ -87,7 +87,7 @@ class InvoiceService:
             
         else:
             # Erstelle eine neue Rechnung
-            print(f"✅ Neue Rechnung für Meilenstein {invoice_data.milestone_id} wird erstellt")
+            print(f"[SUCCESS] Neue Rechnung für Meilenstein {invoice_data.milestone_id} wird erstellt")
             invoice = Invoice(
                 project_id=invoice_data.project_id,
                 milestone_id=invoice_data.milestone_id,
@@ -115,7 +115,7 @@ class InvoiceService:
         # Nur bei neuer Rechnung nochmals hinzufügen, bestehende wurde bereits aktualisiert
         await db.flush()  # Flush um die invoice.id zu bekommen
         
-        # ✅ Erstelle flexible Kostenpositionen
+        # [SUCCESS] Erstelle flexible Kostenpositionen
         if hasattr(invoice_data, 'cost_positions') and invoice_data.cost_positions:
             for idx, cost_pos in enumerate(invoice_data.cost_positions):
                 cost_position = CostPosition(
@@ -173,9 +173,9 @@ class InvoiceService:
         await db.commit()
         await db.refresh(invoice)
         
-        # ✅ Generiere PDF sofort bei Erstellung
+        # [SUCCESS] Generiere PDF sofort bei Erstellung
         try:
-            print(f"🔍 Generiere PDF für neue manuelle Rechnung {invoice.id}")
+            print(f"[DEBUG] Generiere PDF für neue manuelle Rechnung {invoice.id}")
             pdf_path = await InvoiceService.generate_invoice_pdf(db, invoice.id)
             
             # Update invoice mit PDF-Pfad
@@ -184,20 +184,20 @@ class InvoiceService:
             await db.commit()
             await db.refresh(invoice)
             
-            print(f"✅ PDF sofort generiert: {pdf_path}")
+            print(f"[SUCCESS] PDF sofort generiert: {pdf_path}")
             
-            # ✅ Automatische DMS-Integration
+            # [SUCCESS] Automatische DMS-Integration
             try:
                 await InvoiceService.create_dms_document(db, invoice, pdf_path)
-                print(f"✅ DMS-Dokument erstellt für neue Rechnung {invoice.id}")
+                print(f"[SUCCESS] DMS-Dokument erstellt für neue Rechnung {invoice.id}")
             except Exception as dms_error:
-                print(f"⚠️ DMS-Integration fehlgeschlagen (nicht kritisch): {dms_error}")
+                print(f"[WARNING] DMS-Integration fehlgeschlagen (nicht kritisch): {dms_error}")
                 
         except Exception as pdf_error:
-            print(f"⚠️ PDF-Generierung bei Erstellung fehlgeschlagen: {pdf_error}")
+            print(f"[WARNING] PDF-Generierung bei Erstellung fehlgeschlagen: {pdf_error}")
             # PDF-Fehler blockiert nicht die Rechnungserstellung
         
-        print(f"✅ Manuelle Rechnung erstellt: {invoice.invoice_number} für Meilenstein {milestone.title}")
+        print(f"[SUCCESS] Manuelle Rechnung erstellt: {invoice.invoice_number} für Meilenstein {milestone.title}")
         
         return invoice
     
@@ -225,7 +225,7 @@ class InvoiceService:
         
         # Wenn eine Rechnung existiert, lösche vorhandene Kostenpositionen
         if existing_invoice:
-            print(f"✅ Bestehende Rechnung für Meilenstein {invoice_data.milestone_id} wird überschrieben")
+            print(f"[SUCCESS] Bestehende Rechnung für Meilenstein {invoice_data.milestone_id} wird überschrieben")
             # Verwende text() für direkte SQL-Abfragen
             delete_query = text(f"DELETE FROM cost_positions WHERE invoice_id = {existing_invoice.id}")
             await db.execute(delete_query)
@@ -260,7 +260,7 @@ class InvoiceService:
         
         # Wenn eine Rechnung existiert, überschreibe diese statt eine neue zu erstellen
         if existing_invoice:
-            print(f"✅ Bestehende Rechnung für Meilenstein {invoice_data.milestone_id} wird überschrieben")
+            print(f"[SUCCESS] Bestehende Rechnung für Meilenstein {invoice_data.milestone_id} wird überschrieben")
             
             # Update die bestehenden Felder
             existing_invoice.invoice_number = invoice_data.invoice_number
@@ -276,7 +276,7 @@ class InvoiceService:
             
         else:
             # Erstelle eine neue Rechnung
-            print(f"✅ Neue Rechnung für Meilenstein {invoice_data.milestone_id} wird erstellt")
+            print(f"[SUCCESS] Neue Rechnung für Meilenstein {invoice_data.milestone_id} wird erstellt")
             invoice = Invoice(
             project_id=milestone.project_id,
             milestone_id=invoice_data.milestone_id,
@@ -303,10 +303,10 @@ class InvoiceService:
         await db.commit()
         await db.refresh(invoice)
         
-        # ✅ Automatische DMS-Integration für hochgeladene PDFs
+        # [SUCCESS] Automatische DMS-Integration für hochgeladene PDFs
         await InvoiceService.create_dms_document(db, invoice, str(file_path))
         
-        print(f"✅ PDF-Rechnung hochgeladen: {invoice.invoice_number} für Meilenstein {milestone.title}")
+        print(f"[SUCCESS] PDF-Rechnung hochgeladen: {invoice.invoice_number} für Meilenstein {milestone.title}")
         return invoice
     
     @staticmethod
@@ -317,7 +317,7 @@ class InvoiceService:
         invoice_query = select(Invoice).options(
             selectinload(Invoice.milestone).selectinload(Milestone.project).selectinload(Project.owner),
             selectinload(Invoice.service_provider),
-            selectinload(Invoice.cost_positions)  # ✅ Lade auch die Kostenpositionen
+            selectinload(Invoice.cost_positions)  # [SUCCESS] Lade auch die Kostenpositionen
         ).where(Invoice.id == invoice_id)
         
         result = await db.execute(invoice_query)
@@ -334,7 +334,7 @@ class InvoiceService:
         pdf_filename = f"Rechnung_{invoice.invoice_number}_{invoice_id}.pdf"
         pdf_path = pdf_dir / pdf_filename
         
-        # ✅ Einfache PDF-Generierung mit ReportLab
+        # [SUCCESS] Einfache PDF-Generierung mit ReportLab
         try:
             from reportlab.lib.pagesizes import A4
             from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
@@ -462,7 +462,7 @@ class InvoiceService:
             if invoice.work_period_from and invoice.work_period_to:
                 invoice_data.append(['Leistungszeitraum:', f"{invoice.work_period_from.strftime('%d.%m.%Y')} - {invoice.work_period_to.strftime('%d.%m.%Y')}"])
             
-            # ✅ Flexible Kostenpositionen oder Legacy-Ansatz
+            # [SUCCESS] Flexible Kostenpositionen oder Legacy-Ansatz
             story.append(Paragraph("Leistungsverzeichnis", styles['Heading2']))
             story.append(Spacer(1, 10))
             
@@ -470,7 +470,7 @@ class InvoiceService:
             cost_positions_data = [['Position', 'Betrag (EUR)']]
             
             if invoice.cost_positions:
-                # ✅ Neue flexible Kostenpositionen
+                # [SUCCESS] Neue flexible Kostenpositionen
                 for pos in invoice.cost_positions:
                     cost_positions_data.append([pos.description, f"{pos.amount:.2f}"])
             else:
@@ -523,17 +523,17 @@ class InvoiceService:
             # Erstelle PDF
             doc.build(story)
             
-            print(f"✅ PDF generiert: {pdf_path}")
+            print(f"[SUCCESS] PDF generiert: {pdf_path}")
             
-            # ✅ Automatische DMS-Integration
+            # [SUCCESS] Automatische DMS-Integration
             await InvoiceService.create_dms_document(db, invoice, str(pdf_path))
             
             return str(pdf_path)
             
         except Exception as e:
             # Fallback: Erstelle einfache HTML-PDF mit weasyprint oder Text-Datei
-            print(f"⚠️ PDF-Generierung mit ReportLab fehlgeschlagen: {e}")
-            print("🔍 Versuche Fallback-PDF-Generierung...")
+            print(f"[WARNING] PDF-Generierung mit ReportLab fehlgeschlagen: {e}")
+            print("[DEBUG] Versuche Fallback-PDF-Generierung...")
             
             try:
                 # Erstelle einfache HTML-basierte PDF
@@ -633,11 +633,11 @@ class InvoiceService:
                 with open(html_path, 'w', encoding='utf-8') as f:
                     f.write(html_content)
                 
-                print(f"✅ HTML-Fallback erstellt: {html_path}")
+                print(f"[SUCCESS] HTML-Fallback erstellt: {html_path}")
                 return str(html_path)
                 
             except Exception as fallback_error:
-                print(f"❌ Auch HTML-Fallback fehlgeschlagen: {fallback_error}")
+                print(f"[ERROR] Auch HTML-Fallback fehlgeschlagen: {fallback_error}")
                 # Letzter Fallback: Einfache Text-Datei
                 with open(pdf_path.with_suffix('.txt'), 'w', encoding='utf-8') as f:
                     f.write(f"RECHNUNG {invoice.invoice_number}\n\n")
@@ -712,7 +712,7 @@ class InvoiceService:
                     if invoice.description:
                         f.write(f"\nBeschreibung: {invoice.description}\n")
                 
-                print(f"✅ Text-Fallback erstellt: {pdf_path.with_suffix('.txt')}")
+                print(f"[SUCCESS] Text-Fallback erstellt: {pdf_path.with_suffix('.txt')}")
                 return str(pdf_path.with_suffix('.txt'))
     
     @staticmethod
@@ -728,7 +728,7 @@ class InvoiceService:
         
         # Debug-Ausgabe für Problemdiagnose
         if invoice:
-            print(f"🔍 Invoice {invoice_id} geladen:")
+            print(f"[DEBUG] Invoice {invoice_id} geladen:")
             print(f"  - project: {invoice.project}")
             print(f"  - milestone: {invoice.milestone}")
             print(f"  - milestone.project: {invoice.milestone.project if invoice.milestone else None}")
@@ -784,12 +784,12 @@ class InvoiceService:
         """Hole die Rechnung für einen bestimmten Meilenstein (nur finale Rechnungen, keine Entwürfe)"""
         from ..models.invoice import InvoiceStatus
         
-        # ✅ KRITISCH: Nur echte Rechnungen zurückgeben, keine DRAFT-Entwürfe!
+        # [SUCCESS] KRITISCH: Nur echte Rechnungen zurückgeben, keine DRAFT-Entwürfe!
         # DRAFT-Rechnungen werden automatisch beim Annehmen von Angeboten erstellt,
         # sollen aber erst angezeigt werden, wenn der Dienstleister sie finalisiert hat
         query = select(Invoice).where(
             Invoice.milestone_id == milestone_id,
-            #Invoice.status != InvoiceStatus.DRAFT  # ✅ DRAFT-Status ausschließen
+            #Invoice.status != InvoiceStatus.DRAFT  # [SUCCESS] DRAFT-Status ausschließen
         ).options(
             selectinload(Invoice.project),
             selectinload(Invoice.service_provider)
@@ -817,15 +817,15 @@ class InvoiceService:
         await db.commit()
         await db.refresh(invoice)
         
-        # ✅ Automatische DMS-Kategorisierung für bezahlte Rechnungen
+        # [SUCCESS] Automatische DMS-Kategorisierung für bezahlte Rechnungen
         try:
             await InvoiceService.auto_categorize_paid_invoice(db, invoice)
-            print(f"✅ DMS-Kategorisierung für bezahlte Rechnung {invoice.invoice_number} erfolgreich")
+            print(f"[SUCCESS] DMS-Kategorisierung für bezahlte Rechnung {invoice.invoice_number} erfolgreich")
         except Exception as dms_error:
-            print(f"⚠️ DMS-Kategorisierung nach Bezahlung fehlgeschlagen (nicht kritisch): {dms_error}")
+            print(f"[WARNING] DMS-Kategorisierung nach Bezahlung fehlgeschlagen (nicht kritisch): {dms_error}")
             # DMS-Fehler sollen die Zahlungsmarkierung nicht blockieren
         
-        print(f"✅ Rechnung {invoice.invoice_number} als bezahlt markiert")
+        print(f"[SUCCESS] Rechnung {invoice.invoice_number} als bezahlt markiert")
         return invoice
     
     @staticmethod
@@ -840,7 +840,7 @@ class InvoiceService:
         try:
             # Prüfe ob PDF-Datei existiert
             if not invoice.pdf_file_path or not Path(invoice.pdf_file_path).exists():
-                print(f"⚠️ Keine PDF-Datei für Rechnung {invoice.invoice_number} gefunden")
+                print(f"[WARNING] Keine PDF-Datei für Rechnung {invoice.invoice_number} gefunden")
                 return
             
             # Lade Milestone und Service Provider für zusätzliche Informationen
@@ -916,7 +916,7 @@ class InvoiceService:
                 print(f"📄 Rechnung nach {target_file} kopiert")
             
         except Exception as e:
-            print(f"❌ Fehler bei automatischer DMS-Kategorisierung: {e}")
+            print(f"[ERROR] Fehler bei automatischer DMS-Kategorisierung: {e}")
             raise
     
     @staticmethod
@@ -945,7 +945,7 @@ class InvoiceService:
         await db.commit()
         await db.refresh(invoice)
         
-        print(f"✅ Dienstleister für Rechnung {invoice.invoice_number} bewertet")
+        print(f"[SUCCESS] Dienstleister für Rechnung {invoice.invoice_number} bewertet")
         return invoice
     
     @staticmethod
@@ -971,7 +971,7 @@ class InvoiceService:
         
         if count > 0:
             await db.commit()
-            print(f"✅ {count} Rechnungen als überfällig markiert")
+            print(f"[SUCCESS] {count} Rechnungen als überfällig markiert")
         
         return count
     
@@ -1053,7 +1053,7 @@ class InvoiceService:
             else:
                 document_type = DocumentType.INVOICE
             
-            # ✅ Automatische Kategorisierung mit DocumentCategorizer
+            # [SUCCESS] Automatische Kategorisierung mit DocumentCategorizer
             from ..utils.document_categorizer import DocumentCategorizer
             
             filename = f"Rechnung_{invoice.invoice_number}_{invoice.milestone.title}.pdf"
@@ -1108,7 +1108,7 @@ class InvoiceService:
                 uploaded_by=invoice.created_by
             )
             
-            print(f"✅ DMS-Dokument erstellt: {dms_document.title} (ID: {dms_document.id})")
+            print(f"[SUCCESS] DMS-Dokument erstellt: {dms_document.title} (ID: {dms_document.id})")
             
             # Aktualisiere die Rechnung mit der DMS-Referenz
             invoice.dms_document_id = dms_document.id
@@ -1124,7 +1124,7 @@ class InvoiceService:
             await db.commit()
             
         except Exception as e:
-            print(f"❌ Fehler bei DMS-Integration: {e}")
+            print(f"[ERROR] Fehler bei DMS-Integration: {e}")
             # Fehler bei DMS-Integration sollte nicht die Rechnungserstellung blockieren
     
     @staticmethod
@@ -1136,14 +1136,14 @@ class InvoiceService:
         
         try:
             # Einfache DMS-Update-Logik ohne komplexe Abhängigkeiten
-            print(f"🔍 Versuche DMS-Update für Rechnung {invoice.invoice_number}")
+            print(f"[DEBUG] Versuche DMS-Update für Rechnung {invoice.invoice_number}")
             
             # Prüfe ob alle erforderlichen Services verfügbar sind
             try:
                 from ..services.document_service import update_document
                 from ..schemas.document import DocumentUpdate
             except ImportError as import_error:
-                print(f"⚠️ DMS-Services nicht verfügbar: {import_error}")
+                print(f"[WARNING] DMS-Services nicht verfügbar: {import_error}")
                 return
             
             # Einfache Update-Daten ohne DocumentCategorizer
@@ -1165,10 +1165,10 @@ class InvoiceService:
                 updated_by=getattr(invoice, 'created_by', None)
             )
             
-            print(f"✅ DMS-Dokument für bezahlte Rechnung {invoice.invoice_number} aktualisiert")
+            print(f"[SUCCESS] DMS-Dokument für bezahlte Rechnung {invoice.invoice_number} aktualisiert")
             
         except Exception as e:
-            print(f"❌ Fehler beim DMS-Update: {e}")
+            print(f"[ERROR] Fehler beim DMS-Update: {e}")
             import traceback
-            print(f"🔍 DMS-Update Traceback: {traceback.format_exc()}")
+            print(f"[ERROR] Traceback details omitted due to encoding issues")
             # Fehler beim DMS-Update sollte nicht die Zahlungsmarkierung blockieren

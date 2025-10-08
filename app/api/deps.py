@@ -18,6 +18,14 @@ async def get_current_user(
     print(f"[DEBUG] get_current_user: Token erhalten: {token[:50]}..." if token else "[DEBUG] get_current_user: Kein Token")
     
     try:
+        # Prüfe ob Token vorhanden ist
+        if not token:
+            print(f"[ERROR] get_current_user: Kein Token erhalten")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="No authentication token provided",
+            )
+        
         payload = decode_access_token(token)
         print(f"[DEBUG] get_current_user: Token decoded: {payload}")
         
@@ -31,23 +39,38 @@ async def get_current_user(
         # Versuche zuerst E-Mail aus sub zu verwenden
         email: str = payload["sub"]
         print(f"[DEBUG] get_current_user: Suche User mit E-Mail: {email}")
-        user = await get_user_by_email(db, email=email)
-        print(f"[DEBUG] get_current_user: User gefunden via E-Mail: {user is not None}")
+        
+        try:
+            user = await get_user_by_email(db, email=email)
+            print(f"[DEBUG] get_current_user: User gefunden via E-Mail: {user is not None}")
+        except Exception as db_error:
+            print(f"[ERROR] get_current_user: Datenbankfehler bei E-Mail-Suche: {db_error}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Database error during user lookup"
+            )
         
         # Falls E-Mail nicht funktioniert, versuche User-ID
         if not user and "user_id" in payload:
             print(f"[DEBUG] get_current_user: Versuche User-ID fallback")
-            from ..services.user_service import get_user_by_id
-            user_id = payload["user_id"]
-            print(f"[DEBUG] get_current_user: Suche User mit ID: {user_id}")
-            user = await get_user_by_id(db, user_id)
-            print(f"[DEBUG] get_current_user: User gefunden via ID: {user is not None}")
+            try:
+                from ..services.user_service import get_user_by_id
+                user_id = payload["user_id"]
+                print(f"[DEBUG] get_current_user: Suche User mit ID: {user_id}")
+                user = await get_user_by_id(db, user_id)
+                print(f"[DEBUG] get_current_user: User gefunden via ID: {user is not None}")
+            except Exception as db_error:
+                print(f"[ERROR] get_current_user: Datenbankfehler bei ID-Suche: {db_error}")
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail="Database error during user lookup"
+                )
         
         if not user:
             print(f"[ERROR] get_current_user: User not found")
             print(f"   - Token payload: {payload}")
             print(f"   - Versuchte E-Mail: {email}")
-            raise HTTPException(status_code=404, detail="User not found")
+            raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
         
         print(f"[SUCCESS] get_current_user: User erfolgreich geladen: {user.id}, {user.email}")
         return user
@@ -59,7 +82,7 @@ async def get_current_user(
         print(f"[ERROR] get_current_user: Unerwarteter Fehler: {e}")
         print(f"[ERROR] get_current_user: Exception type: {type(e)}")
         import traceback
-        print(f"[ERROR] get_current_user: Traceback: {traceback.format_exc()}")
+        traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Authentication error: {str(e)}"

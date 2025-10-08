@@ -23,8 +23,8 @@ class AppointmentService:
     ) -> Appointment:
         """Erstelle einen neuen Besichtigungstermin"""
         try:
-            print(f"🔧 Erstelle Appointment für Projekt {appointment_data.project_id}, Milestone {appointment_data.milestone_id}")
-            print(f"📝 DEBUG: Empfangene Kontaktdaten:")
+            print(f"[DEBUG] Erstelle Appointment für Projekt {appointment_data.project_id}, Milestone {appointment_data.milestone_id}")
+            print(f"[INFO] DEBUG: Empfangene Kontaktdaten:")
             print(f"   - contact_person: '{appointment_data.contact_person}'")
             print(f"   - contact_phone: '{appointment_data.contact_phone}'") 
             print(f"   - preparation_notes: '{appointment_data.preparation_notes}'")
@@ -32,7 +32,7 @@ class AppointmentService:
             # Lade Service Provider Informationen in einer effizienten Abfrage
             invited_providers = []
             if appointment_data.invited_service_provider_ids:
-                print(f"📋 Lade {len(appointment_data.invited_service_provider_ids)} Service Provider")
+                print(f"[INFO] Lade {len(appointment_data.invited_service_provider_ids)} Service Provider")
                 result = await db.execute(
                     select(User).where(User.id.in_(appointment_data.invited_service_provider_ids))
                 )
@@ -47,10 +47,10 @@ class AppointmentService:
                     }
                     for provider in providers
                 ]
-                print(f"✅ {len(invited_providers)} Service Provider geladen")
+                print(f"[SUCCESS] {len(invited_providers)} Service Provider geladen")
             
             # Erstelle Appointment
-            print(f"💾 DEBUG: Erstelle Appointment-Objekt mit Kontaktdaten:")
+            print(f"[INFO] DEBUG: Erstelle Appointment-Objekt mit Kontaktdaten:")
             print(f"   - contact_person: '{appointment_data.contact_person}'")
             print(f"   - contact_phone: '{appointment_data.contact_phone}'") 
             print(f"   - preparation_notes: '{appointment_data.preparation_notes}'")
@@ -75,32 +75,32 @@ class AppointmentService:
                 follow_up_notification_date=appointment_data.scheduled_date + timedelta(days=1)
             )
             
-            print(f"🔍 DEBUG: Appointment-Objekt erstellt mit:")
+            print(f"[DEBUG] DEBUG: Appointment-Objekt erstellt mit:")
             print(f"   - appointment.contact_person: '{appointment.contact_person}'")
             print(f"   - appointment.contact_phone: '{appointment.contact_phone}'") 
             print(f"   - appointment.preparation_notes: '{appointment.preparation_notes}'")
             
-            print(f"💾 Speichere Appointment in Datenbank")
+            print(f"[INFO] Speichere Appointment in Datenbank")
             db.add(appointment)
             await db.commit()
             await db.refresh(appointment)
-            print(f"✅ Appointment {appointment.id} erfolgreich erstellt")
+            print(f"[SUCCESS] Appointment {appointment.id} erfolgreich erstellt")
             
             # Führe zusätzliche Operationen asynchron aus, um Timeouts zu vermeiden
             if appointment_data.milestone_id:
-                print(f"🔄 Setze Milestone {appointment_data.milestone_id} auf ON_HOLD")
+                print(f"[UPDATE] Setze Milestone {appointment_data.milestone_id} auf ON_HOLD")
                 try:
                     await AppointmentService._set_milestone_on_hold(db, appointment_data.milestone_id)
                     await AppointmentService._mark_inspection_sent(db, appointment_data.milestone_id)
-                    print(f"✅ Milestone-Operationen abgeschlossen")
+                    print(f"[SUCCESS] Milestone-Operationen abgeschlossen")
                 except Exception as e:
-                    print(f"⚠️ Warnung bei Milestone-Operationen: {e}")
+                    print(f"[WARNING] Warnung bei Milestone-Operationen: {e}")
                     # Fahre trotz Fehler fort - Appointment wurde bereits erstellt
             
             return appointment
             
         except Exception as e:
-            print(f"❌ Fehler beim Erstellen des Appointments: {e}")
+            print(f"[ERROR] Fehler beim Erstellen des Appointments: {e}")
             await db.rollback()
             raise e
     
@@ -108,18 +108,18 @@ class AppointmentService:
     async def _set_milestone_on_hold(db: AsyncSession, milestone_id: int):
         """Setze alle CostPositions einer Milestone auf ON_HOLD (Legacy-Funktion)"""
         try:
-            print(f"🔄 Setze CostPositions für Milestone {milestone_id} auf ON_HOLD")
+            print(f"[UPDATE] Setze CostPositions für Milestone {milestone_id} auf ON_HOLD")
             # Da wir jetzt einfache CostPosition für Rechnungen haben,
             # ist diese Funktion nicht mehr relevant
             print(f"ℹ️ CostPosition-Status nicht mehr relevant für neue Struktur")
         except Exception as e:
-            print(f"⚠️ Warnung beim Setzen der CostPosition-Status: {e}")
+            print(f"[WARNING] Warnung beim Setzen der CostPosition-Status: {e}")
     
     @staticmethod
     async def _mark_inspection_sent(db: AsyncSession, milestone_id: int):
         """Markiere Milestone als Inspektion gesendet"""
         try:
-            print(f"🔄 Markiere Milestone {milestone_id} als Inspektion gesendet")
+            print(f"[UPDATE] Markiere Milestone {milestone_id} als Inspektion gesendet")
             result = await db.execute(
                 select(Milestone).where(Milestone.id == milestone_id)
             )
@@ -129,12 +129,12 @@ class AppointmentService:
                 milestone.inspection_sent = True
                 milestone.inspection_sent_date = datetime.now()
                 await db.commit()
-                print(f"✅ Milestone {milestone_id} als Inspektion gesendet markiert")
+                print(f"[SUCCESS] Milestone {milestone_id} als Inspektion gesendet markiert")
             else:
-                print(f"⚠️ Milestone {milestone_id} nicht gefunden")
+                print(f"[WARNING] Milestone {milestone_id} nicht gefunden")
                 
         except Exception as e:
-            print(f"❌ Fehler beim Markieren der Inspektion: {e}")
+            print(f"[ERROR] Fehler beim Markieren der Inspektion: {e}")
             await db.rollback()
             raise e
     
@@ -187,7 +187,7 @@ class AppointmentService:
         try:
             from ..models.user import UserRole
             
-            print(f"🔍 get_appointments_for_user: user_id={user.id}, role={user.user_role}, project_id={project_id}")
+            print(f"[DEBUG] get_appointments_for_user: user_id={user.id}, role={user.user_role}, project_id={project_id}")
             
             query = select(Appointment).options(
                 selectinload(Appointment.project),
@@ -204,7 +204,7 @@ class AppointmentService:
             if hasattr(user.user_role, 'value'):
                 user_role_str = user.user_role.value
             
-            print(f"🔍 User Role String: '{user_role_str}' (type: {type(user.user_role)})")
+            print(f"[DEBUG] User Role String: '{user_role_str}' (type: {type(user.user_role)})")
             
             if user_role_str == "ADMIN":
                 # Admin sieht alle Termine
@@ -212,25 +212,25 @@ class AppointmentService:
                 pass
             elif user_role_str == "BAUTRAEGER":
                 # Bauträger sieht nur eigene Termine
-                print(f"🏗️ Bauträger: Lade nur eigene Termine")
+                print(f"[BUILD] Bauträger: Lade nur eigene Termine")
                 query = query.where(Appointment.created_by == user.id)
             elif user_role_str == "DIENSTLEISTER":
                 # Für Dienstleister: Hole alle Termine und filtere dann in Python
                 # Das ist performanter als komplexe SQL-JSON-Abfragen
-                print(f"🔧 Dienstleister: Lade alle Termine für Post-Processing")
+                print(f"[DEBUG] Dienstleister: Lade alle Termine für Post-Processing")
                 pass
             else:
                 # Unbekannte Rolle - keine Termine
-                print(f"⚠️ Unbekannte Benutzerrolle: {user_role_str}")
+                print(f"[WARNING] Unbekannte Benutzerrolle: {user_role_str}")
                 query = query.where(False)
             
             result = await db.execute(query.order_by(Appointment.scheduled_date.desc()))
             appointments = result.scalars().all()
-            print(f"📋 Gefunden: {len(appointments)} Termine")
+            print(f"[INFO] Gefunden: {len(appointments)} Termine")
             
             # Post-Processing für Dienstleister
             if user_role_str == "DIENSTLEISTER":
-                print(f"🔍 Filtere Termine für Dienstleister {user.id}")
+                print(f"[DEBUG] Filtere Termine für Dienstleister {user.id}")
                 filtered_appointments = []
                 for appointment in appointments:
                     if appointment.invited_service_providers:
@@ -246,20 +246,20 @@ class AppointmentService:
                                 invited_ids = [provider.get('id') for provider in invited_providers if isinstance(provider, dict)]
                                 if user.id in invited_ids:
                                     filtered_appointments.append(appointment)
-                                    print(f"✅ Termin {appointment.id} für Dienstleister {user.id} verfügbar")
+                                    print(f"[SUCCESS] Termin {appointment.id} für Dienstleister {user.id} verfügbar")
                         except (json.JSONDecodeError, AttributeError, TypeError) as e:
                             # Bei JSON-Fehlern: Termin überspringen
-                            print(f"⚠️ JSON-Fehler bei Termin {appointment.id}: {e}")
+                            print(f"[WARNING] JSON-Fehler bei Termin {appointment.id}: {e}")
                             continue
                 
-                print(f"✅ Gefiltert: {len(filtered_appointments)} Termine für Dienstleister {user.id}")
+                print(f"[SUCCESS] Gefiltert: {len(filtered_appointments)} Termine für Dienstleister {user.id}")
                 return filtered_appointments
             
-            print(f"✅ Rückgabe: {len(appointments)} Termine")
+            print(f"[SUCCESS] Rückgabe: {len(appointments)} Termine")
             return appointments
             
         except Exception as e:
-            print(f"❌ Fehler in get_appointments_for_user: {e}")
+            print(f"[ERROR] Fehler in get_appointments_for_user: {e}")
             return []
 
     @staticmethod
@@ -273,50 +273,50 @@ class AppointmentService:
         """
         from ..models.user import UserRole
         
-        print(f"🔍 check_user_appointment_access:")
+        print(f"[DEBUG] check_user_appointment_access:")
         print(f"  - appointment_id: {appointment_id}")
         print(f"  - user.id: {user.id}")
         print(f"  - user.user_role: {user.user_role}")
         
         appointment = await AppointmentService.get_appointment(db, appointment_id)
         if not appointment:
-            print(f"❌ Appointment {appointment_id} not found")
+            print(f"[ERROR] Appointment {appointment_id} not found")
             return False
         
-        print(f"✅ Appointment found, invited_service_providers: {appointment.invited_service_providers}")
+        print(f"[SUCCESS] Appointment found, invited_service_providers: {appointment.invited_service_providers}")
         
         # Admin hat immer Zugriff
         if user.user_role == UserRole.ADMIN:
-            print(f"✅ Admin access granted")
+            print(f"[SUCCESS] Admin access granted")
             return True
         
         # Bauträger: Nur eigene Termine
         if user.user_role == UserRole.BAUTRAEGER:
             access = appointment.created_by == user.id
-            print(f"🏗️ Bauträger access: {access} (created_by: {appointment.created_by})")
+            print(f"[BUILD] Bauträger access: {access} (created_by: {appointment.created_by})")
             return access
         
         # Dienstleister: Nur eingeladene Termine
         if user.user_role == UserRole.DIENSTLEISTER:
-            print(f"🔧 Checking Dienstleister access")
+            print(f"[DEBUG] Checking Dienstleister access")
             if appointment.invited_service_providers:
                 # Parse JSON und prüfe ob User eingeladen ist
                 try:
                     invited_providers = json.loads(appointment.invited_service_providers) if isinstance(appointment.invited_service_providers, str) else appointment.invited_service_providers
-                    print(f"🔍 Parsed invited_providers: {invited_providers}")
+                    print(f"[DEBUG] Parsed invited_providers: {invited_providers}")
                     if isinstance(invited_providers, list):
                         invited_ids = [provider.get('id') for provider in invited_providers if isinstance(provider, dict)]
-                        print(f"🔍 Invited IDs: {invited_ids}")
+                        print(f"[DEBUG] Invited IDs: {invited_ids}")
                         access = user.id in invited_ids
-                        print(f"🔧 Dienstleister access: {access}")
+                        print(f"[DEBUG] Dienstleister access: {access}")
                         return access
                 except (json.JSONDecodeError, AttributeError) as e:
-                    print(f"❌ JSON parsing error: {e}")
+                    print(f"[ERROR] JSON parsing error: {e}")
                     pass
-            print(f"❌ No invited_service_providers or user not in list")
+            print(f"[ERROR] No invited_service_providers or user not in list")
             return False
         
-        print(f"❌ Unknown user role or no access")
+        print(f"[ERROR] Unknown user role or no access")
         return False
     
     @staticmethod
@@ -348,7 +348,7 @@ class AppointmentService:
         from app.models.appointment_response import AppointmentResponse
         from sqlalchemy import select
         
-        print(f"🔍 AppointmentService.respond_to_appointment called (NEW VERSION):")
+        print(f"[DEBUG] AppointmentService.respond_to_appointment called (NEW VERSION):")
         print(f"  - appointment_id: {appointment_id}")
         print(f"  - service_provider_id: {service_provider_id}")
         print(f"  - status: {status}")
@@ -358,10 +358,10 @@ class AppointmentService:
         # 1. Appointment laden
         appointment = await AppointmentService.get_appointment(db, appointment_id)
         if not appointment:
-            print(f"❌ Appointment {appointment_id} not found")
+            print(f"[ERROR] Appointment {appointment_id} not found")
             raise ValueError("Appointment not found")
         
-        print(f"✅ Appointment {appointment_id} found")
+        print(f"[SUCCESS] Appointment {appointment_id} found")
         
         # 2. Bestehende Response suchen oder neue erstellen
         stmt = select(AppointmentResponse).where(
@@ -372,7 +372,7 @@ class AppointmentService:
         existing_response = result.scalar_one_or_none()
         
         if existing_response:
-            print(f"🔄 Updating existing response {existing_response.id}")
+            print(f"[UPDATE] Updating existing response {existing_response.id}")
             # Update existing response
             existing_response.status = status
             existing_response.message = message
@@ -396,20 +396,20 @@ class AppointmentService:
         # 4. Appointment Status aktualisieren basierend auf der neuen Antwort
         if status == "accepted":
             appointment.status = AppointmentStatus.ACCEPTED
-            print(f"✅ Status set to ACCEPTED")
+            print(f"[SUCCESS] Status set to ACCEPTED")
         elif status == "rejected":
             appointment.status = AppointmentStatus.REJECTED
-            print(f"✅ Status set to REJECTED")
+            print(f"[SUCCESS] Status set to REJECTED")
         elif status == "rejected_with_suggestion":
             appointment.status = AppointmentStatus.REJECTED_WITH_SUGGESTION
-            print(f"✅ Status set to REJECTED_WITH_SUGGESTION")
+            print(f"[SUCCESS] Status set to REJECTED_WITH_SUGGESTION")
         
         # 5. Änderungen speichern
-        print(f"💾 Committing changes to database")
+        print(f"[INFO] Committing changes to database")
         await db.commit()
         await db.refresh(appointment)
         await db.refresh(response_record)
-        print(f"✅ Database commit successful - Response ID: {response_record.id}")
+        print(f"[SUCCESS] Database commit successful - Response ID: {response_record.id}")
         
         return appointment
     

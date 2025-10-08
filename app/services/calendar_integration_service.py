@@ -45,7 +45,7 @@ class CalendarIntegrationService:
                 event.add('uid', f'milestone-{milestone.id}@buildwise.de')
                 event.add('dtstart', milestone.planned_date)
                 event.add('dtend', milestone.planned_date)
-                event.add('summary', f'📋 {milestone.title}')
+                event.add('summary', f'[INFO] {milestone.title}')
                 event.add('description', f"""
 BuildWise Meilenstein
 
@@ -88,7 +88,7 @@ Priorität: {milestone.priority.value}
                 event.add('uid', f'task-{task.id}@buildwise.de')
                 event.add('dtstart', task.due_date)
                 event.add('dtend', task.due_date)
-                event.add('summary', f'✅ {task.title}')
+                event.add('summary', f'[SUCCESS] {task.title}')
                 event.add('description', f"""
 BuildWise Aufgabe
 
@@ -138,11 +138,11 @@ Fortschritt: {task.progress_percentage}%
             temp_file.write(ics_content)
             temp_file.close()
             
-            logger.info(f"✅ ICS-Datei generiert für Projekt {project.id}: {temp_file.name}")
+            logger.info(f"[SUCCESS] ICS-Datei generiert für Projekt {project.id}: {temp_file.name}")
             return temp_file.name
             
         except Exception as e:
-            logger.error(f"❌ Fehler beim Generieren der ICS-Datei: {e}")
+            logger.error(f"[ERROR] Fehler beim Generieren der ICS-Datei: {e}")
             raise
     
     async def generate_milestone_ics(self, milestone: Milestone, project: Project, user: User) -> str:
@@ -158,7 +158,7 @@ Fortschritt: {task.progress_percentage}%
             event.add('uid', f'milestone-{milestone.id}@buildwise.de')
             event.add('dtstart', milestone.planned_date)
             event.add('dtend', milestone.planned_date)
-            event.add('summary', f'📋 {milestone.title} - {project.name}')
+            event.add('summary', f'[INFO] {milestone.title} - {project.name}')
             event.add('description', f"""
 BuildWise Meilenstein
 
@@ -201,11 +201,11 @@ Budget: {milestone.budget or 'Nicht definiert'}
             temp_file.write(ics_content)
             temp_file.close()
             
-            logger.info(f"✅ ICS-Datei generiert für Meilenstein {milestone.id}: {temp_file.name}")
+            logger.info(f"[SUCCESS] ICS-Datei generiert für Meilenstein {milestone.id}: {temp_file.name}")
             return temp_file.name
             
         except Exception as e:
-            logger.error(f"❌ Fehler beim Generieren der Meilenstein-ICS-Datei: {e}")
+            logger.error(f"[ERROR] Fehler beim Generieren der Meilenstein-ICS-Datei: {e}")
             raise
     
     async def generate_meeting_ics(self, meeting_data: Dict[str, Any], user: User) -> str:
@@ -227,7 +227,7 @@ BuildWise Meeting
 
 {meeting_data.get('description', '')}
 
-📋 Agenda:
+[INFO] Agenda:
 {meeting_data.get('agenda', 'Keine Agenda angegeben')}
 
 🔗 BuildWise: {settings.base_url}
@@ -277,11 +277,11 @@ BuildWise Meeting
             temp_file.write(ics_content)
             temp_file.close()
             
-            logger.info(f"✅ Meeting-ICS-Datei generiert: {temp_file.name}")
+            logger.info(f"[SUCCESS] Meeting-ICS-Datei generiert: {temp_file.name}")
             return temp_file.name
             
         except Exception as e:
-            logger.error(f"❌ Fehler beim Generieren der Meeting-ICS-Datei: {e}")
+            logger.error(f"[ERROR] Fehler beim Generieren der Meeting-ICS-Datei: {e}")
             raise
     
     def cleanup_temp_file(self, file_path: str):
@@ -291,7 +291,7 @@ BuildWise Meeting
                 os.unlink(file_path)
                 logger.info(f"🗑️ Temporäre Datei gelöscht: {file_path}")
         except Exception as e:
-            logger.error(f"❌ Fehler beim Löschen der temporären Datei: {e}")
+            logger.error(f"[ERROR] Fehler beim Löschen der temporären Datei: {e}")
     
     async def generate_add_to_calendar_links(self, event_data: Dict[str, Any]) -> Dict[str, str]:
         """Generiert Add-to-Calendar Links für verschiedene Anbieter"""
@@ -341,7 +341,7 @@ BuildWise Meeting
             }
             
         except Exception as e:
-            logger.error(f"❌ Fehler beim Generieren der Kalender-Links: {e}")
+            logger.error(f"[ERROR] Fehler beim Generieren der Kalender-Links: {e}")
             return {}
     
     async def create_recurring_events(self, event_data: Dict[str, Any], 
@@ -384,11 +384,11 @@ BuildWise Meeting
                     else:
                         current_start = current_start.replace(month=current_start.month + interval)
                 
-            logger.info(f"✅ {len(events)} wiederkehrende Events erstellt")
+            logger.info(f"[SUCCESS] {len(events)} wiederkehrende Events erstellt")
             return events
             
         except Exception as e:
-            logger.error(f"❌ Fehler beim Erstellen wiederkehrender Events: {e}")
+            logger.error(f"[ERROR] Fehler beim Erstellen wiederkehrender Events: {e}")
             return []
 
 

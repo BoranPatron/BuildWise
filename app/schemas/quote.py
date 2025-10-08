@@ -49,6 +49,9 @@ class QuoteBase(BaseModel):
     rating: Optional[float] = None
     feedback: Optional[str] = None
     rejection_reason: Optional[str] = None
+    revised_after_inspection: Optional[bool] = False
+    revision_count: Optional[int] = 0
+    is_revised_quote: Optional[bool] = False
 
 
 class QuoteCreate(QuoteBase):
@@ -101,6 +104,9 @@ class QuoteUpdate(BaseModel):
     rating: Optional[float] = None
     feedback: Optional[str] = None
     rejection_reason: Optional[str] = None
+    revised_after_inspection: Optional[bool] = None
+    revision_count: Optional[int] = None
+    is_revised_quote: Optional[bool] = None
 
 
 class QuoteRead(QuoteBase):
@@ -113,6 +119,7 @@ class QuoteRead(QuoteBase):
     ai_recommendation: Optional[str] = None
     contact_released: bool
     contact_released_at: Optional[datetime] = None
+    last_revised_at: Optional[datetime] = None
     created_at: datetime
     updated_at: datetime
     submitted_at: Optional[datetime] = None
@@ -175,6 +182,11 @@ class QuoteForMilestone(BaseModel):
     rating: Optional[float] = None
     feedback: Optional[str] = None
     rejection_reason: Optional[str] = None
+    # Revisions-Felder für überarbeitete Angebote
+    revised_after_inspection: Optional[bool] = None
+    revision_count: Optional[int] = None
+    last_revised_at: Optional[datetime] = None
+    is_revised_quote: Optional[bool] = None
     # Dokumente
     pdf_upload_path: Optional[str] = None
     additional_documents: Optional[str] = None

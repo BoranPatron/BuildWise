@@ -9,7 +9,7 @@ def confirm_or_exit() -> None:
     Setze RESET_CONFIRM=YES um das Skript auszuführen.
     """
     if os.getenv("RESET_CONFIRM", "NO").upper() != "YES":
-        print("❌ Sicherheitssperre aktiv. Setze RESET_CONFIRM=YES um fortzufahren.")
+        print("[ERROR] Sicherheitssperre aktiv. Setze RESET_CONFIRM=YES um fortzufahren.")
         raise SystemExit(1)
 
 
@@ -27,11 +27,11 @@ async def drop_and_recreate_db(seed_admin: bool = True) -> None:
     try:
         if os.path.exists(db_path):
             os.remove(db_path)
-            print(f"🧹 Entfernt: {db_path}")
+            print(f"[CLEAN] Entfernt: {db_path}")
         else:
-            print(f"ℹ️ Keine bestehende DB gefunden unter: {db_path}")
+            print(f"[INFO] Keine bestehende DB gefunden unter: {db_path}")
     except Exception as e:
-        print(f"❌ Konnte DB-Datei nicht löschen: {e}")
+        print(f"[ERROR] Konnte DB-Datei nicht löschen: {e}")
         raise
 
     # 2) Tabellen neu erstellen über SQLAlchemy Base
@@ -40,13 +40,13 @@ async def drop_and_recreate_db(seed_admin: bool = True) -> None:
 
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        print("✅ Tabellen neu erstellt")
+        print("[SUCCESS] Tabellen neu erstellt")
 
     # 3) SQLite-Optimierungen anwenden (optional, wie im App-Startup)
     try:
         await optimize_sqlite_connection()
     except Exception as e:
-        print(f"⚠️ SQLite-Optimierungen konnten nicht angewendet werden: {e}")
+        print(f"[WARNING] SQLite-Optimierungen konnten nicht angewendet werden: {e}")
 
     # 4) Optionale System-Seeds (minimal)
     if seed_admin:
@@ -65,7 +65,7 @@ async def seed_minimal_admin() -> None:
         result = await session.execute(select(User).where(User.email == "admin@buildwise.local"))
         existing = result.scalar_one_or_none()
         if existing:
-            print("ℹ️ Admin existiert bereits – Seed übersprungen")
+            print("[INFO] Admin existiert bereits – Seed übersprungen")
             return
 
         admin = User(
@@ -81,7 +81,7 @@ async def seed_minimal_admin() -> None:
 
         session.add(admin)
         await session.commit()
-        print("✅ Minimaler Admin-User angelegt: admin@buildwise.local / Admin123!ChangeMe")
+        print("[SUCCESS] Minimaler Admin-User angelegt: admin@buildwise.local / Admin123!ChangeMe")
 
 
 def maybe_cleanup_storage(remove_storage: bool = False) -> None:
@@ -90,12 +90,12 @@ def maybe_cleanup_storage(remove_storage: bool = False) -> None:
     Entfernt alles unter ./storage außer das Verzeichnis selbst.
     """
     if not remove_storage:
-        print("ℹ️ Storage bleibt unangetastet (REMOVE_STORAGE nicht gesetzt)")
+        print("[INFO] Storage bleibt unangetastet (REMOVE_STORAGE nicht gesetzt)")
         return
 
     storage_dir = os.path.abspath(os.path.join(os.path.dirname(__file__), "storage"))
     if not os.path.isdir(storage_dir):
-        print(f"ℹ️ Kein Storage-Verzeichnis gefunden unter: {storage_dir}")
+        print(f"[INFO] Kein Storage-Verzeichnis gefunden unter: {storage_dir}")
         return
 
     removed = 0
@@ -106,7 +106,7 @@ def maybe_cleanup_storage(remove_storage: bool = False) -> None:
                 os.remove(fp)
                 removed += 1
             except Exception as e:
-                print(f"⚠️ Konnte Datei nicht entfernen {fp}: {e}")
+                print(f"[WARNING] Konnte Datei nicht entfernen {fp}: {e}")
         for name in dirs:
             try:
                 dp = os.path.join(root, name)
@@ -116,7 +116,7 @@ def maybe_cleanup_storage(remove_storage: bool = False) -> None:
             except OSError:
                 # Ordner nicht leer – ignorieren
                 pass
-    print(f"🧹 Storage bereinigt – entfernte Dateien: {removed}")
+    print(f"[CLEAN] Storage bereinigt – entfernte Dateien: {removed}")
 
 
 if __name__ == "__main__":
@@ -127,7 +127,7 @@ if __name__ == "__main__":
     maybe_cleanup_storage(remove_storage_flag)
     # 2) DB jungfräulich anlegen und minimal seeden
     asyncio.run(drop_and_recreate_db(seed_admin=True))
-    print("🎉 buildwise.db wurde jungfräulich neu erstellt.")
+    print("[SUCCESS] buildwise.db wurde jungfräulich neu erstellt.")
 
 
 

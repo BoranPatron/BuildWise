@@ -8,6 +8,7 @@ from .base import Base
 
 class AcceptanceStatus(enum.Enum):
     """Status der Abnahme"""
+    PENDING = "PENDING"  # Ausstehend/Wartend
     SCHEDULED = "SCHEDULED"  # Termin vereinbart
     IN_PROGRESS = "IN_PROGRESS"  # Abnahme läuft
     ACCEPTED = "ACCEPTED"  # Abgenommen
@@ -49,7 +50,7 @@ class Acceptance(Base):
     
     # Abnahme-Details
     acceptance_type = Column(Enum(AcceptanceType), nullable=False, default=AcceptanceType.FINAL)
-    status = Column(Enum(AcceptanceStatus), nullable=False, default=AcceptanceStatus.SCHEDULED)
+    status = Column(Enum(AcceptanceStatus), nullable=False, default=AcceptanceStatus.PENDING)
     
     # Zeitstempel
     scheduled_date = Column(DateTime(timezone=True), nullable=True)  # Geplanter Abnahme-Termin

@@ -65,12 +65,12 @@ async def create_document(db: AsyncSession, document_in: DocumentCreate, uploade
                 related_entity_type="document",
                 related_entity_id=document.id
             )
-            print(f"✅ Credits für Bauträger {uploaded_by} hinzugefügt: Dokument hochgeladen")
+            print(f"[SUCCESS] Credits für Bauträger {uploaded_by} hinzugefügt: Dokument hochgeladen")
         else:
             print(f"ℹ️  User {uploaded_by} ist kein Bauträger, keine Credits hinzugefügt")
             
     except Exception as e:
-        print(f"❌ Fehler bei Credit-Zuordnung: {e}")
+        print(f"[ERROR] Fehler bei Credit-Zuordnung: {e}")
         # Fehler bei Credit-Zuordnung sollte nicht die Dokument-Erstellung blockieren
     
     return document

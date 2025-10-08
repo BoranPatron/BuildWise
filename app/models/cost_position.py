@@ -13,7 +13,9 @@ class CostPosition(Base):
     id = Column(Integer, primary_key=True, index=True)
     # Verknüpfungen
     project_id = Column(Integer, ForeignKey("projects.id"), nullable=True)
-    invoice_id = Column(Integer, ForeignKey("invoices.id", ondelete="CASCADE"), nullable=False)
+    invoice_id = Column(Integer, ForeignKey("invoices.id", ondelete="CASCADE"), nullable=True)  # Kann null sein für Angebots-Kostenpositionen
+    quote_id = Column(Integer, ForeignKey("quotes.id"), nullable=True)  # Verknüpfung zum Angebot
+    milestone_id = Column(Integer, ForeignKey("milestones.id"), nullable=True)  # Verknüpfung zum Gewerk
     title = Column(String, nullable=False)  # Hinzugefügt für DB-Kompatibilität
     description = Column(Text, nullable=False)
     amount = Column(Float, nullable=False, default=0.0)

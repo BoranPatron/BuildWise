@@ -24,15 +24,15 @@ async def create_new_task(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    print(f"🔍 Backend: Empfange Task-Daten: {task_in}")
-    print(f"🔍 Backend: Task-Priorität: {task_in.priority} (Type: {type(task_in.priority)})")
-    print(f"🔍 Backend: Task-Beschreibung: {task_in.description}")
-    print(f"🔍 Backend: Task-Fälligkeitsdatum: {task_in.due_date}")
-    print(f"🔍 Backend: Task-Geschätzte Stunden: {task_in.estimated_hours}")
-    print(f"🔍 Backend: Task-Milestone ID: {task_in.milestone_id}")
+    print(f"[DEBUG] Backend: Empfange Task-Daten: {task_in}")
+    print(f"[DEBUG] Backend: Task-Priorität: {task_in.priority} (Type: {type(task_in.priority)})")
+    print(f"[DEBUG] Backend: Task-Beschreibung: {task_in.description}")
+    print(f"[DEBUG] Backend: Task-Fälligkeitsdatum: {task_in.due_date}")
+    print(f"[DEBUG] Backend: Task-Geschätzte Stunden: {task_in.estimated_hours}")
+    print(f"[DEBUG] Backend: Task-Milestone ID: {task_in.milestone_id}")
     
     task = await create_task(db, task_in, current_user.id)
-    print(f"✅ Backend: Task erstellt mit ID: {task.id}")
+    print(f"[SUCCESS] Backend: Task erstellt mit ID: {task.id}")
     return task
 
 
@@ -44,24 +44,24 @@ async def read_tasks(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        print(f"🔍 [TASKS-API] read_tasks called with project_id={project_id}, assigned_to={assigned_to}, user={current_user.id}")
+        print(f"[DEBUG] [TASKS-API] read_tasks called with project_id={project_id}, assigned_to={assigned_to}, user={current_user.id}")
         
         if assigned_to:
             # Lade Tasks für einen bestimmten Benutzer
-            print(f"🔍 [TASKS-API] Loading tasks assigned to user {assigned_to}")
+            print(f"[DEBUG] [TASKS-API] Loading tasks assigned to user {assigned_to}")
             tasks = await get_tasks_assigned_to_user(db, assigned_to)
         elif project_id:
-            print(f"🔍 [TASKS-API] Loading tasks for project {project_id}")
+            print(f"[DEBUG] [TASKS-API] Loading tasks for project {project_id}")
             tasks = await get_tasks_for_project(db, project_id)
         else:
-            print(f"🔍 [TASKS-API] Loading tasks for current user {current_user.id}")
+            print(f"[DEBUG] [TASKS-API] Loading tasks for current user {current_user.id}")
             tasks = await get_tasks_for_user(db, current_user.id)
         
-        print(f"✅ [TASKS-API] Found {len(tasks)} tasks")
+        print(f"[SUCCESS] [TASKS-API] Found {len(tasks)} tasks")
         return tasks
         
     except Exception as e:
-        print(f"❌ [TASKS-API] Error in read_tasks: {e}")
+        print(f"[ERROR] [TASKS-API] Error in read_tasks: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error loading tasks: {str(e)}")

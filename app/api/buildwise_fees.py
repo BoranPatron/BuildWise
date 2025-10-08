@@ -685,7 +685,7 @@ async def stripe_webhook(
                 await db.commit()
                 await db.refresh(fee)
                 
-                print(f"[Webhook] ✅ Gebühr {fee_id} erfolgreich als bezahlt markiert")
+                print(f"[Webhook] [SUCCESS] Gebühr {fee_id} erfolgreich als bezahlt markiert")
                 print(f"   - Betrag: {payment_data.get('amount_received')} {payment_data.get('currency')}")
                 print(f"   - Zahlungsmethode: {payment_data.get('payment_method')}")
                 print(f"   - Kunden-E-Mail: {payment_data.get('customer_email')}")

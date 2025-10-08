@@ -813,7 +813,7 @@ class BuildWiseFeeService:
         """
         
         today = date.today()
-        print(f"🔍 [BuildWiseFeeService] Prüfe auf überfällige Gebühren (Stand: {today})")
+        print(f"[DEBUG] [BuildWiseFeeService] Prüfe auf überfällige Gebühren (Stand: {today})")
         
         overdue_query = select(BuildWiseFee).where(
             and_(
@@ -826,7 +826,7 @@ class BuildWiseFeeService:
         overdue_fees = overdue_result.scalars().all()
         
         if not overdue_fees:
-            print(f"✅ [BuildWiseFeeService] Keine überfälligen Gebühren gefunden")
+            print(f"[SUCCESS] [BuildWiseFeeService] Keine überfälligen Gebühren gefunden")
             return {
                 "message": "Keine überfälligen Gebühren gefunden",
                 "overdue_count": 0,
@@ -841,11 +841,11 @@ class BuildWiseFeeService:
             updated_fee_ids.append(fee.id)
             
             days_overdue = (today - fee.due_date).days
-            print(f"⚠️ [BuildWiseFeeService] Gebühr {fee.invoice_number} ist {days_overdue} Tage überfällig")
+            print(f"[WARNING] [BuildWiseFeeService] Gebühr {fee.invoice_number} ist {days_overdue} Tage überfällig")
         
         await db.commit()
         
-        print(f"✅ [BuildWiseFeeService] {len(overdue_fees)} Gebühren als überfällig markiert")
+        print(f"[SUCCESS] [BuildWiseFeeService] {len(overdue_fees)} Gebühren als überfällig markiert")
         
         return {
             "message": f"{len(overdue_fees)} Gebühren als überfällig markiert",

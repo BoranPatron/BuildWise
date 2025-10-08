@@ -68,7 +68,7 @@ class AppointmentResponse(Base):
                 else:
                     result["service_provider"] = None
             except Exception as e:
-                print(f"⚠️ Warning: Could not load service_provider for response {self.id}: {e}")
+                print(f"[WARNING] Warning: Could not load service_provider for response {self.id}: {e}")
                 result["service_provider"] = None
         
         return result 

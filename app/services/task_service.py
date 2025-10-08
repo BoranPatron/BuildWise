@@ -66,7 +66,7 @@ async def get_tasks_for_user(db: AsyncSession, user_id: int) -> List[Task]:
 async def get_tasks_assigned_to_user(db: AsyncSession, user_id: int) -> List[Task]:
     """Hole nur Tasks, die einem bestimmten Benutzer zugewiesen sind"""
     try:
-        print(f"🔍 [TASK-SERVICE] get_tasks_assigned_to_user called for user_id={user_id}")
+        print(f"[DEBUG] [TASK-SERVICE] get_tasks_assigned_to_user called for user_id={user_id}")
         from sqlalchemy.orm import selectinload
         from ..models import User, Milestone
         
@@ -81,7 +81,7 @@ async def get_tasks_assigned_to_user(db: AsyncSession, user_id: int) -> List[Tas
         corrupted_ids = []
         for task_id, assigned_to, milestone_id in validation_tasks:
             if isinstance(assigned_to, str) or (milestone_id is not None and isinstance(milestone_id, str) and '-' in str(milestone_id)):
-                print(f"❌ [TASK-SERVICE] Korrupte Task gefunden: ID={task_id}, assigned_to={assigned_to}, milestone_id={milestone_id}")
+                print(f"[ERROR] [TASK-SERVICE] Korrupte Task gefunden: ID={task_id}, assigned_to={assigned_to}, milestone_id={milestone_id}")
                 corrupted_ids.append(task_id)
         
         # Lösche korrupte Tasks
@@ -101,11 +101,11 @@ async def get_tasks_assigned_to_user(db: AsyncSession, user_id: int) -> List[Tas
             .where(Task.assigned_to == user_id)
         )
         tasks = list(result.scalars().all())
-        print(f"✅ [TASK-SERVICE] Found {len(tasks)} tasks assigned to user {user_id}")
+        print(f"[SUCCESS] [TASK-SERVICE] Found {len(tasks)} tasks assigned to user {user_id}")
         return tasks
         
     except Exception as e:
-        print(f"❌ [TASK-SERVICE] Error in get_tasks_assigned_to_user: {e}")
+        print(f"[ERROR] [TASK-SERVICE] Error in get_tasks_assigned_to_user: {e}")
         import traceback
         traceback.print_exc()
         raise

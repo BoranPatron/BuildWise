@@ -33,7 +33,7 @@ async def geocode_address(address: str) -> Optional[dict]:
                         "display_name": location["display_name"]
                     }
     except Exception as e:
-        print(f"❌ Geocodierung fehlgeschlagen für '{address}': {e}")
+        print(f"[ERROR] Geocodierung fehlgeschlagen für '{address}': {e}")
     
     return None
 
@@ -61,7 +61,7 @@ async def create_project(db: AsyncSession, owner_id: int, project_in: ProjectCre
         
         if address_parts:
             project_data["address"] = ", ".join(address_parts)
-            print(f"🏗️ Erstelle vollständige Adresse: {project_data['address']}")
+            print(f"[BUILD] Erstelle vollständige Adresse: {project_data['address']}")
     
     # Automatische Geocodierung wenn Adresse vorhanden
     if project_data.get("address") and not project_data.get("address_latitude"):
@@ -75,9 +75,9 @@ async def create_project(db: AsyncSession, owner_id: int, project_in: ProjectCre
                 "address_geocoded": True,
                 "address_geocoding_date": datetime.utcnow()
             })
-            print(f"✅ Geocodierung erfolgreich: {geocode_result['latitude']}, {geocode_result['longitude']}")
+            print(f"[SUCCESS] Geocodierung erfolgreich: {geocode_result['latitude']}, {geocode_result['longitude']}")
         else:
-            print("⚠️ Geocodierung fehlgeschlagen - Projekt wird ohne Koordinaten erstellt")
+            print("[WARNING] Geocodierung fehlgeschlagen - Projekt wird ohne Koordinaten erstellt")
     
     project = Project(owner_id=owner_id, **project_data)
     db.add(project)
@@ -122,7 +122,7 @@ async def update_project(db: AsyncSession, project_id: int, project_update: Proj
         
         if address_parts:
             update_data["address"] = ", ".join(address_parts)
-            print(f"🏗️ Erstelle vollständige Adresse für Update: {update_data['address']}")
+            print(f"[BUILD] Erstelle vollständige Adresse für Update: {update_data['address']}")
     
     # Automatische Geocodierung wenn Adresse geändert wurde
     if update_data.get("address") and not update_data.get("address_latitude"):
@@ -136,7 +136,7 @@ async def update_project(db: AsyncSession, project_id: int, project_update: Proj
                 "address_geocoded": True,
                 "address_geocoding_date": datetime.utcnow()
             })
-            print(f"✅ Geocodierung erfolgreich: {geocode_result['latitude']}, {geocode_result['longitude']}")
+            print(f"[SUCCESS] Geocodierung erfolgreich: {geocode_result['latitude']}, {geocode_result['longitude']}")
     
     if update_data:
         await db.execute(

@@ -82,7 +82,7 @@ class MilestoneProgressService:
     ) -> List[MilestoneProgress]:
         """Holt alle Progress Updates für ein Milestone mit Zugriffskontrolle"""
         
-        print(f"🔍 [SERVICE] get_progress_updates: milestone_id={milestone_id}, user_id={user_id}, is_bautraeger={is_bautraeger}")
+        print(f"[DEBUG] [SERVICE] get_progress_updates: milestone_id={milestone_id}, user_id={user_id}, is_bautraeger={is_bautraeger}")
         
         # Prüfe Milestone-Status für Zugriffskontrolle
         milestone = await db.get(Milestone, milestone_id)
@@ -99,7 +99,7 @@ class MilestoneProgressService:
         # Filtere interne Updates für Nicht-Bauträger
         if not is_bautraeger:
             query = query.where(MilestoneProgress.is_internal == False)
-            print(f"🔍 [SERVICE] Filtere interne Updates für Dienstleister")
+            print(f"[DEBUG] [SERVICE] Filtere interne Updates für Dienstleister")
             
             # Zusätzliche Zugriffskontrolle: Prüfe ob es bereits ein akzeptiertes Angebot gibt
             from sqlalchemy import select as sql_select
@@ -111,12 +111,12 @@ class MilestoneProgressService:
             
             if accepted_quote and accepted_quote.service_provider_id != user_id:
                 # Dienstleister hat keinen Zugriff mehr nach Vergabe
-                print(f"🔍 [SERVICE] Zugriff verweigert: Ausschreibung bereits vergeben an anderen Dienstleister (Provider {accepted_quote.service_provider_id})")
+                print(f"[DEBUG] [SERVICE] Zugriff verweigert: Ausschreibung bereits vergeben an anderen Dienstleister (Provider {accepted_quote.service_provider_id})")
                 return []
         
         result = await db.execute(query)
         updates = result.scalars().all()
-        print(f"🔍 [SERVICE] Query executed, found {len(updates)} updates")
+        print(f"[DEBUG] [SERVICE] Query executed, found {len(updates)} updates")
         return updates
     
     async def update_progress(
@@ -182,8 +182,8 @@ class MilestoneProgressService:
             "filename": os.path.basename(file_path)
         })
         
-        print(f"🔍 [ATTACHMENT] Added attachment: {os.path.basename(file_path)}")
-        print(f"🔍 [ATTACHMENT] URL: /api/v1/files/serve/{relative_path}")
+        print(f"[DEBUG] [ATTACHMENT] Added attachment: {os.path.basename(file_path)}")
+        print(f"[DEBUG] [ATTACHMENT] URL: /api/v1/files/serve/{relative_path}")
         
         progress_update.attachments = json.dumps(attachments)
         
@@ -216,6 +216,15 @@ class MilestoneProgressService:
             milestone.archived = True
             milestone.archived_at = datetime.utcnow()
             message = message or "Gewerk abgenommen und archiviert."
+            
+            # Inkrementiere completed_offers_count für alle betroffenen Dienstleister
+            try:
+                from .milestone_completion_service import MilestoneCompletionService
+                await MilestoneCompletionService.increment_completed_offers_count(db, milestone_id)
+                print(f"[SUCCESS] completed_offers_count für betroffene Dienstleister von Milestone {milestone_id} inkrementiert")
+            except Exception as e:
+                print(f"[WARNING] Fehler beim Inkrementieren der completed_offers_count: {e}")
+                # Fehler nicht kritisch, da Hauptfunktion (Abnahme) bereits erfolgreich
         else:
             # Nachbesserung angefordert
             update_type = ProgressUpdateType.REVISION.value
@@ -245,7 +254,7 @@ class MilestoneProgressService:
     ) -> None:
         """Aktualisiert Kommunikationszugriff nach Angebotsannahme"""
         
-        print(f"🔍 [SERVICE] Aktualisiere Kommunikationszugriff für Milestone {milestone_id}")
+        print(f"[DEBUG] [SERVICE] Aktualisiere Kommunikationszugriff für Milestone {milestone_id}")
         
         # Setze alle Ausschreibungs-Kommunikationen auf nicht mehr sichtbar für andere Bieter
         from sqlalchemy import update
@@ -262,7 +271,7 @@ class MilestoneProgressService:
         )
         
         await db.commit()
-        print(f"✅ [SERVICE] Kommunikationszugriff aktualisiert")
+        print(f"[SUCCESS] [SERVICE] Kommunikationszugriff aktualisiert")
     
     async def check_communication_access(
         self,
@@ -289,18 +298,18 @@ class MilestoneProgressService:
         accepted_quote_result = await db.execute(accepted_quote_query)
         accepted_quote = accepted_quote_result.scalar_one_or_none()
         
-        print(f"🔍 [ACCESS] Milestone {milestone_id}: Status={milestone.status}")
-        print(f"🔍 [ACCESS] User {user_id}: is_bautraeger={is_bautraeger}")
-        print(f"🔍 [ACCESS] Accepted quote: {accepted_quote.id if accepted_quote else None} (Provider: {accepted_quote.service_provider_id if accepted_quote else None})")
+        print(f"[DEBUG] [ACCESS] Milestone {milestone_id}: Status={milestone.status}")
+        print(f"[DEBUG] [ACCESS] User {user_id}: is_bautraeger={is_bautraeger}")
+        print(f"[DEBUG] [ACCESS] Accepted quote: {accepted_quote.id if accepted_quote else None} (Provider: {accepted_quote.service_provider_id if accepted_quote else None})")
         
         # Wenn kein akzeptiertes Angebot existiert, haben alle Dienstleister Zugriff
         if not accepted_quote:
-            print(f"🔍 [ACCESS] Kein akzeptiertes Angebot -> Zugriff gewährt")
+            print(f"[DEBUG] [ACCESS] Kein akzeptiertes Angebot -> Zugriff gewährt")
             return True
         
         # Wenn ein Angebot akzeptiert wurde: Nur gewählter Dienstleister hat Zugriff
         has_access = accepted_quote.service_provider_id == user_id
-        print(f"🔍 [ACCESS] Angebot akzeptiert -> Zugriff {'gewährt' if has_access else 'verweigert'}")
+        print(f"[DEBUG] [ACCESS] Angebot akzeptiert -> Zugriff {'gewährt' if has_access else 'verweigert'}")
         return has_access
 
 

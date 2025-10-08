@@ -171,13 +171,13 @@ async def oauth_callback(
     code = body.code
     state = body.state
     
-    print(f"🔍 OAuth-Callback für {provider}:")
+    print(f"[DEBUG] OAuth-Callback für {provider}:")
     print(f"  - Code: {code[:10] if code else 'None'}...")
     print(f"  - State: {state}")
     print(f"  - IP: {ip_address}")
     
     if not code:
-        print(f"❌ OAuth-Callback: Authorization Code fehlt")
+        print(f"[ERROR] OAuth-Callback: Authorization Code fehlt")
         raise HTTPException(
             status_code=400,
             detail="Authorization Code fehlt"
@@ -185,11 +185,11 @@ async def oauth_callback(
     
     try:
         # Tausche Code gegen Token
-        print(f"🔄 Tausche {provider} Code gegen Token...")
+        print(f"[UPDATE] Tausche {provider} Code gegen Token...")
         token_data = await OAuthService.exchange_code_for_token(provider, code)
         
         if not token_data:
-            print(f"❌ Token-Austausch fehlgeschlagen - keine Daten erhalten")
+            print(f"[ERROR] Token-Austausch fehlgeschlagen - keine Daten erhalten")
             raise HTTPException(
                 status_code=400,
                 detail=f"OAuth-Code ist abgelaufen oder bereits verwendet"
@@ -197,54 +197,54 @@ async def oauth_callback(
         
         access_token = token_data.get("access_token")
         if not access_token:
-            print(f"❌ Kein Access Token in Response: {list(token_data.keys())}")
+            print(f"[ERROR] Kein Access Token in Response: {list(token_data.keys())}")
             raise HTTPException(
                 status_code=400,
                 detail="Kein Access Token erhalten"
             )
         
-        print(f"✅ Access Token erhalten: {access_token[:20]}...")
+        print(f"[SUCCESS] Access Token erhalten: {access_token[:20]}...")
         
         # Hole Benutzerinformationen
-        print(f"🔄 Hole {provider} Benutzerinformationen...")
+        print(f"[UPDATE] Hole {provider} Benutzerinformationen...")
         if provider == "google":
             user_info = await OAuthService.get_google_user_info(access_token)
         elif provider == "microsoft":
             user_info = await OAuthService.get_microsoft_user_info(access_token)
         else:
-            print(f"❌ Unbekannter Provider: {provider}")
+            print(f"[ERROR] Unbekannter Provider: {provider}")
             raise HTTPException(
                 status_code=400,
                 detail=f"Unbekannter OAuth-Provider: {provider}"
             )
         
         if not user_info:
-            print(f"❌ Keine Benutzerinformationen erhalten")
+            print(f"[ERROR] Keine Benutzerinformationen erhalten")
             raise HTTPException(
                 status_code=400,
                 detail="Benutzerinformationen konnten nicht abgerufen werden"
             )
         
-        print(f"✅ Benutzerinformationen erhalten: {list(user_info.keys())}")
+        print(f"[SUCCESS] Benutzerinformationen erhalten: {list(user_info.keys())}")
         
         # Bestimme AuthProvider
         auth_provider = AuthProvider.GOOGLE if provider == "google" else AuthProvider.MICROSOFT
         
         # Finde oder erstelle Benutzer
-        print(f"🔄 Finde oder erstelle Benutzer...")
+        print(f"[UPDATE] Finde oder erstelle Benutzer...")
         user = await OAuthService.find_or_create_user_by_social_login(
             db, auth_provider, user_info, ip_address
         )
         
-        print(f"✅ Benutzer erfolgreich verarbeitet: {user.id} ({user.email})")
+        print(f"[SUCCESS] Benutzer erfolgreich verarbeitet: {user.id} ({user.email})")
         
         # Erstelle JWT-Token
-        print(f"🔄 Erstelle JWT-Token...")
+        print(f"[UPDATE] Erstelle JWT-Token...")
         jwt_token = create_access_token(
-            data={"sub": user.email, "user_id": user.id}  # ✅ sub = email, user_id = id
+            data={"sub": user.email, "user_id": user.id}  # [SUCCESS] sub = email, user_id = id
         )
         
-        print(f"✅ JWT-Token erstellt: {jwt_token[:20]}...")
+        print(f"[SUCCESS] JWT-Token erstellt: {jwt_token[:20]}...")
         
         # Erfolgreiche Antwort
         response_data = {
@@ -266,23 +266,23 @@ async def oauth_callback(
             }
         }
         
-        print(f"✅ OAuth-Callback erfolgreich abgeschlossen für User {user.id}")
+        print(f"[SUCCESS] OAuth-Callback erfolgreich abgeschlossen für User {user.id}")
         return response_data
         
     except HTTPException:
         # Re-raise HTTP-Exceptions
         raise
     except ValueError as e:
-        print(f"❌ OAuth ValueError: {e}")
+        print(f"[ERROR] OAuth ValueError: {e}")
         raise HTTPException(
             status_code=400,
             detail=str(e)
         )
     except Exception as e:
-        print(f"❌ OAuth-Callback Fehler: {e}")
+        print(f"[ERROR] OAuth-Callback Fehler: {e}")
         print(f"   Typ: {type(e).__name__}")
         import traceback
-        print(f"   Traceback: {traceback.format_exc()}")
+        print(f"[ERROR] Traceback details omitted due to encoding issues")
         
         # Spezifische Fehlerbehandlung
         error_message = str(e)
@@ -598,12 +598,12 @@ async def select_role(
                 )
                 
                 if credits_initialized:
-                    print(f"✅ Credits für neuen Bauträger {current_user.id} initialisiert")
+                    print(f"[SUCCESS] Credits für neuen Bauträger {current_user.id} initialisiert")
                 else:
                     print(f"ℹ️  Credits für User {current_user.id} bereits initialisiert oder nicht erforderlich")
                     
             except Exception as e:
-                print(f"❌ Fehler bei Credit-Initialisierung: {e}")
+                print(f"[ERROR] Fehler bei Credit-Initialisierung: {e}")
                 # Fehler bei Credit-Initialisierung sollte nicht die Rollenauswahl blockieren
         
         # Audit-Log
@@ -622,7 +622,7 @@ async def select_role(
         }
         
     except Exception as e:
-        print(f"❌ Fehler beim Speichern der Rolle: {e}")
+        print(f"[ERROR] Fehler beim Speichern der Rolle: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Fehler beim Speichern der Rolle"
@@ -682,7 +682,7 @@ async def debug_reset_role(
         }
         
     except Exception as e:
-        print(f"❌ Fehler beim Zurücksetzen der Rolle: {e}")
+        print(f"[ERROR] Fehler beim Zurücksetzen der Rolle: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Fehler beim Zurücksetzen der Rolle"
@@ -716,7 +716,7 @@ async def mark_modal_shown(
         }
         
     except Exception as e:
-        print(f"❌ Fehler beim Setzen des Modal-Flags: {e}")
+        print(f"[ERROR] Fehler beim Setzen des Modal-Flags: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Fehler beim Setzen des Modal-Flags"
@@ -766,7 +766,7 @@ async def complete_first_login(
         }
         
     except Exception as e:
-        print(f"❌ Fehler beim Abschließen des ersten Logins: {e}")
+        print(f"[ERROR] Fehler beim Abschließen des ersten Logins: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Fehler beim Abschließen des ersten Logins"
@@ -829,7 +829,7 @@ async def update_company_info(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Fehler beim Speichern der Firmeninformationen: {e}")
+        print(f"[ERROR] Fehler beim Speichern der Firmeninformationen: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Fehler beim Speichern der Firmeninformationen"
@@ -870,7 +870,7 @@ async def update_onboarding_step(
         }
         
     except Exception as e:
-        print(f"❌ Fehler beim Aktualisieren des Onboarding-Schritts: {e}")
+        print(f"[ERROR] Fehler beim Aktualisieren des Onboarding-Schritts: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Fehler beim Aktualisieren des Onboarding-Schritts"
@@ -921,7 +921,7 @@ async def complete_onboarding(
         }
         
     except Exception as e:
-        print(f"❌ Fehler beim Abschließen des Onboardings: {e}")
+        print(f"[ERROR] Fehler beim Abschließen des Onboardings: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Fehler beim Abschließen des Onboardings"
@@ -939,7 +939,7 @@ async def get_microsoft_oauth_url(
         oauth_url = await OAuthService.get_oauth_url("microsoft", state)
         return {"url": oauth_url}
     except Exception as e:
-        print(f"❌ Fehler beim Generieren der Microsoft OAuth URL: {e}")
+        print(f"[ERROR] Fehler beim Generieren der Microsoft OAuth URL: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
@@ -1016,7 +1016,7 @@ async def microsoft_oauth_callback(
         }
         
     except Exception as e:
-        print(f"❌ Fehler beim Microsoft OAuth Callback: {e}")
+        print(f"[ERROR] Fehler beim Microsoft OAuth Callback: {e}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"OAuth Fehler: {str(e)}"

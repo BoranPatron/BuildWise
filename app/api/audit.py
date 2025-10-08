@@ -19,10 +19,10 @@ async def read_user_audit_logs(
     db: AsyncSession = Depends(get_db),
 ):
     """Holt Audit-Logs für den aktuellen Benutzer"""
-    print(f"📝 API: Lade Audit-Logs für User {current_user.id}")
+    print(f"[INFO] API: Lade Audit-Logs für User {current_user.id}")
     
     audit_logs = await get_audit_logs_for_user(db, current_user.id)
-    print(f"✅ API: {len(audit_logs)} Audit-Logs zurückgegeben")
+    print(f"[SUCCESS] API: {len(audit_logs)} Audit-Logs zurückgegeben")
     return audit_logs
 
 
@@ -33,10 +33,10 @@ async def read_project_audit_logs(
     db: AsyncSession = Depends(get_db),
 ):
     """Holt Audit-Logs für ein bestimmtes Projekt"""
-    print(f"📝 API: Lade Audit-Logs für Projekt {project_id}")
+    print(f"[INFO] API: Lade Audit-Logs für Projekt {project_id}")
     
     audit_logs = await get_audit_logs_for_project(db, project_id)
-    print(f"✅ API: {len(audit_logs)} Audit-Logs für Projekt {project_id} zurückgegeben")
+    print(f"[SUCCESS] API: {len(audit_logs)} Audit-Logs für Projekt {project_id} zurückgegeben")
     return audit_logs
 
 
@@ -46,7 +46,7 @@ async def read_all_audit_logs(
     db: AsyncSession = Depends(get_db),
 ):
     """Holt alle Audit-Logs (nur für Admin)"""
-    print(f"📝 API: Lade alle Audit-Logs für Admin {current_user.id}")
+    print(f"[INFO] API: Lade alle Audit-Logs für Admin {current_user.id}")
     
     # Prüfe Admin-Berechtigung
     if current_user.email != "admin@buildwise.de":
@@ -56,5 +56,5 @@ async def read_all_audit_logs(
         )
     
     audit_logs = await get_all_audit_logs(db)
-    print(f"✅ API: {len(audit_logs)} Audit-Logs insgesamt zurückgegeben")
+    print(f"[SUCCESS] API: {len(audit_logs)} Audit-Logs insgesamt zurückgegeben")
     return audit_logs 

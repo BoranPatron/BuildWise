@@ -78,21 +78,21 @@ async def create_defect_task_for_service_provider(
                 # keine Bilder unterstützt, wird zumindest der Link angezeigt
                 photo_info += f"\n![Foto {i}]({photo_url})\n"
     
-    task_description = f"""🔧 MANGELBEHEBUNG ERFORDERLICH
+    task_description = f"""[DEBUG] MANGELBEHEBUNG ERFORDERLICH
 
-📋 **Mangel-Details:**
+[INFO] **Mangel-Details:**
 - **Schweregrad:** {defect.severity.value} ({'Geringfügig' if defect.severity.value == 'MINOR' else 'Erheblich' if defect.severity.value == 'MAJOR' else 'Kritisch'})
 - **Ort:** {defect.location or 'Nicht angegeben'}
 - **Raum:** {defect.room or 'Nicht angegeben'}
 
-📝 **Beschreibung:**
+[INFO] **Beschreibung:**
 {defect.description}
 
-📅 **Frist:** {due_date.strftime('%d.%m.%Y')} ({days} Tage)
+[INFO] **Frist:** {due_date.strftime('%d.%m.%Y')} ({days} Tage)
 {photo_info}
-🏗️ **Gewerk:** {milestone.title if milestone else 'Unbekannt'}
+[BUILD] **Gewerk:** {milestone.title if milestone else 'Unbekannt'}
 
-⚠️ **Wichtig:** 
+[WARNING] **Wichtig:** 
 - Nach Behebung bitte Fotos der erledigten Arbeiten hochladen
 - Task als "Erledigt" markieren wenn vollständig behoben
 - Bei Fragen kontaktieren Sie den Bauträger über das Projekt
@@ -125,7 +125,7 @@ async def create_defect_task_for_service_provider(
     await db.commit()
     await db.refresh(task)
     
-    print(f"✅ Task für Mangel '{defect.title}' erstellt (ID: {task.id}) - Zugewiesen an Dienstleister {assigned_to}")
+    print(f"[SUCCESS] Task für Mangel '{defect.title}' erstellt (ID: {task.id}) - Zugewiesen an Dienstleister {assigned_to}")
     
     return task
 
@@ -190,21 +190,21 @@ async def create_defect_monitoring_task_for_bautraeger(
         photo_info = f"\n📸 **Dokumentierte Fotos:** {photo_count} Foto(s)\n"
     
     if is_bautraeger_also_service_provider:
-        task_description = f"""🔧 MANGEL SELBST BEHEBEN
+        task_description = f"""[DEBUG] MANGEL SELBST BEHEBEN
 
-📋 **Mangel-Details:**
+[INFO] **Mangel-Details:**
 - **Schweregrad:** {defect.severity.value} ({'Geringfügig' if defect.severity.value == 'MINOR' else 'Erheblich' if defect.severity.value == 'MAJOR' else 'Kritisch'})
 - **Ort:** {defect.location or 'Nicht angegeben'}
 - **Raum:** {defect.room or 'Nicht angegeben'}
 
-📝 **Beschreibung:**
+[INFO] **Beschreibung:**
 {defect.description}
 
-📅 **Frist:** {due_date.strftime('%d.%m.%Y')} ({days} Tage)
+[INFO] **Frist:** {due_date.strftime('%d.%m.%Y')} ({days} Tage)
 {photo_info}
-🏗️ **Gewerk:** {milestone.title if milestone else 'Unbekannt'}
+[BUILD] **Gewerk:** {milestone.title if milestone else 'Unbekannt'}
 
-🔧 **Ihre Aufgaben:**
+[DEBUG] **Ihre Aufgaben:**
 - Beheben Sie den dokumentierten Mangel selbst
 - Dokumentieren Sie den Fortschritt der Behebung
 - Laden Sie Fotos der erledigten Arbeiten hoch
@@ -215,19 +215,19 @@ async def create_defect_monitoring_task_for_bautraeger(
     else:
         task_description = f"""👁️ MANGELBEHEBUNG ÜBERWACHEN
 
-📋 **Mangel-Details:**
+[INFO] **Mangel-Details:**
 - **Schweregrad:** {defect.severity.value} ({'Geringfügig' if defect.severity.value == 'MINOR' else 'Erheblich' if defect.severity.value == 'MAJOR' else 'Kritisch'})
 - **Ort:** {defect.location or 'Nicht angegeben'}
 - **Raum:** {defect.room or 'Nicht angegeben'}
 
-📝 **Beschreibung:**
+[INFO] **Beschreibung:**
 {defect.description}
 
-📅 **Kontrollfrist:** {due_date.strftime('%d.%m.%Y')} ({days} Tage)
+[INFO] **Kontrollfrist:** {due_date.strftime('%d.%m.%Y')} ({days} Tage)
 {photo_info}
-🏗️ **Gewerk:** {milestone.title if milestone else 'Unbekannt'}
+[BUILD] **Gewerk:** {milestone.title if milestone else 'Unbekannt'}
 
-🔍 **Ihre Aufgaben als Bauträger:**
+[DEBUG] **Ihre Aufgaben als Bauträger:**
 - Überwachen Sie den Fortschritt der Mangelbehebung
 - Kontaktieren Sie den Dienstleister bei Verzögerungen
 - Prüfen Sie die Qualität der Behebung vor Ort
@@ -259,7 +259,7 @@ async def create_defect_monitoring_task_for_bautraeger(
     await db.commit()
     await db.refresh(monitoring_task)
     
-    print(f"✅ Überwachungs-Task für Mangel '{defect.title}' erstellt (ID: {monitoring_task.id}) - Zugewiesen an Bauträger {created_by_user_id}")
+    print(f"[SUCCESS] Überwachungs-Task für Mangel '{defect.title}' erstellt (ID: {monitoring_task.id}) - Zugewiesen an Bauträger {created_by_user_id}")
     
     return monitoring_task
 
@@ -297,24 +297,24 @@ async def create_review_task_for_bautraeger(
     
     defect_count = len(acceptance.defects) if acceptance.defects else 0
     
-    task_description = f"""📋 WIEDERVORLAGE: ABNAHME UNTER VORBEHALT
+    task_description = f"""[INFO] WIEDERVORLAGE: ABNAHME UNTER VORBEHALT
 
-🏗️ **Gewerk:** {milestone.title if milestone else 'Unbekannt'}
-📅 **Ursprüngliche Abnahme:** {acceptance.created_at.strftime('%d.%m.%Y') if acceptance.created_at else 'Unbekannt'}
-📅 **Wiedervorlage-Datum:** {acceptance.review_date.strftime('%d.%m.%Y') if acceptance.review_date else 'Nicht gesetzt'}
+[BUILD] **Gewerk:** {milestone.title if milestone else 'Unbekannt'}
+[INFO] **Ursprüngliche Abnahme:** {acceptance.created_at.strftime('%d.%m.%Y') if acceptance.created_at else 'Unbekannt'}
+[INFO] **Wiedervorlage-Datum:** {acceptance.review_date.strftime('%d.%m.%Y') if acceptance.review_date else 'Nicht gesetzt'}
 
-⚠️ **Dokumentierte Mängel:** {defect_count}
+[WARNING] **Dokumentierte Mängel:** {defect_count}
 
-📝 **Notizen zur Wiedervorlage:**
+[INFO] **Notizen zur Wiedervorlage:**
 {acceptance.review_notes or 'Keine Notizen'}
 
-🔄 **Nächste Schritte:**
+[UPDATE] **Nächste Schritte:**
 1. Prüfen Sie den Fortschritt der Mangelbehebung
 2. Kontaktieren Sie den Dienstleister bei Verzögerungen
 3. Planen Sie eine erneute Abnahme sobald alle Mängel behoben sind
 4. Dokumentieren Sie den aktuellen Status
 
-💡 **Tipp:** Überprüfen Sie die zugehörigen Mangel-Tasks um den aktuellen Bearbeitungsstand zu sehen.
+[IDEA] **Tipp:** Überprüfen Sie die zugehörigen Mangel-Tasks um den aktuellen Bearbeitungsstand zu sehen.
 """
 
     # Erstelle Task - Review-Task soll in "Überprüfung" Spalte stehen
@@ -341,7 +341,7 @@ async def create_review_task_for_bautraeger(
     await db.commit()
     await db.refresh(task)
     
-    print(f"✅ Wiedervorlage-Task für Abnahme erstellt (ID: {task.id}) - Zugewiesen an Bauträger {bautraeger_id}")
+    print(f"[SUCCESS] Wiedervorlage-Task für Abnahme erstellt (ID: {task.id}) - Zugewiesen an Bauträger {bautraeger_id}")
     
     return task
 
@@ -402,7 +402,7 @@ async def process_acceptance_completion(
                     result['monitoring_tasks_created'] += 1
                     
                 except Exception as e:
-                    print(f"❌ Fehler beim Erstellen der Mangel-Tasks für '{defect.title}': {e}")
+                    print(f"[ERROR] Fehler beim Erstellen der Mangel-Tasks für '{defect.title}': {e}")
     
     # 2. Erstelle Wiedervorlage-Task wenn Abnahme unter Vorbehalt
     if not acceptance.accepted and acceptance.review_date and not acceptance.review_task_id:
@@ -415,9 +415,9 @@ async def process_acceptance_completion(
             result['review_task'] = review_task
             result['review_task_created'] = True
         except Exception as e:
-            print(f"❌ Fehler beim Erstellen der Wiedervorlage-Task: {e}")
+            print(f"[ERROR] Fehler beim Erstellen der Wiedervorlage-Task: {e}")
     
-    print(f"📊 Acceptance-Verarbeitung abgeschlossen: {result['defect_tasks_created']} Mangel-Tasks (Dienstleister), {result['monitoring_tasks_created']} Überwachungs-Tasks (Bauträger), {'1' if result['review_task_created'] else '0'} Wiedervorlage-Task")
+    print(f"[INFO] Acceptance-Verarbeitung abgeschlossen: {result['defect_tasks_created']} Mangel-Tasks (Dienstleister), {result['monitoring_tasks_created']} Überwachungs-Tasks (Bauträger), {'1' if result['review_task_created'] else '0'} Wiedervorlage-Task")
     
     return result
 
@@ -448,7 +448,7 @@ async def mark_defect_as_resolved(
     defect = result.scalars().first()
     
     if not defect:
-        print(f"❌ Mangel mit ID {defect_id} nicht gefunden")
+        print(f"[ERROR] Mangel mit ID {defect_id} nicht gefunden")
         return False
     
     # Markiere Mangel als behoben
@@ -471,11 +471,11 @@ async def mark_defect_as_resolved(
             
             # Füge Auflösungsnotizen zur Task-Beschreibung hinzu
             if resolution_notes:
-                task.description += f"\n\n✅ **BEHOBEN am {datetime.now().strftime('%d.%m.%Y %H:%M')}**\n{resolution_notes}"
+                task.description += f"\n\n[SUCCESS] **BEHOBEN am {datetime.now().strftime('%d.%m.%Y %H:%M')}**\n{resolution_notes}"
             
-            print(f"✅ Task {task.id} für Mangel '{defect.title}' als erledigt markiert")
+            print(f"[SUCCESS] Task {task.id} für Mangel '{defect.title}' als erledigt markiert")
     
     await db.commit()
     
-    print(f"✅ Mangel '{defect.title}' als behoben markiert")
+    print(f"[SUCCESS] Mangel '{defect.title}' als behoben markiert")
     return True

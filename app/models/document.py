@@ -150,6 +150,9 @@ class Document(Base):
     is_public = Column(Boolean, default=False)
     is_favorite = Column(Boolean, default=False)
     
+    # Service Provider Soft-Delete
+    hidden_for_service_providers = Column(Boolean, default=False)
+    
     # Relationships
     project = relationship("Project", back_populates="documents")
     uploaded_by_user = relationship("User", foreign_keys=[uploaded_by], back_populates="uploaded_documents")

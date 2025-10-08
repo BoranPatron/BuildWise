@@ -501,6 +501,9 @@ class GeoService:
                         "requires_inspection": bool(getattr(milestone, 'requires_inspection', False)),
                         # Dokumente - Lade geteilte Dokumente für Dienstleister
                         "documents": await self._load_shared_documents(db, milestone.id, is_service_provider),
+                        # Nachrichten-Status für Benachrichtigungen (USER-SPEZIFISCH)
+                        "has_unread_messages_bautraeger": bool(getattr(milestone, 'has_unread_messages_bautraeger', False)),
+                        "has_unread_messages_dienstleister": bool(getattr(milestone, 'has_unread_messages_dienstleister', False)),
                         # Projekt-Informationen
                         "project_id": project.id,
                         "project_name": project.name,

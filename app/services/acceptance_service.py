@@ -31,7 +31,7 @@ class AcceptanceService:
     ) -> Acceptance:
         """Erstelle eine neue Abnahme"""
         try:
-            print(f"🔧 Erstelle Abnahme für Milestone {acceptance_data.milestone_id}")
+            print(f"[DEBUG] Erstelle Abnahme für Milestone {acceptance_data.milestone_id}")
             
             # Prüfe ob Milestone existiert und completion_status = 'completion_requested'
             milestone_result = await db.execute(
@@ -75,12 +75,12 @@ class AcceptanceService:
             milestone.completion_status = 'under_review'
             await db.commit()
             
-            print(f"✅ Abnahme {acceptance.id} erstellt")
+            print(f"[SUCCESS] Abnahme {acceptance.id} erstellt")
             return acceptance
             
         except Exception as e:
             await db.rollback()
-            print(f"❌ Fehler beim Erstellen der Abnahme: {e}")
+            print(f"[ERROR] Fehler beim Erstellen der Abnahme: {e}")
             raise
 
 
@@ -95,7 +95,7 @@ class AcceptanceService:
     ) -> Appointment:
         """Erstelle einen Abnahme-Termin (analog zu Besichtigungsterminen)"""
         try:
-            print(f"📅 Erstelle Abnahme-Termin für Milestone {milestone_id}")
+            print(f"[INFO] Erstelle Abnahme-Termin für Milestone {milestone_id}")
             
             # Lade Milestone und Project
             milestone_result = await db.execute(
@@ -132,12 +132,12 @@ class AcceptanceService:
             # TODO: Sende Benachrichtigung an Dienstleister
             print(f"📧 Benachrichtigung an Dienstleister {service_provider_id} über Abnahme-Termin {appointment.id}")
             
-            print(f"✅ Abnahme-Termin {appointment.id} erstellt")
+            print(f"[SUCCESS] Abnahme-Termin {appointment.id} erstellt")
             return appointment
             
         except Exception as e:
             await db.rollback()
-            print(f"❌ Fehler beim Erstellen des Abnahme-Termins: {e}")
+            print(f"[ERROR] Fehler beim Erstellen des Abnahme-Termins: {e}")
             raise
 
 
@@ -152,7 +152,7 @@ class AcceptanceService:
     ) -> Appointment:
         """Antwort auf Abnahme-Terminvorschlag"""
         try:
-            print(f"📝 Antwort auf Abnahme-Termin {appointment_id}: {'Akzeptiert' if accepted else 'Abgelehnt'}")
+            print(f"[INFO] Antwort auf Abnahme-Termin {appointment_id}: {'Akzeptiert' if accepted else 'Abgelehnt'}")
             
             # Lade Appointment
             appointment_result = await db.execute(
@@ -196,12 +196,12 @@ class AcceptanceService:
             # TODO: Sende Benachrichtigung an Bauträger
             print(f"📧 Benachrichtigung an Bauträger über Antwort von Dienstleister {service_provider_id}: {'Akzeptiert' if accepted else 'Abgelehnt'}")
             
-            print(f"✅ Antwort auf Abnahme-Termin gespeichert")
+            print(f"[SUCCESS] Antwort auf Abnahme-Termin gespeichert")
             return appointment
             
         except Exception as e:
             await db.rollback()
-            print(f"❌ Fehler bei Antwort auf Abnahme-Termin: {e}")
+            print(f"[ERROR] Fehler bei Antwort auf Abnahme-Termin: {e}")
             raise
 
 
@@ -213,7 +213,7 @@ class AcceptanceService:
     ) -> Acceptance:
         """Starte die Abnahme"""
         try:
-            print(f"🚀 Starte Abnahme {acceptance_id}")
+            print(f"[INFO] Starte Abnahme {acceptance_id}")
             
             acceptance_result = await db.execute(
                 select(Acceptance).where(Acceptance.id == acceptance_id)
@@ -232,12 +232,12 @@ class AcceptanceService:
             
             await db.commit()
             
-            print(f"✅ Abnahme {acceptance_id} gestartet")
+            print(f"[SUCCESS] Abnahme {acceptance_id} gestartet")
             return acceptance
             
         except Exception as e:
             await db.rollback()
-            print(f"❌ Fehler beim Starten der Abnahme: {e}")
+            print(f"[ERROR] Fehler beim Starten der Abnahme: {e}")
             raise
 
 
@@ -281,7 +281,7 @@ class AcceptanceService:
             return None
             
         except Exception as e:
-            print(f"❌ Fehler beim Laden der Abnahme: {e}")
+            print(f"[ERROR] Fehler beim Laden der Abnahme: {e}")
             return None
 
 
@@ -317,7 +317,7 @@ class AcceptanceService:
             return result.scalars().all()
             
         except Exception as e:
-            print(f"❌ Fehler beim Laden der Abnahmen: {e}")
+            print(f"[ERROR] Fehler beim Laden der Abnahmen: {e}")
             return []
 
 
@@ -459,7 +459,7 @@ class AcceptanceService:
             )
             
         except Exception as e:
-            print(f"❌ Fehler bei Abnahme-Zusammenfassung: {e}")
+            print(f"[ERROR] Fehler bei Abnahme-Zusammenfassung: {e}")
             return AcceptanceSummary(
                 total_acceptances=0,
                 pending_acceptances=0,
@@ -536,16 +536,16 @@ class AcceptanceService:
                 accepted_quote = quotes_result.scalar_one_or_none()
                 if accepted_quote:
                     service_provider_id = accepted_quote.service_provider_id
-                    print(f"✅ Service Provider aus akzeptiertem Quote ermittelt: {service_provider_id}")
+                    print(f"[SUCCESS] Service Provider aus akzeptiertem Quote ermittelt: {service_provider_id}")
                 
                 # Versuch 2: Verwende milestone.accepted_by (für Bauträger-Workflow)
                 elif milestone.accepted_by:
                     service_provider_id = milestone.accepted_by
-                    print(f"✅ Service Provider aus milestone.accepted_by ermittelt: {service_provider_id}")
+                    print(f"[SUCCESS] Service Provider aus milestone.accepted_by ermittelt: {service_provider_id}")
                 
                 # Fallback: Verwende den Bauträger als Service Provider (für reine Bauträger-Abnahmen)
                 else:
-                    print(f"⚠️ Kein Service Provider für Milestone {milestone_id} gefunden - verwende Bauträger als Fallback")
+                    print(f"[WARNING] Kein Service Provider für Milestone {milestone_id} gefunden - verwende Bauträger als Fallback")
                     service_provider_id = completed_by_user_id  # Bauträger führt selbst die Abnahme durch
                 
                 # Erstelle neue Abnahme
@@ -618,10 +618,45 @@ class AcceptanceService:
                         milestone.completion_status = 'completed'
                         milestone.status = 'completed'
                         milestone.completed_at = datetime.now()
-                        print(f"✅ Milestone {milestone.title} als abgenommen markiert")
+                        print(f"[SUCCESS] Milestone {milestone.title} als abgenommen markiert")
+                        
+                        # Inkrementiere completed_offers_count für alle betroffenen Dienstleister
+                        try:
+                            from .milestone_completion_service import MilestoneCompletionService
+                            await MilestoneCompletionService.increment_completed_offers_count(db, milestone.id)
+                            print(f"[SUCCESS] completed_offers_count für betroffene Dienstleister von Milestone {milestone.id} inkrementiert")
+                        except Exception as e:
+                            print(f"[WARNING] Fehler beim Inkrementieren der completed_offers_count: {e}")
+                            # Fehler nicht kritisch, da Hauptfunktion (Abnahme) bereits erfolgreich
                     else:
                         milestone.completion_status = 'completed_with_defects'
-                        print(f"⚠️ Milestone {milestone.title} als 'abgenommen unter Vorbehalt' markiert")
+                        print(f"[WARNING] Milestone {milestone.title} als 'abgenommen unter Vorbehalt' markiert")
+                        
+                        # Sende Benachrichtigung an den Dienstleister über die Abnahme unter Vorbehalt
+                        try:
+                            from .notification_service import NotificationService
+                            
+                            # Ermittle Service Provider ID
+                            service_provider_id = None
+                            if acceptance.service_provider_id:
+                                service_provider_id = acceptance.service_provider_id
+                            elif milestone.accepted_by:
+                                service_provider_id = milestone.accepted_by
+                            
+                            if service_provider_id and service_provider_id != completed_by_user_id:
+                                notification = await NotificationService.create_acceptance_with_defects_notification(
+                                    db=db,
+                                    milestone_id=milestone.id,
+                                    service_provider_id=service_provider_id,
+                                    bautraeger_id=completed_by_user_id
+                                )
+                                print(f"[SUCCESS] Benachrichtigung für Abnahme unter Vorbehalt an Service Provider {service_provider_id} gesendet")
+                            else:
+                                print(f"[WARNING] Kein Service Provider für Benachrichtigung gefunden (Service Provider ID: {service_provider_id}, Bauträger ID: {completed_by_user_id})")
+                                
+                        except Exception as e:
+                            print(f"[ERROR] Fehler beim Senden der Abnahme-unter-Vorbehalt-Benachrichtigung: {e}")
+                            # Fehler bei Benachrichtigung sollte nicht die Abnahme blockieren
             
             # Commit alle Änderungen in einem Rutsch
             await db.commit()
@@ -634,13 +669,13 @@ class AcceptanceService:
                 created_by_user_id=completed_by_user_id
             )
             
-            print(f"✅ Abnahme abgeschlossen: {task_result['defect_tasks_created']} Mangel-Tasks (Dienstleister), {task_result.get('monitoring_tasks_created', 0)} Überwachungs-Tasks (Bauträger), {'1' if task_result['review_task_created'] else '0'} Wiedervorlage-Task erstellt")
+            print(f"[SUCCESS] Abnahme abgeschlossen: {task_result['defect_tasks_created']} Mangel-Tasks (Dienstleister), {task_result.get('monitoring_tasks_created', 0)} Überwachungs-Tasks (Bauträger), {'1' if task_result['review_task_created'] else '0'} Wiedervorlage-Task erstellt")
             
             return acceptance
             
         except Exception as e:
             await db.rollback()
-            print(f"❌ Fehler beim Abschließen der Abnahme: {e}")
+            print(f"[ERROR] Fehler beim Abschließen der Abnahme: {e}")
             raise
 
     @staticmethod
@@ -660,18 +695,18 @@ class AcceptanceService:
             
             # Lese PDF-Datei
             if os.path.exists(pdf_path):
-                print(f"✅ Abnahmeprotokoll würde im DMS gespeichert: {document_title}")
+                print(f"[SUCCESS] Abnahmeprotokoll würde im DMS gespeichert: {document_title}")
                 # TODO: Vollständige DMS-Integration implementieren
                 # Hier würde das Dokument in das DMS-System eingetragen werden
                 
             else:
-                print(f"⚠️ PDF-Datei nicht gefunden: {pdf_path}")
+                print(f"[WARNING] PDF-Datei nicht gefunden: {pdf_path}")
                 
         except Exception as e:
-            print(f"❌ Fehler bei DMS-Integration: {e}")
+            print(f"[ERROR] Fehler bei DMS-Integration: {e}")
             # Fehler nicht weiterwerfen, da Abnahme bereits erfolgreich
 
-    # 🔧 Mängel-Management Methoden
+    # [DEBUG] Mängel-Management Methoden
     
     @staticmethod
     async def get_milestone_defects(
@@ -681,7 +716,7 @@ class AcceptanceService:
     ) -> List[Dict[str, Any]]:
         """Lade alle Mängel für ein Gewerk"""
         try:
-            print(f"🔍 Lade Mängel für Milestone {milestone_id}")
+            print(f"[DEBUG] Lade Mängel für Milestone {milestone_id}")
             
             # Lade Mängel aus der Acceptance mit dem entsprechenden Milestone
             result = await db.execute(
@@ -709,11 +744,11 @@ class AcceptanceService:
                     "acceptance_id": defect.acceptance_id
                 })
             
-            print(f"✅ {len(defects_data)} Mängel für Milestone {milestone_id} geladen")
+            print(f"[SUCCESS] {len(defects_data)} Mängel für Milestone {milestone_id} geladen")
             return defects_data
             
         except Exception as e:
-            print(f"❌ Fehler beim Laden der Mängel: {e}")
+            print(f"[ERROR] Fehler beim Laden der Mängel: {e}")
             raise e
 
     @staticmethod
@@ -726,7 +761,7 @@ class AcceptanceService:
     ) -> Dict[str, Any]:
         """Markiere einen Mangel als behoben oder unbehoben"""
         try:
-            print(f"🔧 Markiere Mangel {defect_id} als {'behoben' if resolution_data.get('resolved') else 'unbehoben'}")
+            print(f"[DEBUG] Markiere Mangel {defect_id} als {'behoben' if resolution_data.get('resolved') else 'unbehoben'}")
             
             # Lade den Mangel
             result = await db.execute(
@@ -755,7 +790,7 @@ class AcceptanceService:
             
             await db.commit()
             
-            print(f"✅ Mangel {defect_id} erfolgreich aktualisiert")
+            print(f"[SUCCESS] Mangel {defect_id} erfolgreich aktualisiert")
             
             return {
                 "id": defect.id,
@@ -766,7 +801,7 @@ class AcceptanceService:
             }
             
         except Exception as e:
-            print(f"❌ Fehler beim Aktualisieren des Mangels: {e}")
+            print(f"[ERROR] Fehler beim Aktualisieren des Mangels: {e}")
             await db.rollback()
             raise e
 
@@ -779,7 +814,7 @@ class AcceptanceService:
     ) -> Dict[str, Any]:
         """Melde alle Mängel als behoben und bereit für finale Abnahme"""
         try:
-            print(f"🎯 Melde Mängelbehebung für Milestone {milestone_id}")
+            print(f"[INFO] Melde Mängelbehebung für Milestone {milestone_id}")
             
             # Prüfe ob alle Mängel behoben sind
             result = await db.execute(
@@ -815,7 +850,7 @@ class AcceptanceService:
                 
                 await db.commit()
                 
-                print(f"✅ Milestone {milestone_id} als bereit für finale Abnahme markiert (completion_status: defects_resolved)")
+                print(f"[SUCCESS] Milestone {milestone_id} als bereit für finale Abnahme markiert (completion_status: defects_resolved)")
                 
                 return {
                     "milestone_id": milestone_id,
@@ -829,7 +864,7 @@ class AcceptanceService:
                 raise ValueError(f"Milestone {milestone_id} nicht gefunden")
                 
         except Exception as e:
-            print(f"❌ Fehler beim Melden der Mängelbehebung: {e}")
+            print(f"[ERROR] Fehler beim Melden der Mängelbehebung: {e}")
             await db.rollback()
             raise e
 
@@ -841,7 +876,7 @@ class AcceptanceService:
     ) -> Dict[str, Any]:
         """Prüfe den Status der Mängelbehebung für ein Gewerk"""
         try:
-            print(f"🔍 Prüfe Mängelbehebungsstatus für Milestone {milestone_id}")
+            print(f"[DEBUG] Prüfe Mängelbehebungsstatus für Milestone {milestone_id}")
             
             # Zähle Mängel und behobene Mängel
             result = await db.execute(
@@ -875,9 +910,9 @@ class AcceptanceService:
                 "defects_resolved_at": milestone_data.defects_resolved_at.isoformat() if milestone_data and milestone_data.defects_resolved_at else None
             }
             
-            print(f"✅ Mängelbehebungsstatus: {status}")
+            print(f"[SUCCESS] Mängelbehebungsstatus: {status}")
             return status
             
         except Exception as e:
-            print(f"❌ Fehler beim Prüfen des Mängelbehebungsstatus: {e}")
+            print(f"[ERROR] Fehler beim Prüfen des Mängelbehebungsstatus: {e}")
             raise e

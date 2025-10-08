@@ -23,14 +23,14 @@ async def run_task_archiver():
             archived_count = await archive_completed_tasks(db)
             
         if archived_count > 0:
-            logger.info(f"✅ {archived_count} Tasks automatisch archiviert")
+            logger.info(f"[SUCCESS] {archived_count} Tasks automatisch archiviert")
         else:
             logger.info("ℹ️ Keine Tasks zum Archivieren gefunden")
             
         return archived_count
         
     except Exception as e:
-        logger.error(f"❌ Fehler bei Task-Archivierung: {e}")
+        logger.error(f"[ERROR] Fehler bei Task-Archivierung: {e}")
         return 0
 
 
@@ -45,20 +45,20 @@ async def schedule_task_archiver():
             await asyncio.sleep(24 * 60 * 60)  # 24 Stunden
             
         except Exception as e:
-            logger.error(f"❌ Fehler im Task-Archiver Scheduler: {e}")
+            logger.error(f"[ERROR] Fehler im Task-Archiver Scheduler: {e}")
             # Warte 1 Stunde bei Fehler, dann versuche es erneut
             await asyncio.sleep(60 * 60)
 
 
 def start_task_archiver_background():
     """Starte den Task-Archiver als Background-Task"""
-    logger.info("🚀 Starte Task-Archiver Background-Service...")
+    logger.info("[INFO] Starte Task-Archiver Background-Service...")
     
     # Erstelle und starte den Background-Task
     loop = asyncio.get_event_loop()
     loop.create_task(schedule_task_archiver())
     
-    logger.info("✅ Task-Archiver Background-Service gestartet")
+    logger.info("[SUCCESS] Task-Archiver Background-Service gestartet")
 
 
 if __name__ == "__main__":

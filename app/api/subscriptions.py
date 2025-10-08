@@ -95,7 +95,7 @@ async def create_checkout_session(
         }
         
     except Exception as e:
-        print(f"❌ Checkout Session Error: {e}")
+        print(f"[ERROR] Checkout Session Error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Fehler beim Erstellen der Checkout Session"
@@ -129,7 +129,7 @@ async def cancel_subscription(
         }
         
     except Exception as e:
-        print(f"❌ Cancel Subscription Error: {e}")
+        print(f"[ERROR] Cancel Subscription Error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Fehler beim Kündigen der Subscription"
@@ -164,7 +164,7 @@ async def sync_subscription(
         }
         
     except Exception as e:
-        print(f"❌ Sync Subscription Error: {e}")
+        print(f"[ERROR] Sync Subscription Error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Fehler beim Synchronisieren der Subscription"
@@ -189,7 +189,7 @@ async def check_gewerke_limit(
         return limit_check
         
     except Exception as e:
-        print(f"❌ Check Gewerke Limit Error: {e}")
+        print(f"[ERROR] Check Gewerke Limit Error: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Fehler beim Prüfen des Gewerke-Limits"

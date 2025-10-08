@@ -295,11 +295,11 @@ class PDFService:
             # PDF generieren
             doc.build(story)
             
-            print(f"✅ PDF-Abnahmeprotokoll erstellt: {filepath}")
+            print(f"[SUCCESS] PDF-Abnahmeprotokoll erstellt: {filepath}")
             return filepath
             
         except Exception as e:
-            print(f"❌ Fehler bei PDF-Generierung: {e}")
+            print(f"[ERROR] Fehler bei PDF-Generierung: {e}")
             raise
 
 
@@ -395,9 +395,9 @@ class PDFService:
             # PDF generieren
             doc.build(story)
             
-            print(f"✅ Mängelbericht erstellt: {filepath}")
+            print(f"[SUCCESS] Mängelbericht erstellt: {filepath}")
             return filepath
             
         except Exception as e:
-            print(f"❌ Fehler bei Mängelbericht-Generierung: {e}")
+            print(f"[ERROR] Fehler bei Mängelbericht-Generierung: {e}")
             return None

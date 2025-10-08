@@ -18,7 +18,8 @@ from ..services.quote_service import (
     get_quote_statistics, analyze_quote, get_quotes_for_service_provider,
     get_quotes_for_milestone, get_quotes_for_milestone_by_service_provider,
     create_mock_quotes_for_milestone, get_all_quotes, get_quotes_by_project, 
-    get_quotes_by_service_provider
+    get_quotes_by_service_provider, revise_quote_after_inspection,
+    can_revise_quote_after_inspection
 )
 from ..schemas.quote import QuoteUpdate
 from ..models.quote import QuoteStatus
@@ -43,10 +44,10 @@ async def create_new_quote(
     from ..models.user import UserRole, UserType
     
     # Debug: Zeige User-Informationen
-    print(f"🔍 [QUOTE-CREATE] User ID: {current_user.id}")
-    print(f"🔍 [QUOTE-CREATE] User Type: {current_user.user_type}")
-    print(f"🔍 [QUOTE-CREATE] User Role: {getattr(current_user, 'user_role', 'N/A')}")
-    print(f"🔍 [QUOTE-CREATE] User Email: {current_user.email}")
+    print(f"[DEBUG] [QUOTE-CREATE] User ID: {current_user.id}")
+    print(f"[DEBUG] [QUOTE-CREATE] User Type: {current_user.user_type}")
+    print(f"[DEBUG] [QUOTE-CREATE] User Role: {getattr(current_user, 'user_role', 'N/A')}")
+    print(f"[DEBUG] [QUOTE-CREATE] User Email: {current_user.email}")
     
     is_service_provider = (
         current_user.user_type == UserType.SERVICE_PROVIDER or
@@ -54,11 +55,11 @@ async def create_new_quote(
         (current_user.email and "dienstleister" in current_user.email.lower())
     )
     
-    print(f"🔍 [QUOTE-CREATE] Is Service Provider: {is_service_provider}")
+    print(f"[DEBUG] [QUOTE-CREATE] Is Service Provider: {is_service_provider}")
     
     # TEMPORÄRE LÖSUNG: Wenn User noch keine Rolle hat, setze automatisch Dienstleister-Rolle
     if not is_service_provider and (not hasattr(current_user, 'user_role') or current_user.user_role is None):
-        print(f"🔧 [QUOTE-CREATE] User hat keine Rolle - setze automatisch auf DIENSTLEISTER")
+        print(f"[DEBUG] [QUOTE-CREATE] User hat keine Rolle - setze automatisch auf DIENSTLEISTER")
         from sqlalchemy import update
         from datetime import datetime
         await db.execute(
@@ -134,11 +135,11 @@ async def read_quotes_for_milestone(
     user_email = getattr(current_user, 'email', '')
     
     # DEBUG: Ausgabe der Benutzer-Informationen
-    print(f"🔍 DEBUG quotes/milestone/{milestone_id}: user_id={user_id}, user_type='{user_type}', user_role='{user_role}', user_email='{user_email}'")
+    print(f"[DEBUG] DEBUG quotes/milestone/{milestone_id}: user_id={user_id}, user_type='{user_type}', user_role='{user_role}', user_email='{user_email}'")
     
     # TEMPORÄR: Alle Benutzer sehen alle Angebote (für Debugging)
     quotes = await get_quotes_for_milestone(db, milestone_id)
-    print(f"✅ DEBUG: Lade alle {len(quotes)} Angebote für Gewerk {milestone_id} (ohne Filterung)")
+    print(f"[SUCCESS] DEBUG: Lade alle {len(quotes)} Angebote für Gewerk {milestone_id} (ohne Filterung)")
     
     return quotes
 
@@ -267,9 +268,9 @@ async def accept_quote_endpoint(
         from ..services.quote_service import create_cost_position_from_quote
         success = await create_cost_position_from_quote(db, quote)
         if not success:
-            print(f"⚠️ Warnung: Kostenposition für Angebot {quote.id} konnte nicht erstellt werden")
+            print(f"[WARNING] Warnung: Kostenposition für Angebot {quote.id} konnte nicht erstellt werden")
     except Exception as e:
-        print(f"⚠️ Fehler beim Erstellen der Kostenposition: {e}")
+        print(f"[WARNING] Fehler beim Erstellen der Kostenposition: {e}")
     
     # Aktualisiere Kommunikationszugriff nach Angebotsannahme
     try:
@@ -279,9 +280,9 @@ async def accept_quote_endpoint(
             milestone_id=quote.milestone_id,
             accepted_service_provider_id=quote.service_provider_id
         )
-        print(f"✅ Kommunikationszugriff für Milestone {quote.milestone_id} aktualisiert")
+        print(f"[SUCCESS] Kommunikationszugriff für Milestone {quote.milestone_id} aktualisiert")
     except Exception as e:
-        print(f"⚠️ Fehler beim Aktualisieren des Kommunikationszugriffs: {e}")
+        print(f"[WARNING] Fehler beim Aktualisieren des Kommunikationszugriffs: {e}")
     
     return accepted_quote
 
@@ -611,3 +612,69 @@ async def download_quote_document(
         filename=filename,
         media_type='application/octet-stream'
     )
+
+
+@router.put("/{quote_id}/revise-after-inspection", response_model=QuoteRead)
+async def revise_quote_after_inspection_endpoint(
+    quote_id: int,
+    quote_update: QuoteUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Überarbeitet ein Angebot nach einer Besichtigung.
+    
+    Bedingungen:
+    - Dienstleister muss der Ersteller sein
+    - Angebot muss SUBMITTED sein
+    - Besichtigung muss zugesagt worden sein (accepted)
+    
+    Das bestehende Angebot wird überschrieben (nicht neu erstellt).
+    Der Bauträger erhält eine Benachrichtigung über die Überarbeitung.
+    """
+    user_id = getattr(current_user, 'id', 0)
+    
+    try:
+        revised_quote = await revise_quote_after_inspection(
+            db=db,
+            quote_id=quote_id,
+            quote_update=quote_update,
+            service_provider_id=user_id
+        )
+        return revised_quote
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+
+
+@router.get("/{quote_id}/can-revise-after-inspection")
+async def check_can_revise_after_inspection(
+    quote_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Prüft ob ein Angebot nach Besichtigung überarbeitet werden kann.
+    
+    Returns:
+        {"can_revise": true/false, "reason": "..."}
+    """
+    user_id = getattr(current_user, 'id', 0)
+    
+    can_revise = await can_revise_quote_after_inspection(
+        db=db,
+        quote_id=quote_id,
+        service_provider_id=user_id
+    )
+    
+    return {
+        "can_revise": can_revise,
+        "reason": "Alle Bedingungen erfüllt" if can_revise else "Bedingungen nicht erfüllt (Status, Berechtigung oder fehlende Besichtigung)"
+    }

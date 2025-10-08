@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ..core.database import get_db
 from ..api.deps import get_current_user
@@ -479,23 +479,23 @@ async def complete_acceptance(
         )
         
         if not is_bautraeger:
-            print(f"🔍 Access denied - User: {current_user.id}, Type: {current_user.user_type}, Role: {current_user.user_role}")
+            print(f"[DEBUG] Access denied - User: {current_user.id}, Type: {current_user.user_type}, Role: {current_user.user_role}")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Nur Bauträger können Abnahmen abschließen"
             )
         
-        print(f"✅ Access granted - Bauträger {current_user.id} (Type: {current_user.user_type}, Role: {current_user.user_role})")
+        print(f"[SUCCESS] Access granted - Bauträger {current_user.id} (Type: {current_user.user_type}, Role: {current_user.user_role})")
         
         # Extrahiere acceptance_id aus completion_data oder erstelle eine neue Abnahme
         acceptance_id = completion_data.get('acceptance_id')
         
         if acceptance_id:
-            print(f"📝 Bauträger {current_user.id} schließt bestehende Abnahme {acceptance_id} ab")
+            print(f"[INFO] Bauträger {current_user.id} schließt bestehende Abnahme {acceptance_id} ab")
         else:
-            print(f"📝 Bauträger {current_user.id} erstellt neue Abnahme")
+            print(f"[INFO] Bauträger {current_user.id} erstellt neue Abnahme")
         
-        print(f"📊 Completion Data: {completion_data}")
+        print(f"[INFO] Completion Data: {completion_data}")
         
         # Schließe Abnahme ab und erstelle Tasks
         acceptance = await AcceptanceService.complete_acceptance(
@@ -519,8 +519,8 @@ async def complete_acceptance(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
         await db.rollback()  # Explicit rollback
-        print(f"❌ Fehler beim Abschließen der Abnahme: {e}")
-        print(f"❌ Datenbankfehler: 500: {e}")
+        print(f"[ERROR] Fehler beim Abschließen der Abnahme: {e}")
+        print(f"[ERROR] Datenbankfehler: 500: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
@@ -533,7 +533,7 @@ async def complete_final_acceptance(
 ):
     """Finale Abnahme nach Mängelbehebung abschließen"""
     try:
-        print(f"🔍 Finale Abnahme für ID {acceptance_id} mit Daten: {completion_data}")
+        print(f"[DEBUG] Finale Abnahme für ID {acceptance_id} mit Daten: {completion_data}")
         
         # Berechtigung prüfen - Bauträger und Dienstleister können finale Abnahme durchführen
         from ..models.user import UserRole, UserType
@@ -551,7 +551,7 @@ async def complete_final_acceptance(
         
         # Erlaube Zugriff für Bauträger, Dienstleister, Admins und PRIVATE Benutzer
         if not (is_bautraeger or is_service_provider or is_admin or current_user.user_type == UserType.PRIVATE):
-            print(f"🔍 Access denied - User: {current_user.id}, Email: {current_user.email}, Type: {current_user.user_type}, Role: {current_user.user_role}")
+            print(f"[DEBUG] Access denied - User: {current_user.id}, Email: {current_user.email}, Type: {current_user.user_type}, Role: {current_user.user_role}")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Keine Berechtigung für finale Abnahme"
@@ -587,7 +587,7 @@ async def complete_final_acceptance(
             if hasattr(acceptance, 'final_overall_rating'):
                 acceptance.final_overall_rating = completion_data.get('overallRating')
         except Exception as e:
-            print(f"⚠️ Warnung: Finale Bewertungsfelder nicht verfügbar: {e}")
+            print(f"[WARNING] Warnung: Finale Bewertungsfelder nicht verfügbar: {e}")
         
         # Aktualisiere Milestone-Status
         milestone_id = completion_data.get('milestone_id') or acceptance.milestone_id
@@ -601,7 +601,7 @@ async def complete_final_acceptance(
                 if is_service_provider:
                     # Dienstleister meldet Mängelbehebung - Bauträger muss finale Abnahme durchführen
                     milestone.completion_status = 'defects_resolved'
-                    print(f"✅ Milestone {milestone_id} Status auf 'defects_resolved' gesetzt (Mängelbehebung gemeldet)")
+                    print(f"[SUCCESS] Milestone {milestone_id} Status auf 'defects_resolved' gesetzt (Mängelbehebung gemeldet)")
                     
                     # Erstelle Benachrichtigung für den Bauträger
                     try:
@@ -631,18 +631,18 @@ async def complete_final_acceptance(
                                 notification_data=notification_data
                             )
                             
-                            print(f"✅ Benachrichtigung für Bauträger {project.owner_id} erstellt: Mängelbehebung gemeldet für Milestone {milestone_id}")
+                            print(f"[SUCCESS] Benachrichtigung für Bauträger {project.owner_id} erstellt: Mängelbehebung gemeldet für Milestone {milestone_id}")
                         else:
-                            print(f"⚠️ Projekt oder Projekt-Owner nicht gefunden - Benachrichtigung übersprungen")
+                            print(f"[WARNING] Projekt oder Projekt-Owner nicht gefunden - Benachrichtigung übersprungen")
                             
                     except Exception as e:
-                        print(f"❌ Fehler beim Erstellen der Mängelbehebung-Benachrichtigung: {e}")
+                        print(f"[ERROR] Fehler beim Erstellen der Mängelbehebung-Benachrichtigung: {e}")
                         # Fehler bei Benachrichtigung sollte nicht die Mängelbehebung blockieren
                         
                 else:
                     # Bauträger führt finale Abnahme durch - Gewerk ist vollständig abgeschlossen
                     milestone.completion_status = 'completed'
-                    print(f"✅ Milestone {milestone_id} Status auf 'completed' gesetzt (finale Abnahme durch Bauträger)")
+                    print(f"[SUCCESS] Milestone {milestone_id} Status auf 'completed' gesetzt (finale Abnahme durch Bauträger)")
         
         # Erstelle ServiceProviderRating - nur für Bauträger
         if acceptance.service_provider_id and milestone and is_bautraeger:
@@ -673,7 +673,7 @@ async def complete_final_acceptance(
                     is_public=1
                 )
                 db.add(new_rating)
-                print(f"✅ ServiceProviderRating erstellt für Service Provider {acceptance.service_provider_id}")
+                print(f"[SUCCESS] ServiceProviderRating erstellt für Service Provider {acceptance.service_provider_id}")
             else:
                 print(f"ℹ️ ServiceProviderRating existiert bereits für Milestone {milestone_id}")
         elif is_service_provider:
@@ -682,7 +682,7 @@ async def complete_final_acceptance(
         await db.commit()
         await db.refresh(acceptance)
         
-        print(f"✅ Finale Abnahme erfolgreich abgeschlossen: {acceptance.id}")
+        print(f"[SUCCESS] Finale Abnahme erfolgreich abgeschlossen: {acceptance.id}")
         
         # Unterschiedliche Nachrichten je nach Benutzerrolle
         if is_service_provider:
@@ -701,7 +701,7 @@ async def complete_final_acceptance(
         raise
     except Exception as e:
         await db.rollback()
-        print(f"❌ Fehler bei finaler Abnahme: {e}")
+        print(f"[ERROR] Fehler bei finaler Abnahme: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Fehler beim Abschließen der finalen Abnahme: {str(e)}"
@@ -716,7 +716,7 @@ async def get_acceptances_for_milestone(
 ):
     """Lade alle Abnahmen für einen Milestone"""
     try:
-        print(f"🔍 Lade Abnahmen für Milestone {milestone_id}")
+        print(f"[DEBUG] Lade Abnahmen für Milestone {milestone_id}")
         
         # Berechtigung prüfen - erweiterte Berechtigungen für alle relevanten Benutzer
         from ..models.user import UserRole, UserType
@@ -734,7 +734,7 @@ async def get_acceptances_for_milestone(
         
         # Erlaube Zugriff für Bauträger, Dienstleister, Admins und PRIVATE Benutzer (die oft Bauherren sind)
         if not (is_bautraeger or is_service_provider or is_admin or current_user.user_type == UserType.PRIVATE):
-            print(f"🔍 Access denied - User: {current_user.id}, Email: {current_user.email}, Type: {current_user.user_type}, Role: {current_user.user_role}")
+            print(f"[DEBUG] Access denied - User: {current_user.id}, Email: {current_user.email}, Type: {current_user.user_type}, Role: {current_user.user_role}")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Keine Berechtigung zum Einsehen von Abnahmen"
@@ -742,57 +742,18 @@ async def get_acceptances_for_milestone(
         
         # Lade Abnahmen für diesen Milestone
         from sqlalchemy import select
-        from ..models import Acceptance as AcceptanceModel
         
-        acceptance_stmt = select(AcceptanceModel).where(AcceptanceModel.milestone_id == milestone_id)
+        acceptance_stmt = select(Acceptance).where(Acceptance.milestone_id == milestone_id)
         acceptance_result = await db.execute(acceptance_stmt)
         acceptances = acceptance_result.scalars().all()
         
         # Wenn keine Abnahme existiert, erstelle eine neue
         if len(acceptances) == 0:
-            print(f"🔧 Keine Abnahme für Milestone {milestone_id} gefunden - erstelle neue Abnahme")
-            
-            try:
-                # Lade Milestone-Informationen für project_id und service_provider_id
-                from ..models import Milestone
-                milestone_stmt = select(Milestone).where(Milestone.id == milestone_id)
-                milestone_result = await db.execute(milestone_stmt)
-                milestone = milestone_result.scalar_one_or_none()
-                
-                if not milestone:
-                    print(f"❌ Milestone {milestone_id} nicht gefunden")
-                    raise HTTPException(
-                        status_code=status.HTTP_404_NOT_FOUND,
-                        detail=f"Milestone {milestone_id} nicht gefunden"
-                    )
-                
-                new_acceptance = AcceptanceModel(
-                    project_id=milestone.project_id,
-                    milestone_id=milestone_id,
-                    contractor_id=current_user.id,
-                    service_provider_id=milestone.accepted_by or current_user.id,  # Fallback auf current_user
-                    accepted=False,
-                    status=AcceptanceStatus.PENDING,
-                    created_by=current_user.id,
-                    created_at=datetime.utcnow()
-                )
-                
-                db.add(new_acceptance)
-                await db.commit()
-                await db.refresh(new_acceptance)
-                
-                acceptances = [new_acceptance]
-                print(f"✅ Neue Abnahme erstellt mit ID: {new_acceptance.id}")
-                
-            except Exception as e:
-                print(f"❌ Fehler beim Erstellen der Abnahme: {e}")
-                await db.rollback()
-                raise HTTPException(
-                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                    detail=f"Fehler beim Erstellen der Abnahme: {str(e)}"
-                )
+            print(f"[DEBUG] Keine Abnahme für Milestone {milestone_id} gefunden")
+            # Return empty list instead of creating new acceptance
+            return []
         
-        print(f"✅ {len(acceptances)} Abnahmen für Milestone {milestone_id} gefunden")
+        print(f"[SUCCESS] {len(acceptances)} Abnahmen für Milestone {milestone_id} gefunden")
         
         # Konvertiere zu Dictionary-Format
         acceptance_list = []
@@ -812,7 +773,7 @@ async def get_acceptances_for_milestone(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Fehler beim Laden der Abnahmen: {str(e)}")
+        print(f"[ERROR] Fehler beim Laden der Abnahmen: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Fehler beim Laden der Abnahmen: {str(e)}"
@@ -827,7 +788,7 @@ async def get_acceptance_defects_for_milestone(
 ):
     """Lade alle dokumentierten Mängel für einen Milestone"""
     try:
-        print(f"🔍 Lade Mängel für Milestone {milestone_id}")
+        print(f"[DEBUG] Lade Mängel für Milestone {milestone_id}")
         
         # Berechtigung prüfen - erweiterte Berechtigungen für alle relevanten Benutzer
         from ..models.user import UserRole, UserType
@@ -845,7 +806,7 @@ async def get_acceptance_defects_for_milestone(
         
         # Erlaube Zugriff für Bauträger, Dienstleister, Admins und PRIVATE Benutzer (die oft Bauherren sind)
         if not (is_bautraeger or is_service_provider or is_admin or current_user.user_type == UserType.PRIVATE):
-            print(f"🔍 Access denied - User: {current_user.id}, Email: {current_user.email}, Type: {current_user.user_type}, Role: {current_user.user_role}")
+            print(f"[DEBUG] Access denied - User: {current_user.id}, Email: {current_user.email}, Type: {current_user.user_type}, Role: {current_user.user_role}")
             raise HTTPException(
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Keine Berechtigung zum Einsehen von Mängeln"
@@ -856,14 +817,14 @@ async def get_acceptance_defects_for_milestone(
         from ..models import AcceptanceDefect
         
         # Zuerst: Suche nach Abnahmen für diesen Milestone
-        from ..models import Acceptance as AcceptanceModel
-        acceptance_stmt = select(AcceptanceModel).where(AcceptanceModel.milestone_id == milestone_id)
+        from ..models import Acceptance as Acceptance
+        acceptance_stmt = select(Acceptance).where(Acceptance.milestone_id == milestone_id)
         acceptance_result = await db.execute(acceptance_stmt)
         acceptances = acceptance_result.scalars().all()
         
         # Wenn keine Abnahme existiert, erstelle eine neue (auch hier)
         if len(acceptances) == 0:
-            print(f"🔧 Keine Abnahme für Milestone {milestone_id} gefunden - erstelle neue Abnahme für Mängel")
+            print(f"[DEBUG] Keine Abnahme für Milestone {milestone_id} gefunden - erstelle neue Abnahme für Mängel")
             
             try:
                 # Lade Milestone-Informationen für project_id und service_provider_id
@@ -873,13 +834,13 @@ async def get_acceptance_defects_for_milestone(
                 milestone = milestone_result.scalar_one_or_none()
                 
                 if not milestone:
-                    print(f"❌ Milestone {milestone_id} nicht gefunden")
+                    print(f"[ERROR] Milestone {milestone_id} nicht gefunden")
                     raise HTTPException(
                         status_code=status.HTTP_404_NOT_FOUND,
                         detail=f"Milestone {milestone_id} nicht gefunden"
                     )
                 
-                new_acceptance = AcceptanceModel(
+                new_acceptance = Acceptance(
                     project_id=milestone.project_id,
                     milestone_id=milestone_id,
                     contractor_id=current_user.id,
@@ -887,7 +848,7 @@ async def get_acceptance_defects_for_milestone(
                     accepted=False,
                     status=AcceptanceStatus.PENDING,
                     created_by=current_user.id,
-                    created_at=datetime.utcnow()
+                    created_at=datetime.now(timezone.utc)
                 )
                 
                 db.add(new_acceptance)
@@ -895,17 +856,17 @@ async def get_acceptance_defects_for_milestone(
                 await db.refresh(new_acceptance)
                 
                 acceptances = [new_acceptance]
-                print(f"✅ Neue Abnahme für Mängel erstellt mit ID: {new_acceptance.id}")
+                print(f"[SUCCESS] Neue Abnahme für Mängel erstellt mit ID: {new_acceptance.id}")
                 
             except Exception as e:
-                print(f"❌ Fehler beim Erstellen der Abnahme für Mängel: {e}")
+                print(f"[ERROR] Fehler beim Erstellen der Abnahme für Mängel: {e}")
                 await db.rollback()
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail=f"Fehler beim Erstellen der Abnahme für Mängel: {str(e)}"
                 )
         
-        print(f"🔍 {len(acceptances)} Abnahmen für Milestone {milestone_id} gefunden")
+        print(f"[DEBUG] {len(acceptances)} Abnahmen für Milestone {milestone_id} gefunden")
         
         all_defects = []
         
@@ -929,11 +890,11 @@ async def get_acceptance_defects_for_milestone(
                     'task_id': defect.task_id
                 })
         
-        print(f"✅ {len(all_defects)} Mängel für Milestone {milestone_id} gefunden")
+        print(f"[SUCCESS] {len(all_defects)} Mängel für Milestone {milestone_id} gefunden")
         
         # FALLBACK: Wenn keine Mängel gefunden werden, erstelle Test-Daten
         if len(all_defects) == 0:
-            print("🔧 Erstelle Test-Mängel für Demo-Zwecke")
+            print("[DEBUG] Erstelle Test-Mängel für Demo-Zwecke")
             all_defects = [
                 {
                     'id': 1,
@@ -966,14 +927,14 @@ async def get_acceptance_defects_for_milestone(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Fehler beim Laden der Mängel: {e}")
+        print(f"[ERROR] Fehler beim Laden der Mängel: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Fehler beim Laden der Mängel: {str(e)}"
         )
 
 
-# 🔧 Mängel-Management Endpunkte
+# [DEBUG] Mängel-Management Endpunkte
 
 @router.get("/{milestone_id}/defects")
 async def get_milestone_defects(
@@ -989,7 +950,7 @@ async def get_milestone_defects(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
-        print(f"❌ Fehler beim Laden der Mängel: {e}")
+        print(f"[ERROR] Fehler beim Laden der Mängel: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
@@ -1025,7 +986,7 @@ async def resolve_defect(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
-        print(f"❌ Fehler beim Markieren des Mangels: {e}")
+        print(f"[ERROR] Fehler beim Markieren des Mangels: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
@@ -1060,7 +1021,7 @@ async def submit_defect_resolution(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
-        print(f"❌ Fehler beim Melden der Mängelbehebung: {e}")
+        print(f"[ERROR] Fehler beim Melden der Mängelbehebung: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
@@ -1078,5 +1039,5 @@ async def get_defect_resolution_status(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
-        print(f"❌ Fehler beim Laden des Mängelbehebungsstatus: {e}")
+        print(f"[ERROR] Fehler beim Laden des Mängelbehebungsstatus: {e}")
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))

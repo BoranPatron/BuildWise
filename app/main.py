@@ -210,7 +210,7 @@ async def serve_authenticated_file(
     except Exception as e:
         print(f"[ERROR] serve_authenticated_file: Unerwarteter Fehler: {str(e)}")
         import traceback
-        print(f"[ERROR] serve_authenticated_file: Traceback: {traceback.format_exc()}")
+        print(f"[ERROR] Traceback details omitted due to encoding issues")
         raise HTTPException(status_code=401, detail="Authentifizierung fehlgeschlagen")
 
 # Static Files für hochgeladene Dokumente (nur für Entwicklung)

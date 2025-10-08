@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, and_, func
 from sqlalchemy.orm import selectinload
-from typing import List, Optional, Dict, Tuple
+from typing import List, Optional, Dict, Tuple, Any
 from datetime import datetime, timedelta
 import logging
 
@@ -15,6 +15,7 @@ from ..schemas.user_credits import (
 )
 from ..services.security_service import SecurityService
 from ..models.audit_log import AuditAction
+from ..config.credit_config import credit_config
 
 logger = logging.getLogger(__name__)
 
@@ -22,26 +23,14 @@ logger = logging.getLogger(__name__)
 class CreditService:
     """Service für das BuildWise Credit-System"""
     
-    # Credit-Rewards für verschiedene Aktionen
-    CREDIT_REWARDS = {
-        CreditEventType.QUOTE_ACCEPTED: 5,      # Angebot angenommen
-        CreditEventType.INVOICE_RECEIVED: 3,     # Rechnung erhalten
-        CreditEventType.PROJECT_COMPLETED: 10,   # Projekt abgeschlossen
-        CreditEventType.PROVIDER_REVIEW: 2,      # Dienstleister bewertet
-        CreditEventType.MILESTONE_COMPLETED: 3,  # Meilenstein abgeschlossen
-        CreditEventType.DOCUMENT_UPLOADED: 1,    # Dokument hochgeladen
-        CreditEventType.EXPENSE_ADDED: 1,        # Ausgabe hinzugefügt
-        CreditEventType.REGISTRATION_BONUS: 100, # Registrierungs-Bonus
-        CreditEventType.REFERRAL_BONUS: 20,      # Empfehlungs-Bonus
-        CreditEventType.LOYALTY_BONUS: 10,       # Treue-Bonus
-        CreditEventType.INSPECTION_QUOTE_ACCEPTED: 15,  # Angebot nach Besichtigung angenommen (Bonus!)
-    }
+    # Credit-Rewards werden jetzt aus der Konfiguration geladen
+    # Siehe app/config/credit_config.py für Anpassungen
     
-    # Täglicher Credit-Abzug für Pro-Status
-    DAILY_CREDIT_DEDUCTION = 1
+    # Täglicher Credit-Abzug für Pro-Status (aus Konfiguration)
+    DAILY_CREDIT_DEDUCTION = credit_config.DAILY_CREDIT_DEDUCTION
     
-    # Warnung bei niedrigen Credits
-    LOW_CREDIT_WARNING_THRESHOLD = 10
+    # Warnung bei niedrigen Credits (aus Konfiguration)
+    LOW_CREDIT_WARNING_THRESHOLD = credit_config.LOW_CREDIT_WARNING_THRESHOLD
     
     @staticmethod
     async def get_or_create_user_credits(
@@ -50,38 +39,52 @@ class CreditService:
     ) -> UserCredits:
         """Holt oder erstellt UserCredits für einen Benutzer"""
         
-        # Prüfe ob UserCredits bereits existiert
-        result = await db.execute(
-            select(UserCredits).where(UserCredits.user_id == user_id)
-        )
-        user_credits = result.scalar_one_or_none()
-        
-        if not user_credits:
-            # Erstelle neue UserCredits mit Willkommensbonus
-            user_credits = UserCredits(
-                user_id=user_id,
-                credits=90,  # Willkommensbonus: 90 Credits
-                plan_status=PlanStatus.PRO,
-                pro_start_date=datetime.now()
-            )
-            db.add(user_credits)
-            await db.flush()
-            await db.commit()
-            await db.refresh(user_credits)
+        try:
+            logger.info(f"Abrufen oder Erstellen von UserCredits für User {user_id}")
             
-            # Erstelle Registrierungs-Bonus Event
-            await CreditService.create_credit_event(
-                db=db,
-                user_credits_id=user_credits.id,
-                event_type=CreditEventType.REGISTRATION_BONUS,
-                credits_change=90,
-                description="🎉 Willkommensbonus! 90 Credits für Ihren Start mit BuildWise Pro",
-                ip_address=None
+            # Prüfe ob UserCredits bereits existiert
+            result = await db.execute(
+                select(UserCredits).where(UserCredits.user_id == user_id)
             )
+            user_credits = result.scalar_one_or_none()
             
-            logger.info(f"UserCredits für User {user_id} erstellt mit 90 Credits Willkommensbonus")
-        
-        return user_credits
+            if not user_credits:
+                logger.info(f"UserCredits für User {user_id} nicht gefunden, erstelle neue")
+                # Erstelle neue UserCredits mit Willkommensbonus aus der Konfiguration
+                welcome_bonus = credit_config.get_credit_reward(CreditEventType.REGISTRATION_BONUS)
+                user_credits = UserCredits(
+                    user_id=user_id,
+                    credits=welcome_bonus,  # Willkommensbonus aus Konfiguration
+                    plan_status=PlanStatus.PRO,
+                    pro_start_date=datetime.now()
+                )
+                db.add(user_credits)
+                await db.flush()
+                await db.commit()
+                await db.refresh(user_credits)
+                
+                # Erstelle Registrierungs-Bonus Event
+                await CreditService.create_credit_event(
+                    db=db,
+                    user_credits_id=user_credits.id,
+                    event_type=CreditEventType.REGISTRATION_BONUS,
+                    credits_change=welcome_bonus,
+                    description=f"[COMPLETE] Willkommensbonus! {welcome_bonus} Credits für Ihren Start mit BuildWise Pro",
+                    ip_address=None
+                )
+                
+                logger.info(f"UserCredits für User {user_id} erstellt mit {welcome_bonus} Credits Willkommensbonus")
+            else:
+                logger.info(f"UserCredits für User {user_id} gefunden: {user_credits.credits} Credits")
+            
+            return user_credits
+            
+        except Exception as e:
+            logger.error(f"Fehler beim Abrufen/Erstellen von UserCredits für User {user_id}: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            await db.rollback()
+            raise e
     
     @staticmethod
     async def get_credit_balance(
@@ -90,17 +93,28 @@ class CreditService:
     ) -> CreditBalanceResponse:
         """Holt den aktuellen Credit-Status eines Benutzers"""
         
-        user_credits = await CreditService.get_or_create_user_credits(db, user_id)
-        
-        return CreditBalanceResponse(
-            user_id=user_id,
-            credits=user_credits.credits,
-            plan_status=user_credits.plan_status,
-            remaining_pro_days=user_credits.get_remaining_pro_days(),
-            is_pro_active=user_credits.is_pro_active(),
-            low_credit_warning=user_credits.credits <= CreditService.LOW_CREDIT_WARNING_THRESHOLD,
-            can_perform_actions=user_credits.can_perform_action()
-        )
+        try:
+            logger.info(f"Abrufen der Credit-Balance für User {user_id}")
+            user_credits = await CreditService.get_or_create_user_credits(db, user_id)
+            
+            balance_response = CreditBalanceResponse(
+                user_id=user_id,
+                credits=user_credits.credits,
+                plan_status=user_credits.plan_status,
+                remaining_pro_days=user_credits.get_remaining_pro_days(),
+                is_pro_active=user_credits.is_pro_active(),
+                low_credit_warning=user_credits.credits <= CreditService.LOW_CREDIT_WARNING_THRESHOLD,
+                can_perform_actions=user_credits.can_perform_action()
+            )
+            
+            logger.info(f"Credit-Balance erfolgreich abgerufen für User {user_id}: {balance_response.credits} Credits")
+            return balance_response
+            
+        except Exception as e:
+            logger.error(f"Fehler beim Abrufen der Credit-Balance für User {user_id}: {e}")
+            import traceback
+            logger.error(f"Traceback: {traceback.format_exc()}")
+            raise e
     
     @staticmethod
     async def add_credits_for_activity(
@@ -127,8 +141,8 @@ class CreditService:
         # Hole UserCredits
         user_credits = await CreditService.get_or_create_user_credits(db, user_id)
         
-        # Bestimme Credit-Belohnung
-        credits_to_add = CreditService.CREDIT_REWARDS.get(event_type, 0)
+        # Bestimme Credit-Belohnung aus der Konfiguration
+        credits_to_add = credit_config.get_credit_reward(event_type)
         
         if credits_to_add <= 0:
             logger.warning(f"Keine Credits für Event-Typ {event_type}")
@@ -175,31 +189,38 @@ class CreditService:
         db: AsyncSession,
         user_id: int
     ) -> bool:
-        """Verarbeitet täglichen Credit-Abzug für Pro-Status"""
+        """Verarbeitet täglichen Credit-Abzug für Pro-Status (nur einmal pro Tag)"""
         
         user_credits = await CreditService.get_or_create_user_credits(db, user_id)
         
         # Prüfe ob User im Pro-Status ist
         if not user_credits.is_pro_active():
+            logger.info(f"User {user_id} ist nicht im Pro-Status, kein Credit-Abzug")
+            return False
+        
+        # Prüfe ob heute bereits ein Credit abgezogen wurde
+        if user_credits.has_daily_deduction_today():
+            logger.info(f"User {user_id} hat heute bereits einen Credit-Abzug erhalten")
             return False
         
         # Ziehe täglichen Credit ab
         old_credits = user_credits.credits
         user_credits.credits -= CreditService.DAILY_CREDIT_DEDUCTION
         user_credits.total_pro_days += 1
+        user_credits.last_daily_deduction = datetime.now()
         
         # Prüfe ob Credits aufgebraucht sind
         if user_credits.credits <= 0:
             user_credits.downgrade_to_basic()
             user_credits.credits = 0  # Nicht unter 0
             
-            # Aktualisiere auch den subscription_plan in der User-Tabelle auf BASIC
+            # Aktualisiere auch den subscription_plan in der User-Tabelle auf BASIS
             await db.execute(
                 update(User)
                 .where(User.id == user_id)
                 .values(
-                    subscription_plan=SubscriptionPlan.BASIC,
-                    subscription_status=SubscriptionStatus.ACTIVE
+                    subscription_plan=SubscriptionPlan.BASIS,
+                    subscription_status=SubscriptionStatus.INACTIVE
                 )
             )
             
@@ -214,17 +235,18 @@ class CreditService:
             user_credits_id=user_credits.id,
             event_type=CreditEventType.DAILY_DEDUCTION,
             credits_change=-CreditService.DAILY_CREDIT_DEDUCTION,
-            description="Täglicher Pro-Status Abzug",
+            description="Täglicher Pro-Status Abzug beim Login",
             ip_address=None
         )
         
         # Audit-Log
         await SecurityService.create_audit_log(
             db, user_id, AuditAction.DATA_UPDATE,
-            f"Täglicher Credit-Abzug: {old_credits} -> {user_credits.credits}",
+            f"Täglicher Credit-Abzug beim Login: {old_credits} -> {user_credits.credits}",
             resource_type="user_credits", resource_id=user_credits.id
         )
         
+        logger.info(f"Täglicher Credit-Abzug für User {user_id} verarbeitet: {old_credits} -> {user_credits.credits}")
         return True
     
     @staticmethod
@@ -344,8 +366,8 @@ class CreditService:
                 logger.warning(f"Credit-Belohnung für Quote {quote_id} bereits vergeben")
                 return False
             
-            # Vergebe Credits
-            credit_reward = CreditService.CREDIT_REWARDS[CreditEventType.INSPECTION_QUOTE_ACCEPTED]
+            # Vergebe Credits aus der Konfiguration
+            credit_reward = credit_config.get_credit_reward(CreditEventType.INSPECTION_QUOTE_ACCEPTED)
             old_credits = user_credits.credits
             user_credits.credits += credit_reward
             
@@ -557,10 +579,11 @@ class CreditService:
             logger.info(f"UserCredits für User {user_id} bereits existiert")
             return True
         
-        # Erstelle UserCredits mit Start-Credits (90 Credits Willkommensbonus)
+        # Erstelle UserCredits mit Start-Credits aus der Konfiguration
+        welcome_bonus = credit_config.get_credit_reward(CreditEventType.REGISTRATION_BONUS)
         user_credits = UserCredits(
             user_id=user_id,
-            credits=90,  # Willkommensbonus: 90 Credits
+            credits=welcome_bonus,  # Willkommensbonus aus Konfiguration
             plan_status=PlanStatus.PRO,
             pro_start_date=datetime.now()
         )
@@ -586,20 +609,20 @@ class CreditService:
             db=db,
             user_credits_id=user_credits.id,
             event_type=CreditEventType.REGISTRATION_BONUS,
-            credits_change=90,
-            description="🎉 Willkommensbonus! 90 Credits für Ihren Start mit BuildWise Pro",
+            credits_change=welcome_bonus,
+            description=f"[COMPLETE] Willkommensbonus! {welcome_bonus} Credits für Ihren Start mit BuildWise Pro",
             ip_address=ip_address
         )
         
         # Audit-Log
         await SecurityService.create_audit_log(
             db, user_id, AuditAction.DATA_CREATE,
-            f"Credits für neuen Bauträger initialisiert: 90 Credits Willkommensbonus",
+            f"Credits für neuen Bauträger initialisiert: {welcome_bonus} Credits Willkommensbonus",
             resource_type="user_credits", resource_id=user_credits.id,
             ip_address=ip_address
         )
         
-        logger.info(f"Credits für neuen Bauträger {user_id} initialisiert: 90 Credits Willkommensbonus")
+        logger.info(f"Credits für neuen Bauträger {user_id} initialisiert: {welcome_bonus} Credits Willkommensbonus")
         return True
     
     @staticmethod
@@ -664,4 +687,65 @@ class CreditService:
         return {
             "processed_users": processed_count,
             "downgraded_users": downgraded_count
-        } 
+        }
+    
+    @staticmethod
+    async def update_credit_config(
+        event_type: CreditEventType,
+        new_amount: int,
+        admin_user_id: int
+    ) -> bool:
+        """
+        Aktualisiert die Credit-Konfiguration zur Laufzeit.
+        
+        Args:
+            event_type: Der Event-Typ dessen Belohnung aktualisiert werden soll
+            new_amount: Neue Anzahl der Credits
+            admin_user_id: ID des Admin-Users der die Änderung durchführt
+            
+        Returns:
+            True wenn die Aktualisierung erfolgreich war
+        """
+        try:
+            # Aktualisiere die Konfiguration
+            old_amount = credit_config.get_credit_reward(event_type)
+            credit_config.update_credit_reward(event_type, new_amount)
+            
+            logger.info(f"Admin {admin_user_id} hat Credit-Konfiguration aktualisiert: {event_type.value} von {old_amount} auf {new_amount}")
+            
+            # Audit-Log
+            await SecurityService.create_audit_log(
+                db=None,  # Keine DB-Session für Config-Änderungen nötig
+                user_id=admin_user_id,
+                action=AuditAction.DATA_UPDATE,
+                description=f"Credit-Konfiguration aktualisiert: {event_type.value} von {old_amount} auf {new_amount}",
+                resource_type="credit_config",
+                resource_id=None
+            )
+            
+            return True
+            
+        except Exception as e:
+            logger.error(f"Fehler bei Credit-Konfiguration Update: {e}")
+            return False
+    
+    @staticmethod
+    def get_credit_config() -> Dict[str, Any]:
+        """
+        Gibt die aktuelle Credit-Konfiguration zurück.
+        
+        Returns:
+            Dictionary mit der aktuellen Konfiguration
+        """
+        return credit_config.get_all_config()
+    
+    @staticmethod
+    def validate_credit_config() -> bool:
+        """
+        Validiert die aktuelle Credit-Konfiguration.
+        
+        Returns:
+            True wenn die Konfiguration gültig ist
+        """
+        from ..config.credit_config import validate_credit_config
+        return validate_credit_config() 

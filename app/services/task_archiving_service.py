@@ -36,7 +36,7 @@ async def archive_completed_tasks(db: AsyncSession) -> int:
     
     if archived_count > 0:
         await db.commit()
-        print(f"✅ {archived_count} Tasks archiviert")
+        print(f"[SUCCESS] {archived_count} Tasks archiviert")
     
     return archived_count
 

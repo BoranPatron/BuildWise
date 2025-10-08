@@ -68,7 +68,7 @@ class Milestone(Base):
     # Besichtigungssystem
     requires_inspection = Column(Boolean, default=False)  # Checkbox für Vor-Ort-Besichtigung erforderlich
     inspection_sent = Column(Boolean, default=False)      # Markiert ob Besichtigung versendet wurde
-    inspection_sent_at = Column(DateTime(timezone=True), nullable=True)  # Zeitpunkt der Versendung
+    inspection_sent_at = Column(DateTime, nullable=True)  # Zeitpunkt der Versendung
     
     # Neue Felder für Abschluss-Workflow
     completion_status = Column(String(50), default="in_progress")  # in_progress, completion_requested, under_review, completed, archived
@@ -105,10 +105,16 @@ class Milestone(Base):
     defects_resolved = Column(Boolean, default=False)  # Flag für "alle Mängel behoben"
     defects_resolved_at = Column(DateTime, nullable=True)  # Zeitpunkt der Mängelbehebung
     
+    # Benachrichtigungssystem für ungelesene Nachrichten - SEPARATE STATES
+    has_unread_messages_bautraeger = Column(Boolean, default=False)  # Flag für Bauträger-Benachrichtigungen
+    has_unread_messages_dienstleister = Column(Boolean, default=False)  # Flag für Dienstleister-Benachrichtigungen
+    # Legacy: Behalten für Rückwärtskompatibilität
+    has_unread_messages = Column(Boolean, default=False)  # Flag für ungelesene Nachrichten im Fortschritt-Tab
+    
     # Timestamps
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    completed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime, server_default=func.now())
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now())
+    completed_at = Column(DateTime, nullable=True)
     
     # Relationships
     project = relationship("Project", back_populates="milestones")

@@ -8,7 +8,7 @@ class MilestoneBase(BaseModel):
     title: str
     description: Optional[str] = None
     status: str = "planned"
-    completion_status: Optional[str] = None  # ✅ WICHTIG: completion_status hinzufügen
+    completion_status: Optional[str] = None  # [SUCCESS] WICHTIG: completion_status hinzufügen
     priority: str = "medium"
     category: Optional[str] = None
     planned_date: date
@@ -26,6 +26,11 @@ class MilestoneBase(BaseModel):
     requires_inspection: bool = False
     # Geteilte Dokumente
     shared_document_ids: Optional[List[int]] = []
+    # Benachrichtigungssystem - SEPARATE STATES für Bauträger und Dienstleister
+    has_unread_messages_bautraeger: bool = False
+    has_unread_messages_dienstleister: bool = False
+    # Legacy: Behalten für Rückwärtskompatibilität
+    has_unread_messages: bool = False
 
 
 class MilestoneCreate(MilestoneBase):
@@ -54,6 +59,11 @@ class MilestoneUpdate(BaseModel):
     construction_phase: Optional[str] = None
     # Besichtigungssystem
     requires_inspection: Optional[bool] = None
+    # Benachrichtigungssystem - SEPARATE STATES für Bauträger und Dienstleister
+    has_unread_messages_bautraeger: Optional[bool] = None
+    has_unread_messages_dienstleister: Optional[bool] = None
+    # Legacy: Behalten für Rückwärtskompatibilität
+    has_unread_messages: Optional[bool] = None
 
 
 class MilestoneRead(MilestoneBase):
@@ -68,6 +78,11 @@ class MilestoneRead(MilestoneBase):
     completed_at: Optional[datetime] = None
     # Bauphasen-Tracking
     construction_phase: Optional[str] = None
+    # Benachrichtigungssystem - SEPARATE STATES für Bauträger und Dienstleister
+    has_unread_messages_bautraeger: bool = False
+    has_unread_messages_dienstleister: bool = False
+    # Legacy: Behalten für Rückwärtskompatibilität
+    has_unread_messages: bool = False
 
     class Config:
         from_attributes = True
@@ -115,7 +130,7 @@ class MilestoneRead(MilestoneBase):
                     # Fallback für andere Typen
                     documents = []
             except (json.JSONDecodeError, TypeError, AttributeError) as e:
-                print(f"⚠️ [SCHEMA] Fehler beim Parsen von documents: {e}")
+                print(f"[WARNING] [SCHEMA] Fehler beim Parsen von documents: {e}")
                 documents = []
         
         # Sichere JSON-Deserialisierung für shared_document_ids
@@ -133,18 +148,18 @@ class MilestoneRead(MilestoneBase):
                     # Fallback für andere Typen
                     shared_document_ids = []
             except (json.JSONDecodeError, TypeError, AttributeError) as e:
-                print(f"⚠️ [SCHEMA] Fehler beim Parsen von shared_document_ids: {e}")
+                print(f"[WARNING] [SCHEMA] Fehler beim Parsen von shared_document_ids: {e}")
                 shared_document_ids = []
         
-        print(f"🔧 [SCHEMA] Documents parsed: {documents} (type: {type(documents)})")
-        print(f"🔧 [SCHEMA] Shared Document IDs parsed: {shared_document_ids} (type: {type(shared_document_ids)})")
+        print(f"[DEBUG] [SCHEMA] Documents parsed: {documents} (type: {type(documents)})")
+        print(f"[DEBUG] [SCHEMA] Shared Document IDs parsed: {shared_document_ids} (type: {type(shared_document_ids)})")
         
         data = {
             'id': obj.id,
             'title': obj.title,
             'description': obj.description,
             'status': obj.status,
-            'completion_status': obj.completion_status,  # ✅ KRITISCH: completion_status hinzufügen
+            'completion_status': obj.completion_status,  # [SUCCESS] KRITISCH: completion_status hinzufügen
             'priority': obj.priority,
             'category': obj.category,
             'planned_date': obj.planned_date,
@@ -166,7 +181,10 @@ class MilestoneRead(MilestoneBase):
             'updated_at': obj.updated_at,
             'completed_at': obj.completed_at,
             'construction_phase': obj.construction_phase,
-            'requires_inspection': obj.requires_inspection
+            'requires_inspection': obj.requires_inspection,
+            'has_unread_messages_bautraeger': getattr(obj, 'has_unread_messages_bautraeger', False),
+            'has_unread_messages_dienstleister': getattr(obj, 'has_unread_messages_dienstleister', False),
+            'has_unread_messages': getattr(obj, 'has_unread_messages', False)
         }
         return cls(**data)
 
@@ -174,25 +192,31 @@ class MilestoneRead(MilestoneBase):
 class MilestoneSummary(BaseModel):
     id: int
     title: str
+    description: Optional[str] = None  # [FIX] Beschreibung hinzugefügt
     status: str  # String statt Enum
-    completion_status: Optional[str] = None  # ✅ WICHTIG: completion_status hinzufügen
+    completion_status: Optional[str] = None  # [SUCCESS] WICHTIG: completion_status hinzufügen
     priority: str  # String statt Enum
     category: Optional[str] = None
-    planned_date: date
-    actual_date: Optional[date] = None
-    start_date: Optional[date] = None
-    end_date: Optional[date] = None
+    planned_date: Optional[str] = None  # Ändere zu String für DateTime-Kompatibilität
+    actual_date: Optional[str] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
     budget: Optional[float] = None
     actual_costs: Optional[float] = None
     contractor: Optional[str] = None
-    progress_percentage: int
-    is_critical: bool
+    progress_percentage: Optional[int] = 0  # Ändere zu Optional mit Default
+    is_critical: Optional[bool] = False  # Ändere zu Optional mit Default
     project_id: Optional[int] = None  # Projekt-ID hinzufügen
     documents: List[Dict[str, Any]] = []
     # Bauphasen-Tracking
     construction_phase: Optional[str] = None
     # Besichtigungssystem
-    requires_inspection: bool = False
+    requires_inspection: Optional[bool] = False  # Ändere zu Optional mit Default
+    # Benachrichtigungssystem - SEPARATE STATES für Bauträger und Dienstleister
+    has_unread_messages_bautraeger: bool = False
+    has_unread_messages_dienstleister: bool = False
+    # Legacy: Behalten für Rückwärtskompatibilität
+    has_unread_messages: bool = False
 
     class Config:
         from_attributes = True 
@@ -219,8 +243,9 @@ class MilestoneSummary(BaseModel):
         data = {
             'id': obj.id,
             'title': obj.title,
+            'description': obj.description,  # [FIX] Beschreibung hinzugefügt
             'status': obj.status,
-            'completion_status': obj.completion_status,  # ✅ KRITISCH: completion_status hinzufügen
+            'completion_status': obj.completion_status,  # [SUCCESS] KRITISCH: completion_status hinzufügen
             'priority': obj.priority,
             'category': obj.category,
             'planned_date': obj.planned_date,
@@ -235,7 +260,10 @@ class MilestoneSummary(BaseModel):
             'project_id': obj.project_id,
             'documents': documents,  # Jetzt echte Liste
             'construction_phase': obj.construction_phase,
-            'requires_inspection': obj.requires_inspection
+            'requires_inspection': obj.requires_inspection,
+            'has_unread_messages_bautraeger': getattr(obj, 'has_unread_messages_bautraeger', False),
+            'has_unread_messages_dienstleister': getattr(obj, 'has_unread_messages_dienstleister', False),
+            'has_unread_messages': getattr(obj, 'has_unread_messages', False)
         }
         return cls(**data) 
 

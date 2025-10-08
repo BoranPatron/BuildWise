@@ -4,8 +4,10 @@ from sqlalchemy.orm import selectinload
 from typing import List, Optional, Dict, Any
 from datetime import datetime, timedelta
 import json
+from fastapi import HTTPException
 
-from ..models import Quote, QuoteStatus, User, Project, Milestone, CostPosition
+from ..models import Quote, QuoteStatus, User, Project, Milestone, CostPosition, Appointment
+from ..models.appointment_response import AppointmentResponse
 from ..schemas.quote import QuoteCreate, QuoteUpdate, QuoteRead
 from ..core.exceptions import QuoteNotFoundException, InvalidQuoteStatusException
 from ..services.cost_position_service import get_cost_position_by_quote_id
@@ -77,9 +79,9 @@ async def create_quote(db: AsyncSession, quote_in: QuoteCreate, service_provider
                     quote_id=db_quote.id,
                     recipient_id=project.owner_id
                 )
-                print(f"✅ Benachrichtigung für Quote {db_quote.id} an Bauträger {project.owner_id} erstellt")
+                print(f"[SUCCESS] Benachrichtigung für Quote {db_quote.id} an Bauträger {project.owner_id} erstellt")
         except Exception as e:
-            print(f"⚠️ Fehler beim Erstellen der Benachrichtigung: {e}")
+            print(f"[WARNING] Fehler beim Erstellen der Benachrichtigung: {e}")
             # Fehler bei Benachrichtigung soll Quote-Erstellung nicht blockieren
     
     return db_quote
@@ -250,11 +252,11 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
         )
     )
     
-    # ✅ WICHTIG: Erstelle Kostenposition für Finanzen-Übersicht auf Startseite
+    # [SUCCESS] WICHTIG: Erstelle Kostenposition für Finanzen-Übersicht auf Startseite
     # Diese Kostenposition erscheint beim Bauträger im Abschnitt "Finanzen"
     cost_position = await create_cost_position_from_quote(db, quote)
     
-    # ✅ BUILDWISE GEBÜHR: Erstelle automatisch eine Vermittlungsgebühr (4.7%)
+    # [SUCCESS] BUILDWISE GEBÜHR: Erstelle automatisch eine Vermittlungsgebühr (4.7%)
     # Diese wird in /buildwise-fees angezeigt und ist 30 Tage nach Angebotsannahme fällig
     buildwise_fee_created = False
     try:
@@ -272,7 +274,7 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
         print(f"   Environment Mode: {getattr(settings, 'environment_mode', 'production')}")
         print(f"   Fee Percentage: {get_fee_percentage()}%")
         
-        # ✅ FIX: Da create_cost_position_from_quote deaktiviert wurde, verwende Quote-ID direkt
+        # [SUCCESS] FIX: Da create_cost_position_from_quote deaktiviert wurde, verwende Quote-ID direkt
         # Die BuildWise Fee Service kann mit der Quote-ID arbeiten, ohne eine echte CostPosition zu benötigen
         cost_position_id = quote.id
         print(f"   Cost Position ID: {cost_position_id} (verwendet Quote-ID als Referenz)")
@@ -509,53 +511,78 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
 
 
 async def create_cost_position_from_quote(db: AsyncSession, quote: Quote):
-    """Erstellt eine Kostenposition aus einem akzeptierten Angebot (Legacy-Funktion)"""
+    """Erstellt eine Kostenposition aus einem akzeptierten Angebot"""
     try:
         print(f"Erstelle Kostenposition aus Quote {quote.id} fuer Projekt {quote.project_id}")
-        # Robuste Erstellung einer Projekt-Rechnung inkl. Kostenposition, falls noch keine existiert
-        from ..models import Invoice, InvoiceStatus, InvoiceType, Milestone
-        from ..schemas.invoice import InvoiceCreate
-        from ..services.invoice_service import InvoiceService
+        
         from ..models.cost_position import CostPosition
         from ..schemas.cost_position import CostPositionCreate
         from sqlalchemy import select
 
-        # 1) Prüfe, ob bereits eine Rechnung für dieses Gewerk existiert
+        # Prüfe, ob bereits eine Kostenposition für dieses Angebot existiert
+        existing_cost_position_result = await db.execute(
+            select(CostPosition).where(CostPosition.quote_id == quote.id)
+        )
+        existing_cost_position = existing_cost_position_result.scalar_one_or_none()
+        
+        if existing_cost_position:
+            print(f"Kostenposition für Quote {quote.id} existiert bereits (ID: {existing_cost_position.id})")
+            return existing_cost_position
+
+        # Hole Milestone für project_id
         milestone_id = quote.milestone_id
         if milestone_id is None:
             print("Quote hat keinen milestone_id - ueberspringe Kostenposition-Erstellung")
-            return True
+            return None
 
-        existing_invoice_result = await db.execute(
-            select(Invoice).where(Invoice.milestone_id == milestone_id)
-        )
-        existing_invoice = existing_invoice_result.scalar_one_or_none()
-
-        # 2) Hole Milestone für project_id
+        from ..models import Milestone
         milestone_result = await db.execute(select(Milestone).where(Milestone.id == milestone_id))
         milestone = milestone_result.scalar_one_or_none()
         if not milestone:
             print("Milestone nicht gefunden - kann project_id nicht bestimmen")
-            return True
+            return None
 
-        # ❌ DEAKTIVIERT: Automatische Rechnungserstellung entfernt!
-        # 
-        # Diese Logik wurde entfernt, da sie automatisch DRAFT-Rechnungen mit AUTO-{id} 
-        # Nummern erstellt hat, die im Frontend angezeigt wurden, obwohl noch keine echte 
-        # Rechnung vom Dienstleister existierte.
-        #
-        # ✅ NEUE VORGEHENSWEISE:
-        # Rechnungen sollen NUR erstellt werden, wenn der Dienstleister sie tatsächlich 
-        # über POST /api/v1/invoices/create einreicht. Dies stellt sicher, dass nur 
-        # echte Rechnungen im System erscheinen.
-        #
-        # Kostenposition-Logik wurde ebenfalls entfernt, da sie an die Rechnung 
-        # gekoppelt war.
+        # Bestimme Kategorie basierend auf Milestone-Titel
+        category = "custom"
+        if milestone.title:
+            title_lower = milestone.title.lower()
+            if any(keyword in title_lower for keyword in ["maler", "painting", "anstrich"]):
+                category = "painting"
+            elif any(keyword in title_lower for keyword in ["elektro", "electrical", "strom"]):
+                category = "electrical"
+            elif any(keyword in title_lower for keyword in ["sanitär", "plumbing", "wasser"]):
+                category = "plumbing"
+            elif any(keyword in title_lower for keyword in ["heizung", "heating", "wärme"]):
+                category = "heating"
+            elif any(keyword in title_lower for keyword in ["dach", "roof", "dachdecker"]):
+                category = "roofing"
+            elif any(keyword in title_lower for keyword in ["boden", "floor", "fliesen"]):
+                category = "flooring"
+
+        # Erstelle Kostenposition-Daten
+        cost_position_data = CostPositionCreate(
+            project_id=quote.project_id,
+            invoice_id=None,  # Keine Rechnung verknüpft (wird später hinzugefügt)
+            title=quote.title or f"Angebot: {milestone.title}",
+            description=quote.description or f"Kostenposition aus angenommenem Angebot für {milestone.title}",
+            amount=float(quote.total_amount) if quote.total_amount else 0.0,
+            position_order=1,
+            category=category,
+            cost_type="quote_accepted",
+            status="active",
+            contractor_name=quote.company_name,
+            quote_id=quote.id,
+            milestone_id=milestone_id
+        )
+
+        # Erstelle die Kostenposition
+        cost_position = CostPosition(**cost_position_data.dict())
+        db.add(cost_position)
+        await db.commit()
+        await db.refresh(cost_position)
         
-        print(f"Keine automatische Rechnung/Kostenposition fuer Quote {quote.id}")
-        print(f"Dienstleister muss Rechnung manuell ueber /invoices/create erstellen")
-        
-        return True  # Erfolg signalisieren
+        print(f"✅ Kostenposition erstellt: ID {cost_position.id}, Betrag {cost_position.amount} EUR")
+        return cost_position
         
     except Exception as e:
         print(f"Fehler beim Erstellen der Kostenposition: {e}")
@@ -699,7 +726,7 @@ async def create_mock_quotes_for_milestone(db: AsyncSession, milestone_id: int, 
     # Prüfe zuerst, ob bereits Angebote für dieses Gewerk existieren
     existing_quotes = await get_quotes_for_milestone(db, milestone_id)
     if existing_quotes:
-        print(f"✅ Bereits {len(existing_quotes)} Angebote für Gewerk {milestone_id} vorhanden")
+        print(f"[SUCCESS] Bereits {len(existing_quotes)} Angebote für Gewerk {milestone_id} vorhanden")
         return existing_quotes
     
     # Hole Gewerk-Informationen für passende Angebote
@@ -912,5 +939,221 @@ async def create_mock_quotes_for_milestone(db: AsyncSession, milestone_id: int, 
     for quote in created_quotes:
         await analyze_quote(db, quote.id)
     
-    print(f"✅ {len(created_quotes)} neue Mock-Angebote für Gewerk '{milestone.title if milestone and milestone.title else milestone_id}' erstellt")
-    return created_quotes 
+    print(f"[SUCCESS] {len(created_quotes)} neue Mock-Angebote für Gewerk '{milestone.title if milestone and milestone.title else milestone_id}' erstellt")
+    return created_quotes
+
+
+async def revise_quote_after_inspection(
+    db: AsyncSession,
+    quote_id: int,
+    quote_update: QuoteUpdate,
+    service_provider_id: int
+) -> Quote:
+    """
+    Überarbeitet ein bestehendes Angebot nach einer Besichtigung.
+    
+    Validierungen:
+    - Quote muss existieren
+    - Service Provider muss der Ersteller sein
+    - Quote muss SUBMITTED sein
+    - Mindestens eine Besichtigung muss zugesagt worden sein (accepted)
+    
+    Aktionen:
+    - Aktualisiert das Angebot
+    - Setzt revised_after_inspection = True
+    - Erhöht revision_count
+    - Setzt last_revised_at
+    - Erstellt Benachrichtigung für Bauträger
+    """
+    # Hole das Angebot
+    quote = await get_quote_by_id(db, quote_id)
+    if not quote:
+        raise QuoteNotFoundException(f"Quote {quote_id} nicht gefunden")
+    
+    # Validiere Service Provider
+    if quote.service_provider_id != service_provider_id:
+        raise HTTPException(
+            status_code=403,
+            detail="Nur der Ersteller kann das Angebot überarbeiten"
+        )
+    
+    # Validiere Status
+    if quote.status != QuoteStatus.SUBMITTED:
+        raise InvalidQuoteStatusException(
+            f"Angebot kann nur im Status SUBMITTED überarbeitet werden (aktuell: {quote.status})"
+        )
+    
+    # Validiere ob eine Besichtigung zugesagt wurde
+    if quote.milestone_id:
+        # Prüfe ob es Appointments für dieses Milestone gibt
+        appointments_result = await db.execute(
+            select(Appointment)
+            .where(Appointment.milestone_id == quote.milestone_id)
+            .where(Appointment.appointment_type == 'INSPECTION')
+        )
+        appointments = list(appointments_result.scalars().all())
+        
+        has_accepted_inspection = False
+        
+        # Prüfe in der appointment_responses Tabelle
+        for apt in appointments:
+            response_result = await db.execute(
+                select(AppointmentResponse)
+                .where(AppointmentResponse.appointment_id == apt.id)
+                .where(AppointmentResponse.service_provider_id == service_provider_id)
+                .where(AppointmentResponse.status == 'accepted')
+            )
+            response = response_result.scalar_one_or_none()
+            
+            if response:
+                has_accepted_inspection = True
+                print(f"[SUCCESS] Gefundene akzeptierte Besichtigung: Appointment {apt.id}, Response {response.id}")
+                break
+            
+            # Fallback: Prüfe auch in der alten responses JSON-Spalte
+            if apt.responses:
+                try:
+                    responses = json.loads(apt.responses) if isinstance(apt.responses, str) else apt.responses
+                    if isinstance(responses, list):
+                        for resp in responses:
+                            if (resp.get('service_provider_id') == service_provider_id and 
+                                resp.get('status') == 'accepted'):
+                                has_accepted_inspection = True
+                                print(f"[SUCCESS] Gefundene akzeptierte Besichtigung (JSON): Appointment {apt.id}")
+                                break
+                except:
+                    pass
+            
+            if has_accepted_inspection:
+                break
+        
+        if not has_accepted_inspection:
+            print(f"[ERROR] Keine akzeptierte Besichtigung gefunden für Service Provider {service_provider_id}, Milestone {quote.milestone_id}")
+            print(f"   Gefundene Appointments: {len(appointments)}")
+            raise InvalidQuoteStatusException(
+                "Angebot kann nur überarbeitet werden, wenn eine Besichtigung zugesagt wurde"
+            )
+    
+    # Aktualisiere das Angebot
+    update_data = quote_update.model_dump(exclude_unset=True)
+    
+    print(f"[INFO] Update-Daten erhalten: {len(update_data)} Felder")
+    print(f"   Felder: {list(update_data.keys())}")
+    
+    # Debug: Zeige wichtige Felder
+    if 'total_amount' in update_data:
+        print(f"   [SUCCESS] total_amount: {update_data['total_amount']}")
+    if 'description' in update_data:
+        print(f"   [SUCCESS] description: {update_data['description'][:100]}...")
+    if 'title' in update_data:
+        print(f"   [SUCCESS] title: {update_data['title']}")
+    
+    # Setze Revisions-Felder
+    update_data['revised_after_inspection'] = True
+    update_data['revision_count'] = (quote.revision_count or 0) + 1
+    update_data['last_revised_at'] = datetime.utcnow()
+    update_data['is_revised_quote'] = True  # Kennzeichnet als überarbeitetes Angebot
+    
+    print(f"[UPDATE] Aktualisiere Quote {quote.id} mit {len(update_data)} Feldern")
+    
+    for key, value in update_data.items():
+        old_value = getattr(quote, key, None)
+        setattr(quote, key, value)
+        if old_value != value and key in ['total_amount', 'title', 'description']:
+            print(f"   [INFO] {key}: {old_value} -> {value}")
+    
+    await db.commit()
+    await db.refresh(quote)
+    
+    print(f"[INFO] Quote {quote.id} in Datenbank gespeichert")
+    print(f"   Neuer total_amount: {quote.total_amount}")
+    print(f"   Revision Count: {quote.revision_count}")
+    
+    # Erstelle Benachrichtigung für Bauträger
+    if quote.project_id:
+        try:
+            project_result = await db.execute(
+                select(Project).where(Project.id == quote.project_id)
+            )
+            project = project_result.scalar_one_or_none()
+            
+            if project and project.owner_id:
+                await NotificationService.create_quote_revised_notification(
+                    db=db,
+                    quote_id=quote.id,
+                    recipient_id=project.owner_id,
+                    milestone_id=quote.milestone_id
+                )
+                print(f"[SUCCESS] Benachrichtigung für überarbeitetes Quote {quote.id} an Bauträger {project.owner_id} erstellt")
+        except Exception as e:
+            print(f"[WARNING] Fehler beim Erstellen der Benachrichtigung: {e}")
+    
+    print(f"[SUCCESS] Angebot {quote_id} erfolgreich überarbeitet (Revision #{quote.revision_count})")
+    return quote
+
+
+async def can_revise_quote_after_inspection(
+    db: AsyncSession,
+    quote_id: int,
+    service_provider_id: int
+) -> bool:
+    """
+    Prüft ob ein Angebot nach Besichtigung überarbeitet werden kann.
+    
+    Returns:
+        True wenn alle Bedingungen erfüllt sind, sonst False
+    """
+    try:
+        quote = await get_quote_by_id(db, quote_id)
+        if not quote:
+            return False
+        
+        # Prüfe Service Provider
+        if quote.service_provider_id != service_provider_id:
+            return False
+        
+        # Prüfe Status
+        if quote.status != QuoteStatus.SUBMITTED:
+            return False
+        
+        # Prüfe ob Besichtigung zugesagt wurde
+        if not quote.milestone_id:
+            return False
+        
+        result = await db.execute(
+            select(Appointment)
+            .where(Appointment.milestone_id == quote.milestone_id)
+            .where(Appointment.appointment_type == 'INSPECTION')
+        )
+        appointments = list(result.scalars().all())
+        
+        # Prüfe in der appointment_responses Tabelle
+        for apt in appointments:
+            response_result = await db.execute(
+                select(AppointmentResponse)
+                .where(AppointmentResponse.appointment_id == apt.id)
+                .where(AppointmentResponse.service_provider_id == service_provider_id)
+                .where(AppointmentResponse.status == 'accepted')
+            )
+            response = response_result.scalar_one_or_none()
+            
+            if response:
+                return True
+            
+            # Fallback: Prüfe auch in der alten responses JSON-Spalte
+            if apt.responses:
+                try:
+                    responses = json.loads(apt.responses) if isinstance(apt.responses, str) else apt.responses
+                    if isinstance(responses, list):
+                        for resp in responses:
+                            if (resp.get('service_provider_id') == service_provider_id and 
+                                resp.get('status') == 'accepted'):
+                                return True
+                except:
+                    pass
+        
+        return False
+        
+    except Exception as e:
+        print(f"[ERROR] Fehler beim Prüfen der Überarbeitungs-Berechtigung: {e}")
+        return False 

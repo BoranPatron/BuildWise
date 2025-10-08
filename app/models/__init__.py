@@ -34,6 +34,8 @@ from .resource import (
     AllocationStatus, ResourceRequest, RequestStatus, ResourceCalendarEntry, 
     CalendarEntryStatus, ResourceKPIs
 )
+from .contact import Contact
+from .notification_preference import NotificationPreference
 
 __all__ = [
     "Base",
@@ -122,5 +124,8 @@ __all__ = [
     "RequestStatus",
     "ResourceCalendarEntry",
     "CalendarEntryStatus",
-    "ResourceKPIs"
+    "ResourceKPIs",
+    # Contact Book
+    "Contact",
+    "NotificationPreference"
 ]

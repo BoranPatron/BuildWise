@@ -22,21 +22,21 @@ async def create_new_milestone(
     """Erstellt ein neues Milestone ohne Dokumente"""
     try:
         user_id = getattr(current_user, 'id')
-        print(f"🔧 [API] create_new_milestone called for user {user_id}")
-        print(f"🔧 [API] Milestone data: {milestone_in.model_dump()}")
+        print(f"[FIX] [API] create_new_milestone called for user {user_id}")
+        print(f"[FIX] [API] Milestone data: {milestone_in.model_dump()}")
         
         # milestone = await create_milestone(db, milestone_in, user_id)
         # Temporär deaktiviert - Funktion nicht verfügbar
         raise HTTPException(status_code=501, detail="create_milestone temporarily disabled")
-        print(f"✅ [API] Milestone erfolgreich erstellt: ID={milestone.id}, Title='{milestone.title}', Project={milestone.project_id}")
+        print(f"[SUCCESS] [API] Milestone erfolgreich erstellt: ID={milestone.id}, Title='{milestone.title}', Project={milestone.project_id}")
         
-        # 🎯 KRITISCH: Explizite Schema-Konvertierung für konsistente Response
+        # [TARGET] KRITISCH: Explizite Schema-Konvertierung für konsistente Response
         milestone_read = MilestoneRead.from_orm(milestone)
-        print(f"🔧 [API] Schema-Konvertierung abgeschlossen, documents type: {type(milestone_read.documents)}")
+        print(f"[FIX] [API] Schema-Konvertierung abgeschlossen, documents type: {type(milestone_read.documents)}")
         return milestone_read
         
     except Exception as e:
-        print(f"❌ [API] Fehler beim Erstellen des Milestones: {str(e)}")
+        print(f"[ERROR] [API] Fehler beim Erstellen des Milestones: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Fehler beim Erstellen des Gewerks: {str(e)}")
 
 
@@ -62,10 +62,10 @@ async def create_milestone_with_documents(
     import json
     
     try:
-        print(f"🔧 [API] create_milestone_with_documents called")
-        print(f"🔧 [API] title: {title}, category: {category}, project_id: {project_id}")
-        print(f"🔧 [API] documents: {len(documents) if documents else 0} files")
-        print(f"🔧 [API] shared_document_ids: {shared_document_ids}")
+        print(f"[FIX] [API] create_milestone_with_documents called")
+        print(f"[FIX] [API] title: {title}, category: {category}, project_id: {project_id}")
+        print(f"[FIX] [API] documents: {len(documents) if documents else 0} files")
+        print(f"[FIX] [API] shared_document_ids: {shared_document_ids}")
         
         # Parse JSON-Strings für Dokument-IDs und Resource Allocations
         parsed_document_ids = []
@@ -75,25 +75,25 @@ async def create_milestone_with_documents(
         if document_ids:
             try:
                 parsed_document_ids = json.loads(document_ids)
-                print(f"🔧 [API] parsed_document_ids: {parsed_document_ids}")
+                print(f"[FIX] [API] parsed_document_ids: {parsed_document_ids}")
             except json.JSONDecodeError as e:
-                print(f"⚠️ [API] JSON decode error for document_ids: {e}")
+                print(f"[WARNING] [API] JSON decode error for document_ids: {e}")
                 pass
         
         if shared_document_ids:
             try:
                 parsed_shared_document_ids = json.loads(shared_document_ids)
-                print(f"🔧 [API] parsed_shared_document_ids: {parsed_shared_document_ids}")
+                print(f"[FIX] [API] parsed_shared_document_ids: {parsed_shared_document_ids}")
             except json.JSONDecodeError as e:
-                print(f"⚠️ [API] JSON decode error for shared_document_ids: {e}")
+                print(f"[WARNING] [API] JSON decode error for shared_document_ids: {e}")
                 pass
         
         if resource_allocations:
             try:
                 parsed_resource_allocations = json.loads(resource_allocations)
-                print(f"🔧 [API] parsed_resource_allocations: {parsed_resource_allocations}")
+                print(f"[FIX] [API] parsed_resource_allocations: {parsed_resource_allocations}")
             except json.JSONDecodeError as e:
-                print(f"⚠️ [API] JSON decode error for resource_allocations: {e}")
+                print(f"[WARNING] [API] JSON decode error for resource_allocations: {e}")
                 pass
         
         # Validiere Eingabedaten
@@ -118,7 +118,7 @@ async def create_milestone_with_documents(
             "documents": []  # Explizit als leere Liste initialisieren
         }
         
-        print(f"🔧 [API] Validierte Milestone-Daten: {milestone_data}")
+        print(f"[FIX] [API] Validierte Milestone-Daten: {milestone_data}")
         
         milestone_in = MilestoneCreate(**milestone_data)
         user_id = getattr(current_user, 'id')
@@ -126,24 +126,126 @@ async def create_milestone_with_documents(
         # Erstelle Milestone mit Dokumenten und geteilten Dokument-IDs
         from ..services.milestone_service import create_milestone
         milestone = await create_milestone(db, milestone_in, user_id, documents, parsed_shared_document_ids, parsed_document_ids)
-        print(f"✅ [API] Milestone erfolgreich erstellt: {milestone.id}")
+        print(f"[SUCCESS] [API] Milestone erfolgreich erstellt: {milestone.id}")
         
         # Erstelle ResourceAllocations falls vorhanden
         if parsed_resource_allocations:
             await create_resource_allocations_for_milestone(db, milestone.id, parsed_resource_allocations)
-            print(f"✅ [API] {len(parsed_resource_allocations)} ResourceAllocations erstellt für Milestone {milestone.id}")
+            print(f"[SUCCESS] [API] {len(parsed_resource_allocations)} ResourceAllocations erstellt für Milestone {milestone.id}")
         
         # Explizite Konvertierung über Schema um JSON-String zu Liste zu konvertieren
         milestone_read = MilestoneRead.from_orm(milestone)
-        print(f"🔧 [API] Schema-Konvertierung abgeschlossen, documents type: {type(milestone_read.documents)}")
+        print(f"[FIX] [API] Schema-Konvertierung abgeschlossen, documents type: {type(milestone_read.documents)}")
         return milestone_read
         
     except Exception as e:
-        print(f"❌ [API] Fehler beim Erstellen des Milestones: {str(e)}")
+        print(f"[ERROR] [API] Fehler beim Erstellen des Milestones: {str(e)}")
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Fehler beim Erstellen des Gewerks: {str(e)}")
 
+
+@router.get("/all", response_model=List[MilestoneSummary])
+async def read_all_milestones(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Lade alle Milestones für ServiceProviderDashboard (ohne Projekt-Filter)"""
+    try:
+        print(f"[FIX] [API] read_all_milestones called")
+        print(f"[FIX] [API] current_user: {current_user.id}, {current_user.email}")
+        
+        # Lade alle Milestones (für ServiceProviderDashboard) mit raw SQL
+        from sqlalchemy import text
+        
+        result = await db.execute(text("""
+            SELECT id, title, description, category, status, completion_status, 
+                   archived, archived_at, priority, budget, planned_date, 
+                   start_date, end_date, progress_percentage, contractor, 
+                   is_critical, requires_inspection, has_unread_messages_bautraeger, 
+                   has_unread_messages_dienstleister, has_unread_messages, project_id, 
+                   created_at, updated_at
+            FROM milestones 
+            ORDER BY created_at DESC
+        """))
+        
+        rows = result.fetchall()
+        
+        # Konvertiere zu Dictionary-Format
+        milestones = []
+        for row in rows:
+            milestone_dict = {
+                "id": row[0],
+                "title": row[1],
+                "description": row[2],
+                "category": row[3],
+                "status": row[4],
+                "completion_status": row[5],
+                "archived": row[6],
+                "archived_at": row[7] if row[7] else None,
+                "priority": row[8],
+                "budget": row[9],
+                "planned_date": row[10] if row[10] else None,
+                "start_date": row[11] if row[11] else None,
+                "end_date": row[12] if row[12] else None,
+                "progress_percentage": row[13],
+                "contractor": row[14],
+                "is_critical": row[15] if len(row) > 15 else False,
+                "requires_inspection": row[16],
+                "has_unread_messages_bautraeger": row[17],
+                "has_unread_messages_dienstleister": row[18],
+                "has_unread_messages": row[19],
+                "project_id": row[20],
+                "created_at": row[21] if row[21] else None,
+                "updated_at": row[22] if row[22] else None,
+                "documents": [],  # Vereinfacht
+                "quote_stats": {
+                    "total_quotes": 0,  # TODO: Quotes laden wenn nötig
+                    "accepted_quotes": 0,
+                    "pending_quotes": 0,
+                    "rejected_quotes": 0,
+                }
+            }
+            
+            # Erstelle MilestoneSummary mit sicheren Defaults
+            try:
+                milestone_summary = MilestoneSummary(
+                    id=milestone_dict["id"],
+                    title=milestone_dict["title"],
+                    description=milestone_dict.get("description"),  # [FIX] Beschreibung hinzugefügt
+                    status=milestone_dict.get("status", "planned"),
+                    completion_status=milestone_dict.get("completion_status"),
+                    priority=milestone_dict.get("priority", "medium"),
+                    category=milestone_dict.get("category"),
+                    planned_date=milestone_dict.get("planned_date"),  # Verwende String direkt
+                    actual_date=None,
+                    start_date=milestone_dict.get("start_date"),
+                    end_date=milestone_dict.get("end_date"),
+                    budget=milestone_dict.get("budget"),
+                    actual_costs=None,
+                    contractor=milestone_dict.get("contractor"),
+                    progress_percentage=milestone_dict.get("progress_percentage", 0),
+                    is_critical=milestone_dict.get("is_critical", False),
+                    project_id=milestone_dict.get("project_id"),
+                    documents=milestone_dict.get("documents", []),
+                    construction_phase=None,
+                    requires_inspection=milestone_dict.get("requires_inspection", False),
+                    has_unread_messages_bautraeger=milestone_dict.get("has_unread_messages_bautraeger", False),
+                    has_unread_messages_dienstleister=milestone_dict.get("has_unread_messages_dienstleister", False),
+                    has_unread_messages=milestone_dict.get("has_unread_messages", False)
+                )
+            except Exception as e:
+                print(f"[ERROR] Fehler beim Erstellen von MilestoneSummary für Milestone {milestone_dict.get('id', 'unknown')}: {e}")
+                continue
+            
+            milestones.append(milestone_summary)
+        
+        print(f"[FIX] [API] read_all_milestones: {len(milestones)} Milestones geladen")
+        return milestones
+        
+    except Exception as e:
+        print(f"[ERROR] [API] Fehler in read_all_milestones: {e}")
+        raise HTTPException(status_code=500, detail=f"Fehler beim Laden der Milestones: {str(e)}")
 
 @router.get("/", response_model=List[MilestoneSummary])
 async def read_milestones(
@@ -152,43 +254,55 @@ async def read_milestones(
     db: AsyncSession = Depends(get_db),
 ):
     try:
-        print(f"🔧 [API] read_milestones called with project_id: {project_id}")
-        print(f"🔧 [API] current_user: {current_user.id}, {current_user.email}")
+        print(f"[FIX] [API] read_milestones called with project_id: {project_id}")
+        print(f"[FIX] [API] current_user: {current_user.id}, {current_user.email}")
         
         # Direkte Implementierung von get_milestones_for_project
-        from sqlalchemy import select
+        from sqlalchemy import select, text
         from sqlalchemy.orm import selectinload
         
-        result = await db.execute(
-            select(Milestone)
-            .where(Milestone.project_id == project_id)
-            .order_by(Milestone.planned_date)
-        )
-        milestone_objects = result.scalars().all()
+        # Verwende raw SQL um DateTime-Parsing-Probleme zu vermeiden
+        result = await db.execute(text("""
+            SELECT id, title, description, category, status, completion_status, 
+                   archived, archived_at, priority, budget, planned_date, 
+                   start_date, end_date, progress_percentage, contractor, 
+                   is_critical, requires_inspection, has_unread_messages_bautraeger, 
+                   has_unread_messages_dienstleister, has_unread_messages, project_id, 
+                   created_at, updated_at
+            FROM milestones 
+            WHERE project_id = :project_id 
+            ORDER BY planned_date
+        """), {"project_id": project_id})
         
-        # Konvertiere zu Dictionary-Format wie die ursprüngliche Funktion
+        rows = result.fetchall()
+        milestone_objects = []
+        
+        # Konvertiere zu Dictionary-Format
         milestones = []
-        for milestone in milestone_objects:
+        for row in rows:
             milestone_dict = {
-                "id": milestone.id,
-                "title": milestone.title,
-                "description": milestone.description,
-                "category": milestone.category,
-                "status": milestone.status,
-                "completion_status": milestone.completion_status,
-                "archived": milestone.archived,
-                "archived_at": milestone.archived_at.isoformat() if milestone.archived_at else None,
-                "priority": milestone.priority,
-                "budget": milestone.budget,
-                "planned_date": milestone.planned_date.isoformat() if milestone.planned_date else None,
-                "start_date": milestone.start_date.isoformat() if milestone.start_date else None,
-                "end_date": milestone.end_date.isoformat() if milestone.end_date else None,
-                "progress_percentage": milestone.progress_percentage,
-                "contractor": milestone.contractor,
-                "requires_inspection": getattr(milestone, 'requires_inspection', False),
-                "project_id": milestone.project_id,
-                "created_at": milestone.created_at.isoformat() if milestone.created_at else None,
-                "updated_at": milestone.updated_at.isoformat() if milestone.updated_at else None,
+                "id": row[0],
+                "title": row[1],
+                "description": row[2],
+                "category": row[3],
+                "status": row[4],
+                "completion_status": row[5],
+                "archived": row[6],
+                "archived_at": row[7] if row[7] else None,
+                "priority": row[8],
+                "budget": row[9],
+                "planned_date": row[10] if row[10] else None,
+                "start_date": row[11] if row[11] else None,
+                "end_date": row[12] if row[12] else None,
+                "progress_percentage": row[13],
+                "contractor": row[14],
+                "requires_inspection": row[16],
+                "has_unread_messages_bautraeger": row[17],
+                "has_unread_messages_dienstleister": row[18],
+                "has_unread_messages": row[19],
+                "project_id": row[20],
+                "created_at": row[21] if row[21] else None,
+                "updated_at": row[22] if row[22] else None,
                 "documents": [],  # Vereinfacht
                 "quote_stats": {
                     "total_quotes": 0,  # TODO: Quotes laden wenn nötig
@@ -201,73 +315,71 @@ async def read_milestones(
                 }
             }
             milestones.append(milestone_dict)
-        print(f"🔧 [API] Found {len(milestones)} milestones for project {project_id}")
+            
+            # Erstelle ein Mock-Milestone-Objekt für die Konvertierung
+            class MockMilestone:
+                def __init__(self, data):
+                    self.id = data["id"]
+                    self.title = data["title"]
+                    self.planned_date = data["planned_date"]
+                    self.actual_date = None
+                    self.start_date = data["start_date"]
+                    self.end_date = data["end_date"]
+                    self.actual_costs = None
+                    self.construction_phase = None
+                    self.is_critical = row[15] if len(row) > 15 else False
+            
+            milestone_objects.append(MockMilestone(milestone_dict))
+        print(f"[FIX] [API] Found {len(milestones)} milestones for project {project_id}")
         
         # Konvertiere Dictionary-Format zu MilestoneSummary
         result = []
         for i, milestone_dict in enumerate(milestones):
-            milestone = milestone_objects[i]  # Hole das entsprechende Milestone-Objekt
-            # Erstelle MilestoneSummary aus Dictionary
-            milestone_summary = MilestoneSummary(
-                id=milestone_dict["id"],
-                title=milestone_dict["title"],
-                status=milestone_dict["status"],
-                completion_status=milestone_dict.get("completion_status"),
-                priority=milestone_dict["priority"],
-                category=milestone_dict["category"],
-                planned_date=milestone.planned_date,  # Direkt das date-Objekt verwenden
-                actual_date=milestone.actual_date,
-                start_date=milestone.start_date,
-                end_date=milestone.end_date,
-                budget=milestone_dict["budget"],
-                actual_costs=milestone.actual_costs,
-                contractor=milestone_dict["contractor"],
-                progress_percentage=milestone_dict["progress_percentage"],
-                is_critical=getattr(milestone, 'is_critical', False),
-                project_id=milestone_dict["project_id"],
-                documents=milestone_dict["documents"],
-                construction_phase=getattr(milestone, 'construction_phase', None),
-                requires_inspection=milestone_dict["requires_inspection"]
-            )
-            result.append(milestone_summary)
+            try:
+                milestone = milestone_objects[i]  # Hole das entsprechende Milestone-Objekt
+                # Erstelle MilestoneSummary aus Dictionary mit sicheren Defaults
+                milestone_summary = MilestoneSummary(
+                    id=milestone_dict["id"],
+                    title=milestone_dict["title"],
+                    description=milestone_dict.get("description"),  # [FIX] Beschreibung hinzugefügt
+                    status=milestone_dict.get("status", "planned"),
+                    completion_status=milestone_dict.get("completion_status"),
+                    priority=milestone_dict.get("priority", "medium"),
+                    category=milestone_dict.get("category"),
+                    planned_date=milestone_dict.get("planned_date"),  # Verwende String direkt
+                    actual_date=milestone_dict.get("actual_date"),
+                    start_date=milestone_dict.get("start_date"),
+                    end_date=milestone_dict.get("end_date"),
+                    budget=milestone_dict.get("budget"),
+                    actual_costs=milestone_dict.get("actual_costs"),
+                    contractor=milestone_dict.get("contractor"),
+                    progress_percentage=milestone_dict.get("progress_percentage", 0),
+                    is_critical=milestone_dict.get("is_critical", False),
+                    project_id=milestone_dict.get("project_id"),
+                    documents=milestone_dict.get("documents", []),
+                    construction_phase=milestone_dict.get("construction_phase"),
+                    requires_inspection=milestone_dict.get("requires_inspection", False),
+                    has_unread_messages_bautraeger=milestone_dict.get("has_unread_messages_bautraeger", False),
+                    has_unread_messages_dienstleister=milestone_dict.get("has_unread_messages_dienstleister", False),
+                    has_unread_messages=milestone_dict.get("has_unread_messages", False)
+                )
+                result.append(milestone_summary)
+            except Exception as e:
+                print(f"[ERROR] Fehler beim Konvertieren von Milestone {milestone_dict.get('id', 'unknown')}: {e}")
+                # Überspringe dieses Milestone und fahre mit dem nächsten fort
+                continue
         
-        print(f"✅ [API] Successfully converted {len(result)} milestones")
+        print(f"[SUCCESS] [API] Successfully converted {len(result)} milestones")
         return result
         
     except Exception as e:
-        print(f"❌ [API] Error in read_milestones: {e}")
+        print(f"[ERROR] [API] Error in read_milestones: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Fehler beim Laden der Meilensteine: {str(e)}"
         )
-
-
-@router.get("/all")
-async def read_all_milestones(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    import logging
-    from ..models import UserType
-    logging.warning(f"[API] User: {getattr(current_user, 'id', None)}, type: {getattr(current_user, 'user_type', None)}, email: {getattr(current_user, 'email', None)}")
-    
-    # Prüfe explizit auf Dienstleister-Rolle
-    is_service_provider = current_user.user_type == UserType.SERVICE_PROVIDER
-    logging.warning(f"[API] is_service_provider: {is_service_provider}")
-    
-    if is_service_provider:
-        # Dienstleister: Alle aktiven Gewerke (Ausschreibungen)
-        milestones = await get_all_active_milestones(db)
-        logging.warning(f"[API] get_all_active_milestones liefert {len(milestones)} Milestones: {milestones}")
-    else:
-        # Bauträger: Nur eigene Gewerke
-        user_id = getattr(current_user, 'id')
-        milestones = await get_all_milestones_for_user(db, user_id)
-        logging.warning(f"[API] get_all_milestones_for_user liefert {len(milestones)} Milestones: {milestones}")
-    
-    return milestones
 
 
 @router.get("/{milestone_id}", response_model=MilestoneRead)
@@ -290,16 +402,16 @@ async def read_milestone(
         
         # Konvertiere zu MilestoneRead Schema für korrekte JSON-Deserialisierung
         milestone_read = MilestoneRead.from_orm(milestone)
-        print(f"🔍 read_milestone: Milestone {milestone_id} geladen")
-        print(f"🔍 read_milestone: completion_status in DB: {milestone.completion_status}")
-        print(f"🔍 read_milestone: completion_status in Schema: {milestone_read.completion_status}")
-        print(f"🔍 read_milestone: Documents type: {type(milestone_read.documents)}")
-        print(f"🔍 read_milestone: Documents: {milestone_read.documents}")
+        print(f"[DEBUG] read_milestone: Milestone {milestone_id} geladen")
+        print(f"[DEBUG] read_milestone: completion_status in DB: {milestone.completion_status}")
+        print(f"[DEBUG] read_milestone: completion_status in Schema: {milestone_read.completion_status}")
+        print(f"[DEBUG] read_milestone: Documents type: {type(milestone_read.documents)}")
+        print(f"[DEBUG] read_milestone: Documents: {milestone_read.documents}")
         
         return milestone_read
         
     except Exception as e:
-        print(f"❌ Fehler in read_milestone: {str(e)}")
+        print(f"[ERROR] Fehler in read_milestone: {str(e)}")
         import traceback
         traceback.print_exc()
         raise HTTPException(
@@ -578,7 +690,7 @@ async def get_archived_milestones(
 ):
     """Lade archivierte Gewerke mit completion_status = 'archived'"""
     try:
-        print(f"🔍 API: get_archived_milestones aufgerufen mit project_id={project_id}")
+        print(f"[DEBUG] API: get_archived_milestones aufgerufen mit project_id={project_id}")
         
         from sqlalchemy import select
         from sqlalchemy.orm import selectinload
@@ -599,7 +711,7 @@ async def get_archived_milestones(
                 project_id_int = int(project_id)
                 query = query.where(Milestone.project_id == project_id_int)
             except ValueError:
-                print(f"⚠️ Ungültige project_id: {project_id}")
+                print(f"[WARNING] Ungültige project_id: {project_id}")
         
         # Sortierung nach archived_at
         query = query.order_by(Milestone.archived_at.desc())
@@ -607,7 +719,7 @@ async def get_archived_milestones(
         result = await db.execute(query)
         milestones = result.scalars().all()
         
-        print(f"🔍 Gefundene archivierte Milestones: {len(milestones)}")
+        print(f"[DEBUG] Gefundene archivierte Milestones: {len(milestones)}")
         
         # Detaillierte Rückgabe mit allen Informationen
         archived_data = []
@@ -670,11 +782,11 @@ async def get_archived_milestones(
                 "invoice": invoice
             })
         
-        print(f"✅ Returning {len(archived_data)} archived milestones with full details")
+        print(f"[SUCCESS] Returning {len(archived_data)} archived milestones with full details")
         return archived_data
         
     except Exception as e:
-        print(f"❌ Fehler beim Laden archivierter Gewerke: {e}")
+        print(f"[ERROR] Fehler beim Laden archivierter Gewerke: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(
@@ -694,7 +806,7 @@ async def get_completed_milestones_for_service_provider(
         from sqlalchemy.orm import selectinload
         from ..models import Project, Quote
         
-        print(f"🔍 Lade abgeschlossene Gewerke für Dienstleister: {current_user.id}")
+        print(f"[DEBUG] Lade abgeschlossene Gewerke für Dienstleister: {current_user.id}")
         
         # Nur für Dienstleister
         if current_user.user_type not in ['service_provider', 'SERVICE_PROVIDER']:
@@ -742,13 +854,13 @@ async def get_completed_milestones_for_service_provider(
             
             completed_milestones.append(completed_milestone)
         
-        print(f"✅ {len(completed_milestones)} abgeschlossene Gewerke für Rechnungsstellung gefunden")
+        print(f"[SUCCESS] {len(completed_milestones)} abgeschlossene Gewerke für Rechnungsstellung gefunden")
         return completed_milestones
         
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Fehler beim Laden abgeschlossener Gewerke: {e}")
+        print(f"[ERROR] Fehler beim Laden abgeschlossener Gewerke: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Fehler beim Laden abgeschlossener Gewerke: {str(e)}"
@@ -802,7 +914,7 @@ async def archive_milestone(
         await db.commit()
         await db.refresh(milestone)
         
-        print(f"✅ Gewerk {milestone_id} erfolgreich archiviert")
+        print(f"[SUCCESS] Gewerk {milestone_id} erfolgreich archiviert")
         
         return {
             "message": "Gewerk erfolgreich archiviert",
@@ -817,7 +929,7 @@ async def archive_milestone(
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Fehler beim Archivieren: {e}")
+        print(f"[ERROR] Fehler beim Archivieren: {e}")
         import traceback
         traceback.print_exc()
         raise HTTPException(
@@ -880,11 +992,11 @@ async def get_all_active_milestones(db: AsyncSession):
             
             active_milestones.append(active_milestone)
         
-        print(f"✅ {len(active_milestones)} aktive Gewerke für Dienstleister gefunden")
+        print(f"[SUCCESS] {len(active_milestones)} aktive Gewerke für Dienstleister gefunden")
         return active_milestones
         
     except Exception as e:
-        print(f"❌ Fehler beim Laden aktiver Gewerke: {e}")
+        print(f"[ERROR] Fehler beim Laden aktiver Gewerke: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Fehler beim Laden aktiver Gewerke: {str(e)}"
@@ -899,7 +1011,7 @@ async def update_milestone(db: AsyncSession, milestone_id: int, milestone_update
         from sqlalchemy import select, update
         from datetime import datetime
         
-        print(f"🔧 [DEBUG] Starting update for milestone {milestone_id}")
+        print(f"[FIX] [DEBUG] Starting update for milestone {milestone_id}")
         
         # Hole das bestehende Milestone
         result = await db.execute(
@@ -908,13 +1020,13 @@ async def update_milestone(db: AsyncSession, milestone_id: int, milestone_update
         milestone = result.scalar_one_or_none()
         
         if not milestone:
-            print(f"❌ Milestone {milestone_id} nicht gefunden")
+            print(f"[ERROR] Milestone {milestone_id} nicht gefunden")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Meilenstein nicht gefunden"
             )
         
-        print(f"✅ Milestone {milestone_id} gefunden: {milestone.title}")
+        print(f"[SUCCESS] Milestone {milestone_id} gefunden: {milestone.title}")
         
         # Aktualisiere nur die übergebenen Felder
         try:
@@ -931,14 +1043,14 @@ async def update_milestone(db: AsyncSession, milestone_id: int, milestone_update
         if 'requires_inspection' in update_data:
             update_data['requires_inspection'] = bool(update_data['requires_inspection'])
         
-        print(f"🔧 [DEBUG] Update data for milestone {milestone_id}: {update_data}")
+        print(f"[FIX] [DEBUG] Update data for milestone {milestone_id}: {update_data}")
         
         # Führe das Update durch
         stmt = update(Milestone).where(Milestone.id == milestone_id).values(**update_data)
         await db.execute(stmt)
         await db.commit()
         
-        print(f"✅ Milestone {milestone_id} erfolgreich aktualisiert")
+        print(f"[SUCCESS] Milestone {milestone_id} erfolgreich aktualisiert")
         
         # Hole das aktualisierte Milestone
         result = await db.execute(
@@ -957,7 +1069,7 @@ async def update_milestone(db: AsyncSession, milestone_id: int, milestone_update
         raise
     except Exception as e:
         await db.rollback()
-        print(f"❌ Fehler beim Aktualisieren des Milestones {milestone_id}: {str(e)}")
+        print(f"[ERROR] Fehler beim Aktualisieren des Milestones {milestone_id}: {str(e)}")
         import traceback
         traceback.print_exc()
         raise HTTPException(
@@ -995,14 +1107,14 @@ async def delete_milestone(db: AsyncSession, milestone_id: int) -> bool:
         )
         
         await db.commit()
-        print(f"✅ Milestone {milestone_id} erfolgreich gelöscht")
+        print(f"[SUCCESS] Milestone {milestone_id} erfolgreich gelöscht")
         return True
         
     except HTTPException:
         raise
     except Exception as e:
         await db.rollback()
-        print(f"❌ Fehler beim Löschen des Milestones {milestone_id}: {str(e)}")
+        print(f"[ERROR] Fehler beim Löschen des Milestones {milestone_id}: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Fehler beim Löschen des Gewerks: {str(e)}"
@@ -1067,19 +1179,160 @@ async def get_all_milestones_for_user(db: AsyncSession, user_id: int):
             
             user_milestones.append(user_milestone)
         
-        print(f"✅ {len(user_milestones)} Gewerke für Benutzer {user_id} gefunden")
+        print(f"[SUCCESS] {len(user_milestones)} Gewerke für Benutzer {user_id} gefunden")
         return user_milestones
         
     except Exception as e:
-        print(f"❌ Fehler beim Laden der Gewerke für Benutzer {user_id}: {e}")
+        print(f"[ERROR] Fehler beim Laden der Gewerke für Benutzer {user_id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Fehler beim Laden der Gewerke: {str(e)}"
         )
 
 
+@router.post("/{milestone_id}/mark-messages-read")
+async def mark_messages_as_read(
+    milestone_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Markiert alle Nachrichten eines Gewerks als gelesen (für Bauträger und Dienstleister)
+    """
+    try:
+        from sqlalchemy import select, update
+        
+        # Hole das Milestone
+        result = await db.execute(select(Milestone).where(Milestone.id == milestone_id))
+        milestone = result.scalar_one_or_none()
+        
+        if not milestone:
+            raise HTTPException(status_code=404, detail="Gewerk nicht gefunden")
+        
+        # Markiere Nachrichten als gelesen - USER-SPEZIFISCH
+        # WICHTIG: Prüfe ZUERST user_role (hat Vorrang), dann user_type
+        user_role_value = getattr(current_user, 'user_role', None)
+        
+        # User ist Dienstleister wenn:
+        # 1. user_role explizit "DIENSTLEISTER" ist (hat Vorrang!)
+        # 2. ODER user_type "service_provider" ist
+        is_dienstleister = False
+        if user_role_value:
+            role_str = str(user_role_value)
+            is_dienstleister = "DIENSTLEISTER" in role_str.upper()
+        
+        if not is_dienstleister:
+            # Fallback auf user_type wenn user_role nicht gesetzt oder nicht DIENSTLEISTER
+            type_str = str(current_user.user_type).upper()
+            is_dienstleister = "SERVICE" in type_str
+        
+        is_bautraeger = not is_dienstleister
+        
+        print(f"[DEBUG] DEBUG: is_bautraeger = {is_bautraeger}, current_user.user_type = {current_user.user_type}, current_user.user_role = {getattr(current_user, 'user_role', 'N/A')}")
+        print(f"[DEBUG] DEBUG: Vorher - has_unread_messages_bautraeger = {milestone.has_unread_messages_bautraeger}, has_unread_messages_dienstleister = {milestone.has_unread_messages_dienstleister}")
+        
+        if is_bautraeger:
+            # Bauträger markiert als gelesen
+            milestone.has_unread_messages_bautraeger = False
+            print(f"[SUCCESS] Bauträger-Nachrichten für Gewerk {milestone_id} als gelesen markiert (User {current_user.id})")
+        else:
+            # Dienstleister markiert als gelesen
+            milestone.has_unread_messages_dienstleister = False
+            print(f"[SUCCESS] Dienstleister-Nachrichten für Gewerk {milestone_id} als gelesen markiert (User {current_user.id})")
+        
+        print(f"[DEBUG] DEBUG: Nachher - has_unread_messages_bautraeger = {milestone.has_unread_messages_bautraeger}, has_unread_messages_dienstleister = {milestone.has_unread_messages_dienstleister}")
+        print(f"[DEBUG] DEBUG: Führe flush aus...")
+        
+        await db.flush()  # Flush zuerst
+        
+        print(f"[DEBUG] DEBUG: Flush erfolgreich - führe commit aus...")
+        await db.commit()
+        
+        print(f"[DEBUG] DEBUG: Commit erfolgreich - führe refresh aus...")
+        await db.refresh(milestone)
+        
+        print(f"[DEBUG] DEBUG: Nach Refresh - has_unread_messages_bautraeger = {milestone.has_unread_messages_bautraeger}, has_unread_messages_dienstleister = {milestone.has_unread_messages_dienstleister}")
+        print(f"[DEBUG] DEBUG: FINAL - Sende Response mit has_unread_messages = False")
+        
+        return {
+            "message": "Nachrichten als gelesen markiert",
+            "milestone_id": milestone_id,
+            "has_unread_messages": False
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Fehler beim Markieren der Nachrichten als gelesen: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Markieren der Nachrichten: {str(e)}"
+        )
+
+
+@router.post("/{milestone_id}/mark-messages-unread")
+async def mark_messages_as_unread(
+    milestone_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Markiert Nachrichten eines Gewerks als ungelesen (wird automatisch aufgerufen wenn Dienstleister eine Nachricht sendet)
+    """
+    try:
+        from sqlalchemy import select, update
+        
+        # Hole das Milestone
+        result = await db.execute(select(Milestone).where(Milestone.id == milestone_id))
+        milestone = result.scalar_one_or_none()
+        
+        if not milestone:
+            raise HTTPException(status_code=404, detail="Gewerk nicht gefunden")
+        
+        # Markiere Nachrichten als ungelesen - USER-SPEZIFISCH
+        user_type = "Bauträger" if current_user.user_type in ["PRIVATE", "PROFESSIONAL"] else "Dienstleister"
+        
+        # Debug: Logge User-Details
+        print(f"[DEBUG] [DEBUG] User-Details: ID={current_user.id}, Email={current_user.email}, user_type={current_user.user_type}")
+        print(f"[DEBUG] [DEBUG] user_type in ['PRIVATE', 'PROFESSIONAL']: {current_user.user_type in ['PRIVATE', 'PROFESSIONAL']}")
+        
+        # Korrigierte User-Type-Erkennung (mit und ohne Prefix)
+        is_bautraeger = (
+            str(current_user.user_type) in ["PRIVATE", "PROFESSIONAL", "UserType.PRIVATE", "UserType.PROFESSIONAL"] or
+            current_user.user_type in ["PRIVATE", "PROFESSIONAL"]
+        )
+        
+        print(f"[DEBUG] [DEBUG] is_bautraeger: {is_bautraeger}")
+        
+        if is_bautraeger:
+            # Bauträger sendet Nachricht → Dienstleister soll Benachrichtigung bekommen
+            milestone.has_unread_messages_dienstleister = True
+            print(f"[SUCCESS] Dienstleister-Benachrichtigung für Gewerk {milestone_id} aktiviert (Bauträger sendet Nachricht)")
+        else:
+            # Dienstleister sendet Nachricht → Bauträger soll Benachrichtigung bekommen
+            milestone.has_unread_messages_bautraeger = True
+            print(f"[SUCCESS] Bauträger-Benachrichtigung für Gewerk {milestone_id} aktiviert (Dienstleister sendet Nachricht)")
+        
+        await db.commit()
+        await db.refresh(milestone)
+        
+        return {
+            "message": "Nachrichten als ungelesen markiert",
+            "milestone_id": milestone_id,
+            "has_unread_messages": True
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Fehler beim Markieren der Nachrichten als ungelesen: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Markieren der Nachrichten: {str(e)}"
+        )
+
+
 async def create_resource_allocations_for_milestone(db: AsyncSession, milestone_id: int, resource_allocations: list):
-    """Erstellt ResourceAllocations für ein neues Milestone"""
     from ..models.resource import ResourceAllocation, AllocationStatus, Resource
     from ..models.milestone import Milestone
     from ..models.project import Project
@@ -1095,7 +1348,7 @@ async def create_resource_allocations_for_milestone(db: AsyncSession, milestone_
         milestone = milestone_result.scalar_one_or_none()
         
         if not milestone:
-            print(f"⚠️ Milestone {milestone_id} nicht gefunden")
+            print(f"[WARNING] Milestone {milestone_id} nicht gefunden")
             return []
         
         # Lade Projekt für Benachrichtigungs-Details
@@ -1110,7 +1363,7 @@ async def create_resource_allocations_for_milestone(db: AsyncSession, milestone_
             resource = resource_result.scalar_one_or_none()
             
             if not resource:
-                print(f"⚠️ Resource {resource_id} nicht gefunden")
+                print(f"[WARNING] Resource {resource_id} nicht gefunden")
                 continue
             
             # Erstelle ResourceAllocation mit milestone_id als trade_id
@@ -1135,16 +1388,16 @@ async def create_resource_allocations_for_milestone(db: AsyncSession, milestone_
             
             created_allocations.append(allocation)
             
-            # ✅ Erstelle Benachrichtigung für Dienstleister
+            # [SUCCESS] Erstelle Benachrichtigung für Dienstleister
             try:
                 await NotificationService.create_resource_allocated_notification(
                     db=db,
                     allocation_id=allocation.id,
                     service_provider_id=resource.service_provider_id
                 )
-                print(f"✅ Benachrichtigung für Dienstleister {resource.service_provider_id} erstellt (Allocation {allocation.id})")
+                print(f"[SUCCESS] Benachrichtigung für Dienstleister {resource.service_provider_id} erstellt (Allocation {allocation.id})")
             except Exception as notif_error:
-                print(f"⚠️ Fehler beim Erstellen der Benachrichtigung: {notif_error}")
+                print(f"[WARNING] Fehler beim Erstellen der Benachrichtigung: {notif_error}")
                 import traceback
                 traceback.print_exc()
                 # Fehler wird geloggt, aber Allocation-Erstellung läuft weiter
@@ -1155,10 +1408,10 @@ async def create_resource_allocations_for_milestone(db: AsyncSession, milestone_
         for allocation in created_allocations:
             await db.refresh(allocation)
         
-        print(f"✅ {len(created_allocations)} ResourceAllocations für Milestone {milestone_id} erstellt")
+        print(f"[SUCCESS] {len(created_allocations)} ResourceAllocations für Milestone {milestone_id} erstellt")
         return created_allocations
         
     except Exception as e:
         await db.rollback()
-        print(f"❌ Fehler beim Erstellen der ResourceAllocations für Milestone {milestone_id}: {e}")
+        print(f"[ERROR] Fehler beim Erstellen der ResourceAllocations für Milestone {milestone_id}: {e}")
         raise 
