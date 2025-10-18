@@ -18,8 +18,13 @@ if config.config_file_name:
 
 # Get database URL from environment or settings
 def get_database_url():
-    """Get database URL from environment variable or settings"""
+    """Get database URL from environment variable or settings and add SSL for PostgreSQL"""
     database_url = os.getenv("DATABASE_URL", settings.database_url)
+    
+    # Add SSL mode for PostgreSQL connections if not already present
+    if database_url.startswith("postgresql") and "sslmode" not in database_url:
+        separator = "&" if "?" in database_url else "?"
+        database_url = f"{database_url}{separator}sslmode=require"
     
     # For migrations, we need sync URL
     # Convert postgresql+asyncpg:// to postgresql:// for Alembic

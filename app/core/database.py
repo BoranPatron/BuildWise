@@ -6,7 +6,7 @@ import os
 # Database URL from environment variable
 # Render provides DATABASE_URL automatically, but we need to convert postgresql:// to postgresql+asyncpg://
 def get_database_url():
-    """Get database URL and convert to asyncpg if needed"""
+    """Get database URL and convert to asyncpg if needed, and add SSL mode"""
     database_url = os.getenv("DATABASE_URL", settings.database_url)
     
     # Convert postgresql:// to postgresql+asyncpg:// for async support
@@ -14,6 +14,12 @@ def get_database_url():
         database_url = database_url.replace("postgresql://", "postgresql+asyncpg://", 1)
     elif database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1)
+    
+    # Add SSL mode for PostgreSQL connections if not already present
+    if database_url.startswith("postgresql") and "sslmode" not in database_url:
+        # Add sslmode=require for Render PostgreSQL
+        separator = "&" if "?" in database_url else "?"
+        database_url = f"{database_url}{separator}sslmode=require"
     
     return database_url
 
