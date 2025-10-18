@@ -6,7 +6,6 @@ services:
   - type: web
     name: buildwise-api
     env: python
-    region: frankfurt  # or oregon for US
     plan: starter  # or standard/pro based on needs
     branch: main
     buildCommand: bash build.sh
@@ -77,7 +76,6 @@ databases:
   - name: buildwise-db
     databaseName: buildwise_main
     user: buildwise_admin
-    region: frankfurt  # Same region as web service for low latency
-    plan: starter  # or standard based on needs
+    plan: free  # Use 'free' instead of 'starter' - or 'standard' for production
     ipAllowList: []  # Empty = allow all (Render services can connect)
 
