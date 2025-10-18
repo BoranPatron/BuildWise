@@ -21,7 +21,7 @@ python-dotenv==1.0.0
 # OAuth und Social-Login
 httpx==0.25.2
 PyJWT==2.8.0
-cryptography==41.0.8
+cryptography==43.0.3
 
 # Multi-Factor Authentication
 pyotp==2.9.0
