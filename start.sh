@@ -24,10 +24,19 @@ else
 fi
 
 # Ensure storage directories exist
-echo "[INFO] Verifying storage directories..."
-mkdir -p /var/data/storage/{uploads,pdfs/invoices,temp,cache,company_logos}
+echo "[INFO] Creating storage directories..."
+mkdir -p /var/data/storage/uploads
+mkdir -p /var/data/storage/pdfs/invoices
+mkdir -p /var/data/storage/temp
+mkdir -p /var/data/storage/cache
+mkdir -p /var/data/storage/company_logos
 chmod -R 755 /var/data/storage
-echo "[SUCCESS] Storage directories verified"
+echo "[SUCCESS] Storage directories created"
+
+# Run database migrations
+echo "[INFO] Running database migrations..."
+alembic upgrade head
+echo "[SUCCESS] Database migrations completed"
 
 # Calculate optimal worker count based on CPU cores
 # Formula: (2 x $num_cores) + 1
