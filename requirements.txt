@@ -33,6 +33,7 @@ Pillow==10.1.0
 # E-Mail und Notifications
 aiosmtplib==3.0.1
 jinja2==3.1.2
+icalendar==5.0.11
 
 # File handling
 aiofiles==23.2.1
