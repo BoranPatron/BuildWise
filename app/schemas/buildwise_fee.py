@@ -13,18 +13,18 @@ class BuildWiseFeeStatus(str, Enum):
 class BuildWiseFeeItemBase(BaseModel):
     quote_id: int
     cost_position_id: int
-    quote_amount: Decimal = Field(..., ge=0, decimal_places=2)
-    fee_amount: Decimal = Field(..., ge=0, decimal_places=2)
-    fee_percentage: Decimal = Field(default=Decimal("1.00"), ge=0, le=100, decimal_places=2)
+    quote_amount: Decimal = Field(..., ge=0)
+    fee_amount: Decimal = Field(..., ge=0)
+    fee_percentage: Decimal = Field(default=Decimal("1.00"), ge=0, le=100)
     description: Optional[str] = None
 
 class BuildWiseFeeItemCreate(BuildWiseFeeItemBase):
     pass
 
 class BuildWiseFeeItemUpdate(BaseModel):
-    quote_amount: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
-    fee_amount: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
-    fee_percentage: Optional[Decimal] = Field(None, ge=0, le=100, decimal_places=2)
+    quote_amount: Optional[Decimal] = Field(None, ge=0)
+    fee_amount: Optional[Decimal] = Field(None, ge=0)
+    fee_percentage: Optional[Decimal] = Field(None, ge=0, le=100)
     description: Optional[str] = None
 
 class BuildWiseFeeItem(BuildWiseFeeItemBase):
@@ -40,9 +40,9 @@ class BuildWiseFeeBase(BaseModel):
     quote_id: int
     cost_position_id: int
     service_provider_id: int
-    fee_amount: Decimal = Field(..., ge=0, decimal_places=2)
-    fee_percentage: Decimal = Field(default=Decimal("1.00"), ge=0, le=100, decimal_places=2)
-    quote_amount: Decimal = Field(..., ge=0, decimal_places=2)
+    fee_amount: Decimal = Field(..., ge=0)
+    fee_percentage: Decimal = Field(default=Decimal("1.00"), ge=0, le=100)
+    quote_amount: Decimal = Field(..., ge=0)
     currency: str = Field(default="CHF", max_length=3)
     invoice_number: Optional[str] = None
     invoice_date: Optional[date] = None
@@ -51,10 +51,10 @@ class BuildWiseFeeBase(BaseModel):
     status: BuildWiseFeeStatus = BuildWiseFeeStatus.OPEN
     invoice_pdf_path: Optional[str] = None
     invoice_pdf_generated: bool = False
-    tax_rate: Decimal = Field(default=Decimal("8.10"), ge=0, le=100, decimal_places=2)
-    tax_amount: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
-    net_amount: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
-    gross_amount: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
+    tax_rate: Decimal = Field(default=Decimal("8.10"), ge=0, le=100)
+    tax_amount: Optional[Decimal] = Field(None, ge=0)
+    net_amount: Optional[Decimal] = Field(None, ge=0)
+    gross_amount: Optional[Decimal] = Field(None, ge=0)
     fee_details: Optional[str] = None
     notes: Optional[str] = None
 
@@ -83,9 +83,9 @@ class BuildWiseFeeCreate(BuildWiseFeeBase):
     pass
 
 class BuildWiseFeeUpdate(BaseModel):
-    fee_amount: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
-    fee_percentage: Optional[Decimal] = Field(None, ge=0, le=100, decimal_places=2)
-    quote_amount: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
+    fee_amount: Optional[Decimal] = Field(None, ge=0)
+    fee_percentage: Optional[Decimal] = Field(None, ge=0, le=100)
+    quote_amount: Optional[Decimal] = Field(None, ge=0)
     currency: Optional[str] = Field(None, max_length=3)
     invoice_number: Optional[str] = None
     invoice_date: Optional[date] = None
@@ -94,10 +94,10 @@ class BuildWiseFeeUpdate(BaseModel):
     status: Optional[BuildWiseFeeStatus] = None
     invoice_pdf_path: Optional[str] = None
     invoice_pdf_generated: Optional[bool] = None
-    tax_rate: Optional[Decimal] = Field(None, ge=0, le=100, decimal_places=2)
-    tax_amount: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
-    net_amount: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
-    gross_amount: Optional[Decimal] = Field(None, ge=0, decimal_places=2)
+    tax_rate: Optional[Decimal] = Field(None, ge=0, le=100)
+    tax_amount: Optional[Decimal] = Field(None, ge=0)
+    net_amount: Optional[Decimal] = Field(None, ge=0)
+    gross_amount: Optional[Decimal] = Field(None, ge=0)
     fee_details: Optional[str] = None
     notes: Optional[str] = None
 
