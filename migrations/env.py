@@ -36,7 +36,8 @@ def get_database_url():
     return database_url
 
 DATABASE_URL = get_database_url()
-print(f"[INFO] Alembic using database: {DATABASE_URL[:50]}...")
+print(f"[INFO] Alembic using database: {DATABASE_URL[:80]}...")
+print(f"[DEBUG] Full DATABASE_URL contains sslmode: {'sslmode' in DATABASE_URL}")
 
 
 def run_migrations_offline() -> None:

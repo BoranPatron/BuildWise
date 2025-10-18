@@ -51,6 +51,7 @@ if IS_POSTGRESQL:
             },
             "command_timeout": 60,
             "timeout": 10,
+            "ssl": "require"  # Force SSL for Render PostgreSQL
         }
     )
     print("[INFO] Database configured: PostgreSQL (Production Mode)")
