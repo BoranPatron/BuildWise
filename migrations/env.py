@@ -58,7 +58,21 @@ def run_migrations_online() -> None:
     connectable = context.config.attributes.get("connection")
     if connectable is None:
         from sqlalchemy import create_engine
-        connectable = create_engine(DATABASE_URL, poolclass=pool.NullPool)
+        
+        # Configure SSL for PostgreSQL connections
+        connect_args = {}
+        if DATABASE_URL.startswith("postgresql"):
+            # For psycopg2, use connect_args instead of URL parameter
+            connect_args = {
+                "sslmode": "require",
+                "connect_timeout": 10
+            }
+        
+        connectable = create_engine(
+            DATABASE_URL, 
+            poolclass=pool.NullPool,
+            connect_args=connect_args
+        )
 
     with connectable.connect() as connection:
         context.configure(
