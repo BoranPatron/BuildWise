@@ -21,6 +21,7 @@ email-validator==2.1.0
 
 # OAuth und Social-Login
 httpx==0.25.2
+aiohttp==3.9.1
 PyJWT==2.8.0
 cryptography==43.0.3
 
