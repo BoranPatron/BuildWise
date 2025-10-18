@@ -62,10 +62,9 @@ def run_migrations_online() -> None:
         # Configure SSL for PostgreSQL connections
         connect_args = {}
         if DATABASE_URL.startswith("postgresql"):
-            # For psycopg2 with Render's internal network, disable SSL verification
-            # Render's internal connections use self-signed certificates
+            # For Render's internal network, disable SSL (secure within private network)
             connect_args = {
-                "sslmode": "prefer",  # Changed from "require" to "prefer"
+                "sslmode": "disable",  # Disable SSL for internal Render connections
                 "connect_timeout": 10
             }
         
