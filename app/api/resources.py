@@ -12,7 +12,7 @@ from ..models import (
     User, Resource, ResourceStatus, ResourceVisibility, 
     ResourceAllocation, AllocationStatus, ResourceRequest, RequestStatus,
     ResourceCalendarEntry, CalendarEntryStatus, ResourceKPIs,
-    Milestone, Quote, QuoteStatus
+    Milestone, Quote, QuoteStatus, ServiceProviderRatingAggregate
 )
 from pydantic import BaseModel, Field
 from decimal import Decimal
@@ -105,6 +105,10 @@ class ResourceResponse(ResourceBase):
     provider_bio: Optional[str] = None
     provider_region: Optional[str] = None
     provider_languages: Optional[str] = None
+    
+    # Bewertungen
+    overall_rating: Optional[float] = None
+    rating_count: Optional[int] = None
 
     class Config:
         from_attributes = True
@@ -200,9 +204,14 @@ class ResourceKPIsResponse(BaseModel):
 # Helper Functions
 # ============================================
 
-def enrich_resource_with_provider_details(resource: Resource) -> dict:
-    """Erweitert eine Resource um vollständige Provider-Details"""
-    provider = resource.service_provider
+async def enrich_resource_with_provider_details(resource: Resource, db: AsyncSession) -> dict:
+    """Erweitert eine Resource um vollständige Provider-Details und Bewertungen"""
+    from ..models import User
+    
+    # Lade Service Provider direkt aus der Datenbank
+    provider_query = select(User).where(User.id == resource.service_provider_id)
+    provider_result = await db.execute(provider_query)
+    provider = provider_result.scalar_one_or_none()
     
     resource_dict = {
         "id": resource.id,
@@ -253,6 +262,55 @@ def enrich_resource_with_provider_details(resource: Resource) -> dict:
             "provider_bio": provider.bio,
             "provider_region": provider.region,
             "provider_languages": provider.languages,
+        })
+    
+    # Bewertungsdaten hinzufügen
+    try:
+        # Lade aggregierte Bewertungsdaten aus der service_provider_rating_aggregates Tabelle
+        aggregate_query = select(ServiceProviderRatingAggregate).where(
+            ServiceProviderRatingAggregate.service_provider_id == resource.service_provider_id
+        )
+        
+        aggregate_result = await db.execute(aggregate_query)
+        aggregate = aggregate_result.scalar_one_or_none()
+        
+        if aggregate and aggregate.total_ratings > 0:
+            # Debug-Log für Bewertungsdaten
+            print(f"🔍 DEBUG - Service Provider {resource.service_provider_id}:")
+            print(f"   Gesamtbewertung: {aggregate.avg_overall_rating}")
+            print(f"   Anzahl Bewertungen: {aggregate.total_ratings}")
+            print(f"   Qualität: {aggregate.avg_quality_rating}")
+            print(f"   Termintreue: {aggregate.avg_timeliness_rating}")
+            print(f"   Kommunikation: {aggregate.avg_communication_rating}")
+            print(f"   Preis-Leistung: {aggregate.avg_value_rating}")
+            
+            resource_dict.update({
+                "overall_rating": float(aggregate.avg_overall_rating),
+                "rating_count": aggregate.total_ratings,
+                # Detaillierte Bewertungskategorien
+                "avg_quality_rating": float(aggregate.avg_quality_rating),
+                "avg_timeliness_rating": float(aggregate.avg_timeliness_rating),
+                "avg_communication_rating": float(aggregate.avg_communication_rating),
+                "avg_value_rating": float(aggregate.avg_value_rating)
+            })
+        else:
+            resource_dict.update({
+                "overall_rating": None,
+                "rating_count": 0,
+                "avg_quality_rating": None,
+                "avg_timeliness_rating": None,
+                "avg_communication_rating": None,
+                "avg_value_rating": None
+            })
+    except Exception as e:
+        # Bei Fehlern setze Bewertungen auf None/0
+        resource_dict.update({
+            "overall_rating": None,
+            "rating_count": 0,
+            "avg_quality_rating": None,
+            "avg_timeliness_rating": None,
+            "avg_communication_rating": None,
+            "avg_value_rating": None
         })
     
     return resource_dict
@@ -318,7 +376,7 @@ async def create_resource(
     await db.refresh(resource, ['service_provider'])
     
     # Erweitere Resource um Provider-Details
-    enriched_resource = enrich_resource_with_provider_details(resource)
+    enriched_resource = await enrich_resource_with_provider_details(resource, db)
     
     return enriched_resource
 
@@ -418,7 +476,10 @@ async def list_resources(
     resources = result.scalars().all()
     
     # Erweitere Resources um Provider-Details
-    enriched_resources = [enrich_resource_with_provider_details(resource) for resource in resources]
+    enriched_resources = []
+    for resource in resources:
+        enriched_resource = await enrich_resource_with_provider_details(resource, db)
+        enriched_resources.append(enriched_resource)
     
     return enriched_resources
 
@@ -438,7 +499,10 @@ async def get_my_resources(
     resources = result.scalars().all()
     
     # Erweitere Resources um Provider-Details
-    enriched_resources = [enrich_resource_with_provider_details(resource) for resource in resources]
+    enriched_resources = []
+    for resource in resources:
+        enriched_resource = await enrich_resource_with_provider_details(resource, db)
+        enriched_resources.append(enriched_resource)
     
     return enriched_resources
 
@@ -471,7 +535,7 @@ async def get_resource(
         )
     
     # Erweitere Resource um Provider-Details
-    enriched_resource = enrich_resource_with_provider_details(resource)
+    enriched_resource = await enrich_resource_with_provider_details(resource, db)
     
     return enriched_resource
 
@@ -535,7 +599,7 @@ async def update_resource(
     await db.refresh(resource, ['service_provider'])
     
     # Erweitere Resource um Provider-Details
-    enriched_resource = enrich_resource_with_provider_details(resource)
+    enriched_resource = await enrich_resource_with_provider_details(resource, db)
     
     return enriched_resource
 
@@ -657,7 +721,10 @@ async def search_resources_geo(
     resources = result.scalars().all()
     
     # Erweitere Resources um Provider-Details
-    enriched_resources = [enrich_resource_with_provider_details(resource) for resource in resources]
+    enriched_resources = []
+    for resource in resources:
+        enriched_resource = await enrich_resource_with_provider_details(resource, db)
+        enriched_resources.append(enriched_resource)
     
     return enriched_resources
 

@@ -47,7 +47,7 @@ class CreditConfig:
         CreditEventType.BONUS_CREDITS: 0,                     # Bonus-Credits (wird dynamisch gesetzt)
         
         # === AUTOMATISCHE EVENTS ===
-        CreditEventType.DAILY_DEDUCTION: 0,                    # Täglicher Abzug (wird als negativer Wert behandelt)
+        CreditEventType.DAILY_DEDUCTION: 1,                    # Täglicher Abzug (wird als negativer Wert behandelt)
         CreditEventType.AUTO_DOWNGRADE: 0,                    # Automatischer Downgrade
         CreditEventType.PRO_UPGRADE: 0,                       # Pro-Upgrade
     }

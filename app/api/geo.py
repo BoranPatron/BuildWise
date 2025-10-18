@@ -102,6 +102,7 @@ class TradeSearchResult(BaseModel):
     planned_date: str
     start_date: Optional[str]
     end_date: Optional[str]
+    submission_deadline: Optional[str] = None
     progress_percentage: int
     contractor: Optional[str]
     # Besichtigungssystem

@@ -173,6 +173,14 @@ class InvoiceService:
         await db.commit()
         await db.refresh(invoice)
         
+        # Sende Benachrichtigung an den Bauträger über die eingereichte Rechnung
+        try:
+            from .notification_service import NotificationService
+            await NotificationService.create_invoice_submitted_notification(db, invoice.id)
+        except Exception as e:
+            print(f"[WARNING] Fehler beim Erstellen der Rechnungs-Benachrichtigung: {e}")
+            # Fehler bei Benachrichtigung sollte nicht die Rechnungserstellung blockieren
+        
         # [SUCCESS] Generiere PDF sofort bei Erstellung
         try:
             print(f"[DEBUG] Generiere PDF für neue manuelle Rechnung {invoice.id}")
@@ -302,6 +310,14 @@ class InvoiceService:
             
         await db.commit()
         await db.refresh(invoice)
+        
+        # Sende Benachrichtigung an den Bauträger über die eingereichte Rechnung
+        try:
+            from .notification_service import NotificationService
+            await NotificationService.create_invoice_submitted_notification(db, invoice.id)
+        except Exception as e:
+            print(f"[WARNING] Fehler beim Erstellen der Rechnungs-Benachrichtigung: {e}")
+            # Fehler bei Benachrichtigung sollte nicht den Upload blockieren
         
         # [SUCCESS] Automatische DMS-Integration für hochgeladene PDFs
         await InvoiceService.create_dms_document(db, invoice, str(file_path))
@@ -824,6 +840,14 @@ class InvoiceService:
         except Exception as dms_error:
             print(f"[WARNING] DMS-Kategorisierung nach Bezahlung fehlgeschlagen (nicht kritisch): {dms_error}")
             # DMS-Fehler sollen die Zahlungsmarkierung nicht blockieren
+        
+        # Sende Benachrichtigung an den Dienstleister über die bezahlte Rechnung
+        try:
+            from .notification_service import NotificationService
+            await NotificationService.create_invoice_paid_notification(db, invoice.id)
+        except Exception as e:
+            print(f"[WARNING] Fehler beim Erstellen der Payment-Received-Benachrichtigung: {e}")
+            # Fehler bei Benachrichtigung sollte nicht die Zahlungsmarkierung blockieren
         
         print(f"[SUCCESS] Rechnung {invoice.invoice_number} als bezahlt markiert")
         return invoice

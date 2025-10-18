@@ -93,6 +93,12 @@ class UserCredits(Base):
         
         from datetime import datetime, timezone
         today = datetime.now(timezone.utc).date()
-        last_deduction_date = self.last_daily_deduction.date()
+        
+        # Stelle sicher dass last_deduction_date auch UTC verwendet
+        # Falls last_daily_deduction naive datetime ist, behandle es als UTC
+        if self.last_daily_deduction.tzinfo is None:
+            last_deduction_date = self.last_daily_deduction.replace(tzinfo=timezone.utc).date()
+        else:
+            last_deduction_date = self.last_daily_deduction.astimezone(timezone.utc).date()
         
         return today == last_deduction_date 

@@ -12,6 +12,7 @@ class MilestoneBase(BaseModel):
     priority: str = "medium"
     category: Optional[str] = None
     planned_date: date
+    submission_deadline: Optional[date] = None  # Angebotsfrist (optional)
     start_date: Optional[date] = None
     end_date: Optional[date] = None
     budget: Optional[float] = None
@@ -45,6 +46,7 @@ class MilestoneUpdate(BaseModel):
     priority: Optional[str] = None
     category: Optional[str] = None
     planned_date: Optional[date] = None
+    submission_deadline: Optional[date] = None  # Angebotsfrist (optional)
     actual_date: Optional[date] = None
     start_date: Optional[date] = None
     end_date: Optional[date] = None
@@ -163,6 +165,7 @@ class MilestoneRead(MilestoneBase):
             'priority': obj.priority,
             'category': obj.category,
             'planned_date': obj.planned_date,
+            'submission_deadline': obj.submission_deadline,  # Angebotsfrist (optional)
             'actual_date': obj.actual_date,
             'start_date': obj.start_date,
             'end_date': obj.end_date,
@@ -198,6 +201,7 @@ class MilestoneSummary(BaseModel):
     priority: str  # String statt Enum
     category: Optional[str] = None
     planned_date: Optional[str] = None  # Ändere zu String für DateTime-Kompatibilität
+    submission_deadline: Optional[str] = None  # Angebotsfrist (optional)
     actual_date: Optional[str] = None
     start_date: Optional[str] = None
     end_date: Optional[str] = None
@@ -249,6 +253,7 @@ class MilestoneSummary(BaseModel):
             'priority': obj.priority,
             'category': obj.category,
             'planned_date': obj.planned_date,
+            'submission_deadline': obj.submission_deadline,  # Angebotsfrist (optional)
             'actual_date': obj.actual_date,
             'start_date': obj.start_date,
             'end_date': obj.end_date,

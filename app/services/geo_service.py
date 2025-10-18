@@ -495,6 +495,7 @@ class GeoService:
                         "planned_date": milestone.planned_date.isoformat() if milestone.planned_date else "",
                         "start_date": milestone.start_date.isoformat() if milestone.start_date else None,
                         "end_date": milestone.end_date.isoformat() if milestone.end_date else None,
+                        "submission_deadline": milestone.submission_deadline.isoformat() if milestone.submission_deadline else None,
                         "progress_percentage": milestone.progress_percentage,
                         "contractor": milestone.contractor,
                         # Besichtigungssystem - Explizit übertragen

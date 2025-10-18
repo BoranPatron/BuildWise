@@ -12,6 +12,7 @@ class NotificationType(enum.Enum):
     QUOTE_REVISED = "quote_revised"      # Angebot überarbeitet nach Besichtigung
     APPOINTMENT_REQUEST = "appointment_request"  # Terminanfrage
     APPOINTMENT_CONFIRMED = "appointment_confirmed"  # Termin bestätigt
+    APPOINTMENT_RESPONSE = "appointment_response"  # Antwort auf Termineinladung (Zusage/Absage)
     MILESTONE_COMPLETED = "milestone_completed"  # Meilenstein abgeschlossen
     DEFECTS_RESOLVED = "defects_resolved"  # Mängelbehebung gemeldet
     ACCEPTANCE_WITH_DEFECTS = "acceptance_with_defects"  # Abnahme unter Vorbehalt
@@ -44,8 +45,8 @@ class Notification(Base):
     recipient_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
     
     # Typ und Priorität
-    type = Column(SQLEnum(NotificationType), nullable=False, index=True)
-    priority = Column(SQLEnum(NotificationPriority), default=NotificationPriority.NORMAL)
+    type = Column(SQLEnum(NotificationType, values_callable=lambda obj: [e.value for e in obj]), nullable=False, index=True)
+    priority = Column(SQLEnum(NotificationPriority, values_callable=lambda obj: [e.value for e in obj]), default=NotificationPriority.NORMAL)
     
     # Inhalt
     title = Column(String(255), nullable=False)

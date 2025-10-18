@@ -41,6 +41,7 @@ class Milestone(Base):
     actual_date = Column(Date, nullable=True)
     start_date = Column(Date, nullable=True)  # Startdatum für Gewerke
     end_date = Column(Date, nullable=True)    # Enddatum für Gewerke
+    submission_deadline = Column(Date, nullable=True)  # Angebotsfrist für Ausschreibungen
     
     # Budget und Kosten
     budget = Column(Float, nullable=True)     # Geplantes Budget

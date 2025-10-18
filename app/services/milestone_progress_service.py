@@ -217,6 +217,14 @@ class MilestoneProgressService:
             milestone.archived_at = datetime.utcnow()
             message = message or "Gewerk abgenommen und archiviert."
             
+            # Sende Benachrichtigung an den Dienstleister über die finale Abnahme
+            try:
+                from .notification_service import NotificationService
+                await NotificationService.create_milestone_completed_notification(db, milestone.id)
+            except Exception as e:
+                print(f"[WARNING] Fehler beim Erstellen der Abnahme-Benachrichtigung: {e}")
+                # Fehler bei Benachrichtigung sollte nicht die Abnahme blockieren
+            
             # Inkrementiere completed_offers_count für alle betroffenen Dienstleister
             try:
                 from .milestone_completion_service import MilestoneCompletionService

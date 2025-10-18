@@ -45,7 +45,7 @@ class Settings(BaseSettings):
     # Stripe Configuration
     stripe_secret_key: str = "sk_test_51RmqhBD1cfnpqPDcNBjCVI3uNYCuvpqU2bdrTF2sugjOi5BiGtMF1kaiiHVpxR8dzkgXO634carUE57oyEDdmiQV00XaE5SZfO"
     stripe_publishable_key: str = "pk_test_51RmqhBD1cfnpqPDcdZxBM4ZNiPrqhu6w4oiTMQGbTnxfbAzN0Lq6Q0yJOmtags79C2R8SLUmLd4n3oUurQ71ryBp00yCLKw9UK"
-    stripe_webhook_secret: str = "whsec_1c361ea289d12a6be58b3d1229fb4a1ef619936d5dbd22463a9f9099c3348eac"  # Stripe CLI Webhook Secret (lokal), wird in Production über ENV gesetzt
+    stripe_webhook_secret: str = "whsec_e6aa7f5230fd9afd484ac75fcb2be9e25b6a5be4575f438e17ab66ea7a3157a9"  # Stripe CLI Webhook Secret (lokal), wird in Production über ENV gesetzt
     stripe_webhook_tolerance: int = 300  # 5 Minuten Toleranz für Webhook-Zeitstempel
     
     # Frontend Base URL (wird in Production über ENV gesetzt, z.B. FRONTEND_URL=https://yourdomain.com)

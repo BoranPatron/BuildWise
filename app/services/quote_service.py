@@ -14,6 +14,93 @@ from ..services.cost_position_service import get_cost_position_by_quote_id
 from ..services.notification_service import NotificationService
 
 
+async def _ensure_quote_notification_robust(db: AsyncSession, quote) -> bool:
+    """
+    ROBUSTE BENACHRICHTIGUNGSLÖSUNG für Quote Service
+    
+    Diese Funktion implementiert mehrfache Sicherheit für Benachrichtigungen:
+    1. Prüft ob bereits eine Benachrichtigung existiert
+    2. Erstellt eine neue Benachrichtigung falls keine existiert
+    3. Loggt alle Schritte für Debugging
+    4. Behandelt alle möglichen Fehler robust
+    
+    Returns:
+        bool: True wenn Benachrichtigung erfolgreich gesendet wurde oder bereits existiert
+    """
+    try:
+        from ..models.notification import Notification, NotificationType
+        from sqlalchemy import select, and_
+        
+        print(f"\n{'='*60}")
+        print(f"[QUOTE-SERVICE-BENACHRICHTIGUNG] Starte für Quote {quote.id}")
+        print(f"{'='*60}")
+        
+        # 1. Prüfe ob bereits eine Benachrichtigung für dieses Angebot existiert
+        existing_notification_result = await db.execute(
+            select(Notification).where(
+                and_(
+                    Notification.related_quote_id == quote.id,
+                    Notification.type == NotificationType.QUOTE_SUBMITTED
+                )
+            )
+        )
+        existing_notification = existing_notification_result.scalar_one_or_none()
+        
+        if existing_notification:
+            print(f"[QUOTE-SERVICE-BENACHRICHTIGUNG] OK Benachrichtigung bereits vorhanden: ID {existing_notification.id}")
+            return True
+        
+        # 2. Finde den Bauträger (Projektbesitzer)
+        project_result = await db.execute(
+            select(Project).where(Project.id == quote.project_id)
+        )
+        project = project_result.scalar_one_or_none()
+        
+        if not project or not project.owner_id:
+            print(f"[QUOTE-SERVICE-BENACHRICHTIGUNG] FEHLER: Kein Bautraeger für Quote {quote.id} gefunden")
+            return False
+        
+        print(f"[QUOTE-SERVICE-BENACHRICHTIGUNG] OK Bautraeger gefunden: ID {project.owner_id}")
+        
+        # 3. Erstelle Benachrichtigung mit mehrfacher Sicherheit
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                print(f"[QUOTE-SERVICE-BENACHRICHTIGUNG] Versuch {attempt + 1}/{max_retries}...")
+                
+                notification = await NotificationService.create_quote_submitted_notification(
+                    db=db,
+                    quote_id=quote.id,
+                    recipient_id=project.owner_id
+                )
+                
+                print(f"[QUOTE-SERVICE-BENACHRICHTIGUNG] ERFOLG: Benachrichtigung erstellt!")
+                print(f"   Notification ID: {notification.id}")
+                print(f"   Empfaenger: {notification.recipient_id}")
+                print(f"{'='*60}\n")
+                
+                return True
+                
+            except Exception as e:
+                print(f"[QUOTE-SERVICE-BENACHRICHTIGUNG] FEHLER: Versuch {attempt + 1} fehlgeschlagen: {e}")
+                if attempt < max_retries - 1:
+                    print(f"[QUOTE-SERVICE-BENACHRICHTIGUNG] Versuche erneut...")
+                    continue
+                else:
+                    print(f"[QUOTE-SERVICE-BENACHRICHTIGUNG] FEHLER: Alle {max_retries} Versuche fehlgeschlagen")
+                    raise e
+        
+    except Exception as e:
+        print(f"[QUOTE-SERVICE-BENACHRICHTIGUNG] KRITISCHER FEHLER: {e}")
+        print(f"   Fehlertyp: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
+        print(f"{'='*60}\n")
+        
+        # Fehler bei Benachrichtigung sollte nicht die Quote-Erstellung blockieren
+        return False
+
+
 async def create_quote(db: AsyncSession, quote_in: QuoteCreate, service_provider_id: int) -> Quote:
     """Erstellt ein neues Angebot"""
     db_quote = Quote(
@@ -64,25 +151,9 @@ async def create_quote(db: AsyncSession, quote_in: QuoteCreate, service_provider
     await db.commit()
     await db.refresh(db_quote)
     
-    # Erstelle Benachrichtigung für den Bauträger, wenn das Angebot eingereicht wurde
+    # ROBUSTE BENACHRICHTIGUNGSLÖSUNG - Mehrfache Sicherheit
     if db_quote.status == 'SUBMITTED' and db_quote.project_id:
-        try:
-            # Finde den Bauträger (Projektbesitzer)
-            project_result = await db.execute(
-                select(Project).where(Project.id == db_quote.project_id)
-            )
-            project = project_result.scalar_one_or_none()
-            
-            if project and project.owner_id:
-                await NotificationService.create_quote_submitted_notification(
-                    db=db,
-                    quote_id=db_quote.id,
-                    recipient_id=project.owner_id
-                )
-                print(f"[SUCCESS] Benachrichtigung für Quote {db_quote.id} an Bauträger {project.owner_id} erstellt")
-        except Exception as e:
-            print(f"[WARNING] Fehler beim Erstellen der Benachrichtigung: {e}")
-            # Fehler bei Benachrichtigung soll Quote-Erstellung nicht blockieren
+        await _ensure_quote_notification_robust(db, db_quote)
     
     return db_quote
 
@@ -109,12 +180,21 @@ async def get_quotes_for_project(db: AsyncSession, project_id: int) -> List[Quot
 
 async def get_quotes_for_milestone(db: AsyncSession, milestone_id: int) -> List[Quote]:
     """Holt alle Angebote für ein bestimmtes Gewerk"""
-    result = await db.execute(
-        select(Quote)
-        .where(Quote.milestone_id == milestone_id)
-        .order_by(Quote.total_amount.asc())  # Sortiert nach Preis (günstigste zuerst)
-    )
-    return list(result.scalars().all())
+    try:
+        print(f"[DEBUG] get_quotes_for_milestone: Suche Angebote für milestone_id={milestone_id}")
+        result = await db.execute(
+            select(Quote)
+            .where(Quote.milestone_id == milestone_id)
+            .order_by(Quote.total_amount.asc())  # Sortiert nach Preis (günstigste zuerst)
+        )
+        quotes = list(result.scalars().all())
+        print(f"[DEBUG] get_quotes_for_milestone: Gefunden {len(quotes)} Angebote für milestone_id={milestone_id}")
+        return quotes
+    except Exception as e:
+        print(f"[ERROR] get_quotes_for_milestone: Fehler beim Laden der Angebote für milestone_id={milestone_id}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        return []
 
 
 async def get_quotes_for_milestone_by_service_provider(db: AsyncSession, milestone_id: int, service_provider_id: int) -> List[Quote]:
@@ -213,6 +293,10 @@ async def submit_quote(db: AsyncSession, quote_id: int) -> Quote | None:
     )
     await db.commit()
     await db.refresh(quote)
+    
+    # ROBUSTE BENACHRICHTIGUNGSLÖSUNG - Auch bei nachträglicher Einreichung
+    await _ensure_quote_notification_robust(db, quote)
+    
     return quote
 
 
@@ -378,7 +462,6 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
         from ..models.user import UserRole
         from ..models import Project
         from ..models.inspection import Inspection
-        # from ..models.quote_revision import QuoteRevision  # Nicht verfügbar
         
         # Hole Projekt-Owner (Bauträger)
         project_result = await db.execute(
@@ -386,7 +469,10 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
         )
         project = project_result.scalar_one_or_none()
         
-        if project and project.owner:
+        # Hole die Owner-ID (project.owner ist eine User-Instanz, wir brauchen die ID)
+        owner_id = project.owner.id if hasattr(project.owner, 'id') else project.owner_id
+        
+        if project and owner_id:
             # Prüfe ob dieses Angebot aus einem Besichtigungsprozess stammt
             inspection_result = await db.execute(
                 select(Inspection)
@@ -400,46 +486,25 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
             )
             inspection = inspection_result.scalar_one_or_none()
             
-            # Prüfe ob es eine aktive Revision gibt (Indikator für Besichtigungsprozess)
-            # revision_result = await db.execute(
-            #     select(QuoteRevision).where(
-            #         and_(
-            #             QuoteRevision.original_quote_id == quote.id,
-            #             QuoteRevision.is_active == True
-            #         )
-            #     )
-            # )
-            # revision = revision_result.scalar_one_or_none()
-            revision = None  # Temporär deaktiviert
-            
             # Vergebe erhöhte Credits wenn Besichtigungsprozess durchlaufen wurde
-            if inspection or revision:
+            if inspection:
                 # BONUS-CREDITS für vollständigen Besichtigungsprozess!
-                success = await CreditService.reward_inspection_quote_acceptance(
+                await CreditService.reward_inspection_quote_acceptance(
                     db=db,
-                    user_id=project.owner,
+                    user_id=owner_id,
                     quote_id=quote.id,
-                    inspection_id=inspection.id if inspection else None
+                    inspection_id=inspection.id
                 )
-                
-                if success:
-                    print(f"BONUS-CREDITS vergeben! Bautraeger {project.owner} erhielt 15 Credits fuer Besichtigungsangebot")
-                else:
-                    print(f"Bonus-Credits konnten nicht vergeben werden")
             else:
                 # Standard-Credits für normale Angebotsakzeptanz
-                success = await CreditService.reward_user_action(
+                await CreditService.add_credits_for_activity(
                     db=db,
-                    user_id=project.owner,
-                    action_type=CreditEventType.QUOTE_ACCEPTED,
+                    user_id=owner_id,
+                    event_type=CreditEventType.QUOTE_ACCEPTED,
+                    description=f"Angebot akzeptiert: {quote.title}",
                     related_entity_type="quote",
                     related_entity_id=quote.id
                 )
-                
-                if success:
-                    print(f"Standard-Credits vergeben fuer Quote-Akzeptanz")
-                else:
-                    print(f"Standard-Credits konnten nicht vergeben werden")
         
         # Zusätzliche Credit-Zuordnung (Legacy)
         if project and project.owner:

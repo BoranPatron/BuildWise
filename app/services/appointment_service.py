@@ -346,6 +346,7 @@ class AppointmentService:
     ) -> Appointment:
         """Service Provider Antwort auf Termineinladung - Neue Version mit separater Response-Tabelle"""
         from app.models.appointment_response import AppointmentResponse
+        from app.models.notification import Notification, NotificationType, NotificationPriority
         from sqlalchemy import select
         
         print(f"[DEBUG] AppointmentService.respond_to_appointment called (NEW VERSION):")
@@ -363,7 +364,23 @@ class AppointmentService:
         
         print(f"[SUCCESS] Appointment {appointment_id} found")
         
-        # 2. Bestehende Response suchen oder neue erstellen
+        # 2. Service Provider laden für Benachrichtigung
+        service_provider = None
+        service_provider_name = "Dienstleister"
+        if service_provider_id:
+            sp_result = await db.execute(
+                select(User).where(User.id == service_provider_id)
+            )
+            service_provider = sp_result.scalar_one_or_none()
+            if service_provider:
+                if service_provider.company_name:
+                    service_provider_name = service_provider.company_name
+                else:
+                    service_provider_name = f"{service_provider.first_name or ''} {service_provider.last_name or ''}".strip()
+                    if not service_provider_name:
+                        service_provider_name = f"Dienstleister #{service_provider.id}"
+        
+        # 3. Bestehende Response suchen oder neue erstellen
         stmt = select(AppointmentResponse).where(
             AppointmentResponse.appointment_id == appointment_id,
             AppointmentResponse.service_provider_id == service_provider_id
@@ -410,6 +427,64 @@ class AppointmentService:
         await db.refresh(appointment)
         await db.refresh(response_record)
         print(f"[SUCCESS] Database commit successful - Response ID: {response_record.id}")
+        
+        # 6. Benachrichtigung an Bauträger erstellen
+        try:
+            print(f"📧 Creating notification for Bauträger (created_by: {appointment.created_by})")
+            
+            # Erstelle Status-Text
+            if status == "accepted":
+                status_text = "zugesagt"
+                priority = NotificationPriority.HIGH
+                notification_type = NotificationType.APPOINTMENT_RESPONSE
+            elif status == "rejected":
+                status_text = "abgelehnt"
+                priority = NotificationPriority.NORMAL
+                notification_type = NotificationType.APPOINTMENT_RESPONSE
+            elif status == "rejected_with_suggestion":
+                status_text = "einen Alternativtermin vorgeschlagen"
+                priority = NotificationPriority.HIGH
+                notification_type = NotificationType.APPOINTMENT_RESPONSE
+            else:
+                status_text = "geantwortet"
+                priority = NotificationPriority.NORMAL
+                notification_type = NotificationType.APPOINTMENT_RESPONSE
+            
+            # Erstelle Notification-Daten
+            notification_data = {
+                "appointment_id": appointment.id,
+                "appointment_title": appointment.title,
+                "scheduled_date": appointment.scheduled_date.isoformat(),
+                "location": appointment.location or "",
+                "service_provider_name": service_provider_name,
+                "response_status": status,
+                "response_message": message or "",
+                "suggested_date": suggested_date.isoformat() if suggested_date else None
+            }
+            
+            # Erstelle Benachrichtigung
+            notification = Notification(
+                recipient_id=appointment.created_by,
+                type=notification_type,
+                priority=priority,
+                title=f"Terminantwort: {appointment.title}",
+                message=f"{service_provider_name} hat dem Besichtigungstermin \"{appointment.title}\" {status_text}.",
+                data=json.dumps(notification_data),
+                related_appointment_id=appointment.id,
+                related_project_id=appointment.project_id,
+                related_milestone_id=appointment.milestone_id
+            )
+            
+            db.add(notification)
+            await db.commit()
+            await db.refresh(notification)
+            print(f"✅ Notification {notification.id} created for Bauträger {appointment.created_by}")
+            
+        except Exception as e:
+            print(f"❌ Error creating notification for Bauträger: {e}")
+            # Fehler bei Benachrichtigung soll den Hauptprozess nicht stoppen
+            import traceback
+            print(f"[ERROR] Traceback: {traceback.format_exc()}")
         
         return appointment
     

@@ -31,25 +31,33 @@ class CreditScheduler:
         logger.info("Credit-Scheduler gestartet")
     
     async def stop(self):
-        """Stoppt den Scheduler"""
+        """Stoppt den Scheduler mit verbesserter Fehlerbehandlung"""
         if not self.is_running:
+            logger.info("Credit-Scheduler war bereits gestoppt")
             return
         
+        logger.info("Stoppe Credit-Scheduler...")
         self.is_running = False
+        
         if self.task and not self.task.done():
+            logger.info("Cancelling Scheduler-Task...")
             self.task.cancel()
+            
             try:
-                await asyncio.wait_for(self.task, timeout=5.0)
-            except (asyncio.CancelledError, asyncio.TimeoutError):
-                # Diese Exceptions sind beim Shutdown normal
-                pass
+                # Warte auf Task-Completion mit Timeout
+                await asyncio.wait_for(self.task, timeout=3.0)
+                logger.info("Scheduler-Task erfolgreich beendet")
+            except asyncio.CancelledError:
+                logger.info("Scheduler-Task wurde abgebrochen (erwartet)")
+            except asyncio.TimeoutError:
+                logger.warning("Scheduler-Task Shutdown-Timeout erreicht")
             except Exception as e:
                 logger.warning(f"Unerwarteter Fehler beim Scheduler-Shutdown: {e}")
         
         logger.info("Credit-Scheduler gestoppt")
     
     async def _run_scheduler(self):
-        """Hauptschleife des Schedulers"""
+        """Hauptschleife des Schedulers mit verbesserter Cancellation-Behandlung"""
         try:
             while self.is_running:
                 try:
@@ -63,10 +71,12 @@ class CreditScheduler:
                     wait_seconds = (next_run - now).total_seconds()
                     logger.info(f"Nächste Credit-Abzug-Ausführung: {next_run} (in {wait_seconds:.0f} Sekunden)")
                     
-                    await asyncio.sleep(wait_seconds)
+                    # Verwende asyncio.sleep mit regelmäßiger Prüfung auf Cancellation
+                    await asyncio.sleep(min(wait_seconds, 300))  # Max 5 Minuten Sleep
                     
                     # Prüfe ob wir noch laufen sollen (nach dem Sleep)
                     if not self.is_running:
+                        logger.info("Scheduler wurde gestoppt während Sleep")
                         break
                     
                     # Führe tägliche Credit-Abzüge aus
@@ -85,7 +95,11 @@ class CreditScheduler:
                         for _ in range(360):  # 360 * 10 = 3600 Sekunden = 1 Stunde
                             if not self.is_running:
                                 break
-                            await asyncio.sleep(10)
+                            try:
+                                await asyncio.sleep(10)
+                            except asyncio.CancelledError:
+                                logger.info("Scheduler wurde während Fehler-Wartezeit abgebrochen")
+                                break
                     else:
                         break
         except asyncio.CancelledError:

@@ -643,6 +643,23 @@ async def complete_final_acceptance(
                     # Bauträger führt finale Abnahme durch - Gewerk ist vollständig abgeschlossen
                     milestone.completion_status = 'completed'
                     print(f"[SUCCESS] Milestone {milestone_id} Status auf 'completed' gesetzt (finale Abnahme durch Bauträger)")
+                    
+                    # Sende Benachrichtigung an den Dienstleister über die finale Abnahme
+                    try:
+                        from ..services.notification_service import NotificationService
+                        await NotificationService.create_milestone_completed_notification(db, milestone_id)
+                    except Exception as e:
+                        print(f"[WARNING] Fehler beim Erstellen der Abnahme-Benachrichtigung: {e}")
+                        # Fehler bei Benachrichtigung sollte nicht die Abnahme blockieren
+                    
+                    # Inkrementiere completed_offers_count für alle betroffenen Dienstleister
+                    try:
+                        from ..services.milestone_completion_service import MilestoneCompletionService
+                        await MilestoneCompletionService.increment_completed_offers_count(db, milestone_id)
+                        print(f"[SUCCESS] completed_offers_count für betroffene Dienstleister von Milestone {milestone_id} inkrementiert")
+                    except Exception as e:
+                        print(f"[WARNING] Fehler beim Inkrementieren der completed_offers_count: {e}")
+                        # Fehler nicht kritisch, da Hauptfunktion (Abnahme) bereits erfolgreich
         
         # Erstelle ServiceProviderRating - nur für Bauträger
         if acceptance.service_provider_id and milestone and is_bautraeger:
@@ -674,12 +691,41 @@ async def complete_final_acceptance(
                 )
                 db.add(new_rating)
                 print(f"[SUCCESS] ServiceProviderRating erstellt für Service Provider {acceptance.service_provider_id}")
+                
+                # Aktualisiere aggregierte Bewertungen nach dem Commit
+                await db.commit()
+                await db.refresh(new_rating)
+                
+                # Aktualisiere aggregierte Bewertungen für den Service Provider
+                from ..services.rating_service import rating_service
+                await rating_service._update_service_provider_aggregates(db, acceptance.service_provider_id)
+                print(f"[SUCCESS] Aggregierte Bewertungen für Service Provider {acceptance.service_provider_id} aktualisiert")
             else:
-                print(f"ℹ️ ServiceProviderRating existiert bereits für Milestone {milestone_id}")
+                # Aktualisiere bestehende Bewertung
+                existing_rating.quality_rating = completion_data.get('qualityRating', existing_rating.quality_rating)
+                existing_rating.timeliness_rating = completion_data.get('timelinessRating', existing_rating.timeliness_rating)
+                existing_rating.communication_rating = completion_data.get('communicationRating', existing_rating.communication_rating)
+                existing_rating.overall_rating = completion_data.get('overallRating', existing_rating.overall_rating)
+                existing_rating.comment = "Bewertung aus finaler Abnahme (aktualisiert)"
+                from sqlalchemy.sql import func
+                existing_rating.updated_at = func.now()
+                
+                print(f"[SUCCESS] ServiceProviderRating für Milestone {milestone_id} aktualisiert")
+                
+                # Aktualisiere aggregierte Bewertungen nach dem Commit
+                await db.commit()
+                await db.refresh(existing_rating)
+                
+                # Aktualisiere aggregierte Bewertungen für den Service Provider
+                from ..services.rating_service import rating_service
+                await rating_service._update_service_provider_aggregates(db, acceptance.service_provider_id)
+                print(f"[SUCCESS] Aggregierte Bewertungen für Service Provider {acceptance.service_provider_id} aktualisiert")
         elif is_service_provider:
             print(f"ℹ️ Dienstleister meldet Mängelbehebung - keine Bewertung erstellt")
         
-        await db.commit()
+        # Nur committen wenn noch nicht gemacht wurde (nur für Dienstleister)
+        if is_service_provider:
+            await db.commit()
         await db.refresh(acceptance)
         
         print(f"[SUCCESS] Finale Abnahme erfolgreich abgeschlossen: {acceptance.id}")
@@ -892,35 +938,6 @@ async def get_acceptance_defects_for_milestone(
         
         print(f"[SUCCESS] {len(all_defects)} Mängel für Milestone {milestone_id} gefunden")
         
-        # FALLBACK: Wenn keine Mängel gefunden werden, erstelle Test-Daten
-        if len(all_defects) == 0:
-            print("[DEBUG] Erstelle Test-Mängel für Demo-Zwecke")
-            all_defects = [
-                {
-                    'id': 1,
-                    'title': 'Kratzer an der Wand',
-                    'description': 'Kleine Kratzer an der Wand im Wohnzimmer',
-                    'severity': 'MINOR',
-                    'location': 'Wohnzimmer',
-                    'room': 'Wohnzimmer',
-                    'photos': [],
-                    'resolved': False,
-                    'resolved_at': None,
-                    'task_id': None
-                },
-                {
-                    'id': 2,
-                    'title': 'Undichte Stelle',
-                    'description': 'Wassertropfen unter dem Waschbecken',
-                    'severity': 'MAJOR',
-                    'location': 'Badezimmer',
-                    'room': 'Badezimmer',
-                    'photos': [],
-                    'resolved': False,
-                    'resolved_at': None,
-                    'task_id': None
-                }
-            ]
         
         return all_defects
         

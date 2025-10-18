@@ -13,6 +13,7 @@ from ..schemas.rating import (
     ServiceProviderRatingCreate,
     ServiceProviderRatingResponse,
     ServiceProviderRatingSummary,
+    ServiceProviderAggregatedRatingResponse,
     RatingCheckResponse
 )
 
@@ -138,6 +139,35 @@ async def get_service_provider_rating_summary(
     )
     
     return summary
+
+
+@router.get("/service-provider/{service_provider_id}/aggregated", response_model=ServiceProviderAggregatedRatingResponse)
+async def get_service_provider_aggregated_rating(
+    service_provider_id: int,
+    db: AsyncSession = Depends(get_db),
+    current_user: User = Depends(get_current_user)
+) -> ServiceProviderAggregatedRatingResponse:
+    """Holt aggregierte Bewertung für einen Service Provider (sehr performant)"""
+    
+    aggregated_rating = await rating_service.get_service_provider_aggregated_rating(
+        db=db,
+        service_provider_id=service_provider_id
+    )
+    
+    if not aggregated_rating:
+        # Fallback: Erstelle leeren Aggregat-Eintrag
+        from ..models import ServiceProviderRatingAggregate
+        aggregated_rating = ServiceProviderRatingAggregate(
+            service_provider_id=service_provider_id,
+            total_ratings=0,
+            avg_quality_rating=0.0,
+            avg_timeliness_rating=0.0,
+            avg_communication_rating=0.0,
+            avg_value_rating=0.0,
+            avg_overall_rating=0.0
+        )
+    
+    return aggregated_rating
 
 
 @router.get("/milestone/{milestone_id}/invoice-check", response_model=RatingCheckResponse)

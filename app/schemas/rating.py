@@ -114,6 +114,21 @@ class ServiceProviderRatingSummary(BaseModel):
     rating_distribution: Dict[int, int] = Field(default_factory=dict, description="Verteilung der Bewertungen (1-5)")
 
 
+class ServiceProviderAggregatedRatingResponse(BaseModel):
+    """Response-Schema für aggregierte Bewertungen"""
+    service_provider_id: int
+    total_ratings: int = Field(..., description="Gesamtanzahl der Bewertungen")
+    avg_quality_rating: float = Field(..., description="Durchschnitt Qualität (1 Nachkommastelle)")
+    avg_timeliness_rating: float = Field(..., description="Durchschnitt Termintreue (1 Nachkommastelle)")
+    avg_communication_rating: float = Field(..., description="Durchschnitt Kommunikation (1 Nachkommastelle)")
+    avg_value_rating: float = Field(..., description="Durchschnitt Preis-Leistung (1 Nachkommastelle)")
+    avg_overall_rating: float = Field(..., description="Durchschnitt Gesamtbewertung (1 Nachkommastelle)")
+    last_updated: datetime
+    
+    class Config:
+        from_attributes = True
+
+
 class RatingCheckResponse(BaseModel):
     """Response für Prüfung ob Rechnung angesehen werden kann"""
     can_view_invoice: bool = Field(..., description="Ob die Rechnung angesehen werden kann")

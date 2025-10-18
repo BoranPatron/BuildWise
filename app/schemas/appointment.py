@@ -1,7 +1,8 @@
-from pydantic import BaseModel, Field, ConfigDict
-from typing import List, Optional, Dict, Any
+from pydantic import BaseModel, Field, ConfigDict, field_validator, model_validator
+from typing import List, Optional, Dict, Any, Union
 from datetime import datetime
 from enum import Enum
+import json
 
 
 class AppointmentType(str, Enum):
@@ -92,8 +93,8 @@ class AppointmentResponse(BaseModel):
     contact_person: Optional[str]
     contact_phone: Optional[str]
     preparation_notes: Optional[str]
-    invited_service_providers: Optional[List[ServiceProviderInvite]]
-    responses: Optional[List[ServiceProviderResponse]]
+    invited_service_providers: Optional[Union[List[ServiceProviderInvite], List[Dict[str, Any]]]]
+    responses: Optional[Union[List[ServiceProviderResponse], List[Dict[str, Any]]]]
     inspection_completed: bool
     selected_service_provider_id: Optional[int]
     inspection_notes: Optional[str]
@@ -107,6 +108,67 @@ class AppointmentResponse(BaseModel):
     completed_at: Optional[datetime]
 
     model_config = ConfigDict(from_attributes=True)
+    
+    @field_validator('invited_service_providers', mode='before')
+    @classmethod
+    def validate_invited_service_providers(cls, v):
+        """Konvertiere JSON/Dict zu ServiceProviderInvite Objekten"""
+        if v is None:
+            return None
+        
+        # Wenn es ein JSON-String ist, parse ihn
+        if isinstance(v, str):
+            try:
+                v = json.loads(v)
+            except json.JSONDecodeError:
+                return None
+        
+        # Wenn es bereits eine Liste von ServiceProviderInvite Objekten ist, returniere sie
+        if isinstance(v, list) and all(isinstance(item, ServiceProviderInvite) for item in v):
+            return v
+        
+        # Konvertiere Dictionaries zu ServiceProviderInvite Objekten
+        if isinstance(v, list):
+            result = []
+            for item in v:
+                if isinstance(item, dict):
+                    result.append(ServiceProviderInvite(**item))
+                elif isinstance(item, ServiceProviderInvite):
+                    result.append(item)
+            return result
+        
+        return None
+    
+    @field_validator('responses', mode='before')
+    @classmethod
+    def validate_responses(cls, v):
+        """Konvertiere JSON/Dict zu ServiceProviderResponse Objekten"""
+        if v is None:
+            return None
+        
+        # Wenn es ein JSON-String ist, parse ihn
+        if isinstance(v, str):
+            try:
+                v = json.loads(v)
+            except json.JSONDecodeError:
+                return None
+        
+        # Wenn es bereits eine Liste von ServiceProviderResponse Objekten ist, returniere sie
+        if isinstance(v, list) and all(isinstance(item, ServiceProviderResponse) for item in v):
+            return v
+        
+        # Konvertiere Dictionaries zu ServiceProviderResponse Objekten
+        if isinstance(v, list):
+            result = []
+            for item in v:
+                if isinstance(item, dict):
+                    # ServiceProviderResponse erwartet bestimmte Felder
+                    result.append(ServiceProviderResponse(**item))
+                elif isinstance(item, ServiceProviderResponse):
+                    result.append(item)
+            return result
+        
+        return None
 
 
 class InspectionDecisionRequest(BaseModel):

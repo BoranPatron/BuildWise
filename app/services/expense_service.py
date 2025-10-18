@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, delete
 from sqlalchemy.orm import selectinload
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, date
 
 from ..models.expense import Expense
 from ..schemas.expense import ExpenseCreate, ExpenseUpdate, ExpenseRead
@@ -34,6 +34,25 @@ class ExpenseService:
         # Hole aktuelle Bauphase des Projekts
         current_construction_phase = project.construction_phase
         
+        # Konvertiere date zu datetime für die Datenbank
+        expense_date = expense_data.date
+        
+        # Stelle sicher, dass expense_date ein date-Objekt ist
+        if isinstance(expense_date, str):
+            try:
+                # Versuche das String-Datum zu parsen
+                expense_date = datetime.fromisoformat(expense_date).date()
+            except ValueError:
+                try:
+                    # Fallback für andere Datumsformate
+                    expense_date = datetime.strptime(expense_date, '%Y-%m-%d').date()
+                except ValueError:
+                    raise ValueError(f"Invalid date format: {expense_date}")
+        elif isinstance(expense_date, datetime):
+            expense_date = expense_date.date()
+        elif not isinstance(expense_date, date):
+            raise ValueError(f"Invalid date type: {type(expense_date)}")
+        
         # Erstelle neue Ausgabe mit Bauphase
         expense = Expense(
             title=expense_data.title,
@@ -41,7 +60,7 @@ class ExpenseService:
             amount=expense_data.amount,
             category=expense_data.category,
             project_id=expense_data.project_id,
-            date=expense_data.date,
+            date=datetime.combine(expense_date, datetime.min.time()),  # Konvertiere date zu datetime
             receipt_url=expense_data.receipt_url,
             construction_phase=current_construction_phase  # Speichere aktuelle Bauphase
         )
@@ -150,6 +169,28 @@ class ExpenseService:
         
         # Update-Felder
         update_data = expense_data.model_dump(exclude_unset=True)
+        
+        # Konvertiere date zu datetime falls vorhanden
+        if 'date' in update_data and update_data['date']:
+            expense_date = update_data['date']
+            
+            # Stelle sicher, dass expense_date ein date-Objekt ist
+            if isinstance(expense_date, str):
+                try:
+                    # Versuche das String-Datum zu parsen
+                    expense_date = datetime.fromisoformat(expense_date).date()
+                except ValueError:
+                    try:
+                        # Fallback für andere Datumsformate
+                        expense_date = datetime.strptime(expense_date, '%Y-%m-%d').date()
+                    except ValueError:
+                        raise ValueError(f"Invalid date format: {expense_date}")
+            elif isinstance(expense_date, datetime):
+                expense_date = expense_date.date()
+            elif not isinstance(expense_date, date):
+                raise ValueError(f"Invalid date type: {type(expense_date)}")
+            
+            update_data['date'] = datetime.combine(expense_date, datetime.min.time())
         
         if update_data:
             await db.execute(

@@ -6,7 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 
-from ..models import ServiceProviderRating, User, Milestone, Quote
+from ..models import ServiceProviderRating, ServiceProviderRatingAggregate, User, Milestone, Quote
 from ..schemas.rating import (
     ServiceProviderRatingCreate,
     ServiceProviderRatingResponse,
@@ -73,6 +73,9 @@ class RatingService:
         
         await db.commit()
         await db.refresh(rating)
+        
+        # Aktualisiere aggregierte Bewertungen
+        await self._update_service_provider_aggregates(db, data.service_provider_id)
         
         return rating
     
@@ -189,6 +192,67 @@ class RatingService:
         )
         
         return rating.scalar_one_or_none() is not None
+    
+    async def _update_service_provider_aggregates(
+        self,
+        db: AsyncSession,
+        service_provider_id: int
+    ):
+        """Aktualisiert aggregierte Bewertungen für einen Service Provider (performant)"""
+        
+        # Berechne Durchschnittswerte direkt in der Datenbank (sehr performant)
+        result = await db.execute(
+            select(
+                func.count(ServiceProviderRating.id).label('total_ratings'),
+                func.avg(ServiceProviderRating.quality_rating).label('avg_quality'),
+                func.avg(ServiceProviderRating.timeliness_rating).label('avg_timeliness'),
+                func.avg(ServiceProviderRating.communication_rating).label('avg_communication'),
+                func.avg(ServiceProviderRating.value_rating).label('avg_value'),
+                func.avg(ServiceProviderRating.overall_rating).label('avg_overall')
+            ).where(
+                ServiceProviderRating.service_provider_id == service_provider_id,
+                ServiceProviderRating.is_public == 1
+            )
+        )
+        
+        stats = result.one()
+        
+        # Upsert Aggregat-Eintrag (sehr performant)
+        existing_aggregate = await db.get(ServiceProviderRatingAggregate, service_provider_id)
+        
+        if existing_aggregate:
+            # Update bestehenden Eintrag
+            existing_aggregate.total_ratings = stats.total_ratings or 0
+            existing_aggregate.avg_quality_rating = round(stats.avg_quality or 0, 1)
+            existing_aggregate.avg_timeliness_rating = round(stats.avg_timeliness or 0, 1)
+            existing_aggregate.avg_communication_rating = round(stats.avg_communication or 0, 1)
+            existing_aggregate.avg_value_rating = round(stats.avg_value or 0, 1)
+            existing_aggregate.avg_overall_rating = round(stats.avg_overall or 0, 1)
+            existing_aggregate.last_updated = func.now()
+        else:
+            # Erstelle neuen Eintrag
+            aggregate = ServiceProviderRatingAggregate(
+                service_provider_id=service_provider_id,
+                total_ratings=stats.total_ratings or 0,
+                avg_quality_rating=round(stats.avg_quality or 0, 1),
+                avg_timeliness_rating=round(stats.avg_timeliness or 0, 1),
+                avg_communication_rating=round(stats.avg_communication or 0, 1),
+                avg_value_rating=round(stats.avg_value or 0, 1),
+                avg_overall_rating=round(stats.avg_overall or 0, 1),
+                last_updated=func.now()
+            )
+            db.add(aggregate)
+        
+        await db.commit()
+    
+    async def get_service_provider_aggregated_rating(
+        self,
+        db: AsyncSession,
+        service_provider_id: int
+    ) -> Optional[ServiceProviderRatingAggregate]:
+        """Holt aggregierte Bewertung für einen Service Provider (sehr performant)"""
+        
+        return await db.get(ServiceProviderRatingAggregate, service_provider_id)
 
 
 # Singleton-Instanz

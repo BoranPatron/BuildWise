@@ -240,22 +240,34 @@ async def on_startup():
 
 @app.on_event("shutdown")
 async def on_shutdown():
-    # Stoppe Credit-Scheduler
+    """Graceful shutdown handler mit verbesserter Fehlerbehandlung"""
+    print("[INFO] Starte graceful shutdown...")
+    
+    # Stoppe Credit-Scheduler mit Timeout
     try:
         from .core.scheduler import stop_credit_scheduler
-        await stop_credit_scheduler()
-        print("[SUCCESS] Credit-Scheduler gestoppt")
+        print("[INFO] Stoppe Credit-Scheduler...")
+        
+        # Verwende asyncio.wait_for für Timeout
+        await asyncio.wait_for(stop_credit_scheduler(), timeout=5.0)
+        print("[SUCCESS] Credit-Scheduler erfolgreich gestoppt")
+        
+    except asyncio.TimeoutError:
+        print("[WARNING] Credit-Scheduler Shutdown-Timeout erreicht")
     except asyncio.CancelledError:
-        # Normal beim Shutdown
-        print("[SUCCESS] Credit-Scheduler gestoppt (abgebrochen)")
+        print("[INFO] Credit-Scheduler wurde abgebrochen (normal beim Shutdown)")
     except Exception as e:
         print(f"[WARNING] Fehler beim Stoppen des Credit-Schedulers: {e}")
     
     # Kurze Pause für graceful shutdown
     try:
         await asyncio.sleep(0.1)
-    except:
+    except asyncio.CancelledError:
+        print("[INFO] Shutdown-Sleep wurde abgebrochen")
+    except Exception:
         pass
+    
+    print("[SUCCESS] Graceful shutdown abgeschlossen")
 
 # Health Check
 @app.get("/health")

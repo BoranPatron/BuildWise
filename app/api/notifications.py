@@ -169,17 +169,27 @@ async def create_notification(
     db: AsyncSession = Depends(get_db)
 ):
     """Erstellt eine neue Benachrichtigung"""
+    from ..models.notification import NotificationType
+    
     # Erweiterte Berechtigung: 
     # - Admins können alle Benachrichtigungen erstellen
     # - Benutzer können Benachrichtigungen für sich selbst erstellen
-    # - Bei quote_submitted: Dienstleister können Benachrichtigungen für Bauträger erstellen
+    # - Bei quote_submitted, milestone_completed: Dienstleister können Benachrichtigungen für Bauträger erstellen
+    allowed_types = [
+        NotificationType.QUOTE_SUBMITTED,
+        NotificationType.MILESTONE_COMPLETED,
+        NotificationType.DEFECTS_RESOLVED
+    ]
+    
     if current_user.user_type not in ["admin", "superuser"]:
-        if notification_data.user_id != current_user.id:
-            # Erlaube quote_submitted Benachrichtigungen zwischen Dienstleister und Bauträger
-            if notification_data.type not in ["quote_submitted", "completion_request", "defects_resolved"]:
+        if notification_data.recipient_id != current_user.id:
+            # Erlaube bestimmte Benachrichtigungen zwischen Dienstleister und Bauträger
+            if notification_data.type not in allowed_types:
+                print(f"[ERROR] Notification type {notification_data.type} not allowed for user {current_user.id}")
+                print(f"[ERROR] Allowed types: {[t.value for t in allowed_types]}")
                 raise HTTPException(status_code=403, detail="Keine Berechtigung für diesen Benachrichtigungstyp")
         
-    print(f"📢 Creating notification: {notification_data.type} for user {notification_data.user_id} by {current_user.id}")
+    print(f"[NOTIFICATION] Creating notification: {notification_data.type} for user {notification_data.recipient_id} by {current_user.id}")
     
     notification = await NotificationService.create_notification(
         db=db,

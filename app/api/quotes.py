@@ -30,6 +30,110 @@ from app.schemas.cost_position import CostPositionCreate
 router = APIRouter(prefix="/quotes", tags=["quotes"])
 
 
+async def _ensure_quote_notification_sent(db: AsyncSession, quote) -> bool:
+    """
+    ROBUSTE BENACHRICHTIGUNGSLÖSUNG - Stellt sicher, dass eine Benachrichtigung gesendet wird
+    
+    Diese Funktion implementiert mehrfache Sicherheit:
+    1. Prüft ob bereits eine Benachrichtigung existiert
+    2. Erstellt eine neue Benachrichtigung falls keine existiert
+    3. Loggt alle Schritte für Debugging
+    4. Behandelt alle möglichen Fehler robust
+    
+    Returns:
+        bool: True wenn Benachrichtigung erfolgreich gesendet wurde oder bereits existiert
+    """
+    try:
+        from ..services.notification_service import NotificationService
+        from ..models.notification import Notification, NotificationType
+        from sqlalchemy import select, and_
+        
+        print(f"\n{'='*80}")
+        print(f"[ROBUSTE-BENACHRICHTIGUNG] Starte für Quote {quote.id}")
+        print(f"{'='*80}")
+        
+        # 1. Prüfe ob bereits eine Benachrichtigung für dieses Angebot existiert
+        existing_notification_result = await db.execute(
+            select(Notification).where(
+                and_(
+                    Notification.related_quote_id == quote.id,
+                    Notification.type == NotificationType.QUOTE_SUBMITTED
+                )
+            )
+        )
+        existing_notification = existing_notification_result.scalar_one_or_none()
+        
+        if existing_notification:
+            print(f"[ROBUSTE-BENACHRICHTIGUNG] OK Benachrichtigung bereits vorhanden: ID {existing_notification.id}")
+            print(f"   Erstellt: {existing_notification.created_at}")
+            print(f"   Empfaenger: {existing_notification.recipient_id}")
+            return True
+        
+        # 2. Finde den Bauträger (Projektbesitzer)
+        bautraeger_id = None
+        
+        # Verwende nur project_id, um SQLAlchemy-Probleme zu vermeiden
+        if hasattr(quote, 'project_id') and quote.project_id:
+            try:
+                from ..models.project import Project
+                project_result = await db.execute(
+                    select(Project).where(Project.id == quote.project_id)
+                )
+                project = project_result.scalar_one_or_none()
+                if project and project.owner_id:
+                    bautraeger_id = project.owner_id
+                    print(f"[ROBUSTE-BENACHRICHTIGUNG] OK Bautraeger über project_id gefunden: ID {bautraeger_id}")
+                else:
+                    print(f"[ROBUSTE-BENACHRICHTIGUNG] FEHLER: Projekt {quote.project_id} nicht gefunden oder hat keinen Owner")
+                    return False
+            except Exception as e:
+                print(f"[ROBUSTE-BENACHRICHTIGUNG] FEHLER: Fehler beim Laden des Projekts: {e}")
+                return False
+        else:
+            print(f"[ROBUSTE-BENACHRICHTIGUNG] FEHLER: Quote hat keine project_id")
+            return False
+        
+        # 3. Erstelle Benachrichtigung mit mehrfacher Sicherheit
+        max_retries = 3
+        for attempt in range(max_retries):
+            try:
+                print(f"[ROBUSTE-BENACHRICHTIGUNG] Versuch {attempt + 1}/{max_retries}...")
+                
+                notification = await NotificationService.create_quote_submitted_notification(
+                    db=db,
+                    quote_id=quote.id,
+                    recipient_id=bautraeger_id
+                )
+                
+                print(f"[ROBUSTE-BENACHRICHTIGUNG] ERFOLG: Benachrichtigung erstellt!")
+                print(f"   Notification ID: {notification.id}")
+                print(f"   Empfaenger: {notification.recipient_id}")
+                print(f"   Titel: {notification.title}")
+                print(f"   Typ: {notification.type}")
+                print(f"{'='*80}\n")
+                
+                return True
+                
+            except Exception as e:
+                print(f"[ROBUSTE-BENACHRICHTIGUNG] FEHLER: Versuch {attempt + 1} fehlgeschlagen: {e}")
+                if attempt < max_retries - 1:
+                    print(f"[ROBUSTE-BENACHRICHTIGUNG] Versuche erneut...")
+                    continue
+                else:
+                    print(f"[ROBUSTE-BENACHRICHTIGUNG] FEHLER: Alle {max_retries} Versuche fehlgeschlagen")
+                    raise e
+        
+    except Exception as e:
+        print(f"[ROBUSTE-BENACHRICHTIGUNG] KRITISCHER FEHLER: {e}")
+        print(f"   Fehlertyp: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
+        print(f"{'='*80}\n")
+        
+        # Fehler bei Benachrichtigung sollte nicht die Angebotserstellung blockieren
+        return False
+
+
 class QuoteRejectRequest(BaseModel):
     rejection_reason: Optional[str] = None
 
@@ -91,6 +195,9 @@ async def create_new_quote(
     quote_update = QuoteUpdate(status=QuoteStatus.SUBMITTED)
     quote = await update_quote(db, quote.id, quote_update)
     
+    # ROBUSTE BENACHRICHTIGUNGSLÖSUNG - Mehrfache Sicherheit
+    await _ensure_quote_notification_sent(db, quote)
+    
     return quote
 
 
@@ -129,19 +236,26 @@ async def read_quotes_for_milestone(
     db: AsyncSession = Depends(get_db),
 ):
     """Holt alle Angebote für ein bestimmtes Gewerk"""
-    user_id = getattr(current_user, 'id', 0)
-    user_type = getattr(current_user, 'user_type', '')
-    user_role = getattr(current_user, 'user_role', '')
-    user_email = getattr(current_user, 'email', '')
-    
-    # DEBUG: Ausgabe der Benutzer-Informationen
-    print(f"[DEBUG] DEBUG quotes/milestone/{milestone_id}: user_id={user_id}, user_type='{user_type}', user_role='{user_role}', user_email='{user_email}'")
-    
-    # TEMPORÄR: Alle Benutzer sehen alle Angebote (für Debugging)
-    quotes = await get_quotes_for_milestone(db, milestone_id)
-    print(f"[SUCCESS] DEBUG: Lade alle {len(quotes)} Angebote für Gewerk {milestone_id} (ohne Filterung)")
-    
-    return quotes
+    try:
+        user_id = getattr(current_user, 'id', 0)
+        user_type = getattr(current_user, 'user_type', '')
+        user_role = getattr(current_user, 'user_role', '')
+        user_email = getattr(current_user, 'email', '')
+        
+        # DEBUG: Ausgabe der Benutzer-Informationen
+        print(f"[DEBUG] DEBUG quotes/milestone/{milestone_id}: user_id={user_id}, user_type='{user_type}', user_role='{user_role}', user_email='{user_email}'")
+        
+        # TEMPORÄR: Alle Benutzer sehen alle Angebote (für Debugging)
+        quotes = await get_quotes_for_milestone(db, milestone_id)
+        print(f"[SUCCESS] DEBUG: Lade alle {len(quotes)} Angebote für Gewerk {milestone_id} (ohne Filterung)")
+        
+        return quotes
+    except Exception as e:
+        print(f"[ERROR] Fehler beim Laden der Angebote für Milestone {milestone_id}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        # Return empty list instead of raising exception to prevent 500 error
+        return []
 
 
 @router.post("/milestone/{milestone_id}/mock", response_model=List[QuoteForMilestone])
@@ -235,6 +349,10 @@ async def submit_quote_endpoint(
         )
     
     submitted_quote = await submit_quote(db, quote_id)
+    
+    # ROBUSTE BENACHRICHTIGUNGSLÖSUNG - Auch bei nachträglicher Einreichung
+    await _ensure_quote_notification_sent(db, submitted_quote)
+    
     return submitted_quote
 
 

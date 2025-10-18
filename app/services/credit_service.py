@@ -2,7 +2,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update, and_, func
 from sqlalchemy.orm import selectinload
 from typing import List, Optional, Dict, Tuple, Any
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import logging
 
 from ..models.user_credits import UserCredits, PlanStatus
@@ -207,7 +207,7 @@ class CreditService:
         old_credits = user_credits.credits
         user_credits.credits -= CreditService.DAILY_CREDIT_DEDUCTION
         user_credits.total_pro_days += 1
-        user_credits.last_daily_deduction = datetime.now()
+        user_credits.last_daily_deduction = datetime.now(timezone.utc)
         
         # Prüfe ob Credits aufgebraucht sind
         if user_credits.credits <= 0:
@@ -642,10 +642,16 @@ class CreditService:
         
         for user_credits in active_pro_users:
             try:
+                # Prüfe ob heute bereits ein Credit abgezogen wurde
+                if user_credits.has_daily_deduction_today():
+                    logger.info(f"User {user_credits.user_id} hat heute bereits einen Credit-Abzug erhalten - überspringe")
+                    continue
+                
                 # Verarbeite täglichen Abzug
                 old_credits = user_credits.credits
                 user_credits.credits -= CreditService.DAILY_CREDIT_DEDUCTION
                 user_credits.total_pro_days += 1
+                user_credits.last_daily_deduction = datetime.now(timezone.utc)
                 
                 # Prüfe ob Credits aufgebraucht sind
                 if user_credits.credits <= 0:

@@ -284,7 +284,7 @@ class NotificationService:
         project_name = project.name if project else "Unbekanntes Projekt"
         
         # Erstelle message mit Fallback-Werten
-        message = f"Ihre Ressource wurde der Ausschreibung '{trade_title}' im Projekt '{project_name}' zugeordnet."
+        message = f"Deine Ressource wurde der Ausschreibung '{trade_title}' im Projekt '{project_name}' zugeordnet."
         
         notification = Notification(
             recipient_id=service_provider_id,
@@ -386,7 +386,7 @@ class NotificationService:
             type=NotificationType.TENDER_INVITATION,
             priority=NotificationPriority.URGENT,
             title=f"Einladung zur Angebotsabgabe",
-            message=f"Sie wurden eingeladen, ein Angebot für '{allocation.trade.title if allocation.trade else 'Unbekanntes Gewerk'}' im Projekt '{project.name if project else 'Unbekanntes Projekt'}' abzugeben.{deadline_text}",
+            message=f"Du wurdest eingeladen, ein Angebot für '{allocation.trade.title if allocation.trade else 'Unbekanntes Gewerk'}' im Projekt '{project.name if project else 'Unbekanntes Projekt'}' abzugeben.{deadline_text}",
             data=json.dumps(notification_data),
             related_project_id=project.id if project else None,
             related_milestone_id=allocation.trade_id
@@ -711,6 +711,126 @@ class NotificationService:
         return notifications
     
     @staticmethod
+    async def create_milestone_completed_notification(
+        db: AsyncSession,
+        milestone_id: int
+    ) -> Optional[Notification]:
+        """
+        Erstellt eine Benachrichtigung für den Dienstleister über die finale Abnahme eines Gewerks
+        
+        Args:
+            db: Datenbank-Session
+            milestone_id: ID des abgeschlossenen Milestones/Gewerks
+            
+        Returns:
+            Notification oder None wenn kein Dienstleister gefunden wurde
+        """
+        try:
+            # Lade Milestone mit allen relevanten Daten
+            from ..models.milestone import Milestone
+            from ..models.project import Project
+            from ..models.user import User
+            from ..models.quote import Quote
+            
+            result = await db.execute(
+                select(Milestone)
+                .options(
+                    selectinload(Milestone.project),
+                    selectinload(Milestone.quotes)
+                )
+                .where(Milestone.id == milestone_id)
+            )
+            milestone = result.scalar_one_or_none()
+            
+            if not milestone:
+                raise ValueError(f"Milestone mit ID {milestone_id} nicht gefunden")
+            
+            # Finde den Dienstleister mit dem akzeptierten Angebot
+            service_provider_id = None
+            accepted_quote = None
+            
+            # Suche nach akzeptiertem Angebot
+            for quote in milestone.quotes:
+                if quote.status.value == "accepted":
+                    service_provider_id = quote.service_provider_id
+                    accepted_quote = quote
+                    break
+            
+            # Falls kein akzeptiertes Angebot gefunden, nimm das erste verfügbare
+            if not service_provider_id and milestone.quotes:
+                accepted_quote = milestone.quotes[0]
+                service_provider_id = accepted_quote.service_provider_id
+            
+            if not service_provider_id:
+                print(f"[WARNING] Kein Dienstleister für Milestone {milestone_id} gefunden")
+                return None
+            
+            # Lade Dienstleister-Informationen
+            sp_result = await db.execute(
+                select(User).where(User.id == service_provider_id)
+            )
+            service_provider = sp_result.scalar_one_or_none()
+            
+            # Erstelle Dienstleister Name
+            service_provider_name = "Unbekannter Dienstleister"
+            if service_provider:
+                if service_provider.company_name:
+                    service_provider_name = service_provider.company_name
+                else:
+                    service_provider_name = f"{service_provider.first_name or ''} {service_provider.last_name or ''}".strip()
+                    if not service_provider_name:
+                        service_provider_name = f"Dienstleister #{service_provider.id}"
+            
+            # Projekt-Name
+            project_name = milestone.project.name if milestone.project else "Unbekanntes Projekt"
+            
+            # Erstelle Direktverlinkung zur Ausschreibung
+            # Frontend-URL für das Gewerk (angenommen, dass es eine entsprechende Route gibt)
+            direct_link = f"/project/{milestone.project_id}/milestone/{milestone_id}"
+            
+            # Erstelle Benachrichtigungsdaten
+            notification_data = {
+                "milestone_id": milestone_id,
+                "milestone_title": milestone.title,
+                "project_id": milestone.project_id,
+                "project_name": project_name,
+                "service_provider_id": service_provider_id,
+                "service_provider_name": service_provider_name,
+                "completion_status": "completed",
+                "completion_date": milestone.completed_at.isoformat() if milestone.completed_at else None,
+                "direct_link": direct_link,
+                "quote_amount": accepted_quote.total_amount if accepted_quote else None,
+                "currency": accepted_quote.currency if accepted_quote else "CHF"
+            }
+            
+            # Erstelle Benachrichtigung
+            notification = Notification(
+                recipient_id=service_provider_id,
+                type=NotificationType.MILESTONE_COMPLETED,
+                priority=NotificationPriority.HIGH,
+                title=f"Gewerk abgeschlossen: {milestone.title}",
+                message=f"Das Gewerk '{milestone.title}' im Projekt '{project_name}' wurde erfolgreich abgenommen. Du kannst jetzt deine Rechnung stellen.",
+                data=json.dumps(notification_data),
+                related_milestone_id=milestone_id,
+                related_project_id=milestone.project_id,
+                is_read=False,
+                is_acknowledged=False,
+                created_at=datetime.utcnow()
+            )
+            
+            db.add(notification)
+            await db.commit()
+            await db.refresh(notification)
+            
+            print(f"[SUCCESS] Benachrichtigung für abgeschlossenes Gewerk erstellt: Milestone {milestone_id}, Service Provider {service_provider_id}")
+            return notification
+            
+        except Exception as e:
+            print(f"[ERROR] Fehler beim Erstellen der Gewerk-Abschluss-Benachrichtigung: {e}")
+            await db.rollback()
+            return None
+
+    @staticmethod
     async def create_acceptance_with_defects_notification(
         db: AsyncSession,
         milestone_id: int,
@@ -784,7 +904,7 @@ class NotificationService:
                 type=NotificationType.ACCEPTANCE_WITH_DEFECTS,
                 priority=NotificationPriority.HIGH,
                 title=f"Abnahme unter Vorbehalt: {milestone.title}",
-                message=f"Das Gewerk '{milestone.title}' im Projekt '{project_name}' wurde von {bautraeger_name} unter Vorbehalt abgenommen. Bitte überprüfen Sie die dokumentierten Mängel und beheben Sie diese zeitnah.",
+                message=f"Das Gewerk '{milestone.title}' im Projekt '{project_name}' wurde von {bautraeger_name} unter Vorbehalt abgenommen. Bitte überprüfe die dokumentierten Mängel und behebe diese zeitnah.",
                 data=json.dumps(notification_data),
                 related_milestone_id=milestone_id,
                 related_project_id=milestone.project_id,
@@ -802,3 +922,248 @@ class NotificationService:
             print(f"[ERROR] Fehler beim Erstellen der Abnahme-unter-Vorbehalt-Benachrichtigung: {e}")
             await db.rollback()
             raise e
+    
+    @staticmethod
+    async def create_invoice_submitted_notification(
+        db: AsyncSession,
+        invoice_id: int
+    ) -> Optional[Notification]:
+        """
+        Erstellt eine Benachrichtigung für den Bauträger über die eingereichte Rechnung
+        
+        Args:
+            db: Datenbank-Session
+            invoice_id: ID der eingereichten Rechnung
+            
+        Returns:
+            Notification oder None bei Fehler
+        """
+        try:
+            # Lade Invoice mit allen relevanten Daten
+            from ..models.invoice import Invoice
+            from ..models.milestone import Milestone
+            from ..models.project import Project
+            from ..models.user import User
+            
+            result = await db.execute(
+                select(Invoice)
+                .options(
+                    selectinload(Invoice.milestone).selectinload(Milestone.project),
+                    selectinload(Invoice.service_provider)
+                )
+                .where(Invoice.id == invoice_id)
+            )
+            invoice = result.scalar_one_or_none()
+            
+            if not invoice:
+                raise ValueError(f"Invoice mit ID {invoice_id} nicht gefunden")
+            
+            # Lade Projekt-Details
+            project = None
+            bautraeger_id = None
+            if invoice.milestone and invoice.milestone.project:
+                project = invoice.milestone.project
+                bautraeger_id = project.owner_id
+            
+            if not bautraeger_id:
+                print(f"[WARNING] Kein Bauträger für Invoice {invoice_id} gefunden")
+                return None
+            
+            # Lade Bauträger-Informationen
+            bautraeger_result = await db.execute(
+                select(User).where(User.id == bautraeger_id)
+            )
+            bautraeger = bautraeger_result.scalar_one_or_none()
+            
+            # Erstelle Bauträger Name
+            bautraeger_name = "Unbekannter Bauträger"
+            if bautraeger:
+                if bautraeger.company_name:
+                    bautraeger_name = bautraeger.company_name
+                else:
+                    bautraeger_name = f"{bautraeger.first_name or ''} {bautraeger.last_name or ''}".strip()
+                    if not bautraeger_name:
+                        bautraeger_name = f"Bauträger #{bautraeger.id}"
+            
+            # Erstelle Dienstleister Name
+            service_provider_name = "Unbekannter Dienstleister"
+            if invoice.service_provider:
+                if invoice.service_provider.company_name:
+                    service_provider_name = invoice.service_provider.company_name
+                else:
+                    service_provider_name = f"{invoice.service_provider.first_name or ''} {invoice.service_provider.last_name or ''}".strip()
+                    if not service_provider_name:
+                        service_provider_name = f"Dienstleister #{invoice.service_provider_id}"
+            
+            # Projekt-Name
+            project_name = project.name if project else "Unbekanntes Projekt"
+            milestone_title = invoice.milestone.title if invoice.milestone else "Unbekanntes Gewerk"
+            
+            # Erstelle Direktverlinkung zum Abnahme-Tab
+            # Format: /project/{project_id}/milestone/{milestone_id}?tab=acceptance
+            direct_link = f"/project/{project.id}/milestone/{invoice.milestone_id}?tab=acceptance"
+            
+            # Erstelle Benachrichtigungsdaten
+            notification_data = {
+                "invoice_id": invoice_id,
+                "invoice_number": invoice.invoice_number,
+                "milestone_id": invoice.milestone_id,
+                "milestone_title": milestone_title,
+                "project_id": project.id if project else None,
+                "project_name": project_name,
+                "service_provider_id": invoice.service_provider_id,
+                "service_provider_name": service_provider_name,
+                "total_amount": float(invoice.total_amount) if invoice.total_amount else 0.0,
+                "currency": invoice.currency or "CHF",
+                "invoice_date": invoice.invoice_date.isoformat() if invoice.invoice_date else None,
+                "due_date": invoice.due_date.isoformat() if invoice.due_date else None,
+                "direct_link": direct_link,
+                "tradeId": invoice.milestone_id,  # Für Frontend-Kompatibilität
+                "tradeTitle": milestone_title,  # Für Frontend-Kompatibilität
+                "projectName": project_name,  # Für Frontend-Kompatibilität
+                "showAcceptanceTab": True  # Direkter Hinweis für Frontend, den Abnahme-Tab zu öffnen
+            }
+            
+            # Erstelle Benachrichtigung
+            notification = Notification(
+                recipient_id=bautraeger_id,
+                type=NotificationType.INVOICE_SUBMITTED,
+                priority=NotificationPriority.HIGH,
+                title=f"Rechnung eingereicht: {milestone_title}",
+                message=f"{service_provider_name} hat eine Rechnung für das Gewerk '{milestone_title}' im Projekt '{project_name}' eingereicht. Betrag: {invoice.total_amount} {invoice.currency or 'CHF'}. Bitte prüfe und bezahle die Rechnung.",
+                data=json.dumps(notification_data),
+                related_milestone_id=invoice.milestone_id,
+                related_project_id=project.id if project else None,
+                is_read=False,
+                is_acknowledged=False,
+                created_at=datetime.utcnow()
+            )
+            
+            db.add(notification)
+            await db.commit()
+            await db.refresh(notification)
+            
+            print(f"[SUCCESS] Benachrichtigung für eingereichte Rechnung erstellt: Invoice {invoice_id}, Bauträger {bautraeger_id}")
+            return notification
+            
+        except Exception as e:
+            print(f"[ERROR] Fehler beim Erstellen der Rechnungs-Benachrichtigung: {e}")
+            await db.rollback()
+            return None
+
+    @staticmethod
+    async def create_invoice_paid_notification(
+        db: AsyncSession,
+        invoice_id: int
+    ) -> Optional[Notification]:
+        """
+        Erstellt eine Benachrichtigung für den Dienstleister über die bezahlte Rechnung
+        """
+        try:
+            # Lade Invoice mit allen relevanten Daten
+            from ..models.invoice import Invoice
+            from ..models.milestone import Milestone
+            from ..models.project import Project
+            from ..models.user import User
+            
+            result = await db.execute(
+                select(Invoice)
+                .options(
+                    selectinload(Invoice.milestone).selectinload(Milestone.project),
+                    selectinload(Invoice.service_provider)
+                )
+                .where(Invoice.id == invoice_id)
+            )
+            invoice = result.scalar_one_or_none()
+            
+            if not invoice:
+                raise ValueError(f"Invoice mit ID {invoice_id} nicht gefunden")
+            
+            # Lade Projekt-Details
+            project = None
+            bautraeger_id = None
+            if invoice.milestone and invoice.milestone.project:
+                project = invoice.milestone.project
+                bautraeger_id = project.owner_id
+            
+            if not bautraeger_id:
+                print(f"[WARNING] Kein Bauträger für Invoice {invoice_id} gefunden")
+                return None
+            
+            # Lade Bauträger-Informationen
+            bautraeger_result = await db.execute(
+                select(User).where(User.id == bautraeger_id)
+            )
+            bautraeger = bautraeger_result.scalar_one_or_none()
+            
+            # Erstelle Bauträger Name
+            bautraeger_name = "Unbekannter Bauträger"
+            if bautraeger:
+                if bautraeger.company_name:
+                    bautraeger_name = bautraeger.company_name
+                else:
+                    bautraeger_name = f"{bautraeger.first_name or ''} {bautraeger.last_name or ''}".strip()
+                    if not bautraeger_name:
+                        bautraeger_name = f"Bauträger #{bautraeger.id}"
+            
+            # Erstelle Dienstleister Name
+            service_provider_name = "Unbekannter Dienstleister"
+            if invoice.service_provider:
+                if invoice.service_provider.company_name:
+                    service_provider_name = invoice.service_provider.company_name
+                else:
+                    service_provider_name = f"{invoice.service_provider.first_name or ''} {invoice.service_provider.last_name or ''}".strip()
+                    if not service_provider_name:
+                        service_provider_name = f"Dienstleister #{invoice.service_provider.id}"
+            
+            # Erstelle Direktverlinkung zur Rechnungsseite
+            direct_link = "/invoices"
+            
+            # Erstelle Benachrichtigungsdaten
+            notification_data = {
+                "invoice_id": invoice_id,
+                "invoice_number": invoice.invoice_number,
+                "milestone_id": invoice.milestone_id,
+                "milestone_title": invoice.milestone.title if invoice.milestone else "Unbekanntes Gewerk",
+                "project_id": project.id if project else None,
+                "project_name": project.name if project else "Unbekanntes Projekt",
+                "service_provider_id": invoice.service_provider_id,
+                "service_provider_name": service_provider_name,
+                "bautraeger_id": bautraeger_id,
+                "bautraeger_name": bautraeger_name,
+                "total_amount": float(invoice.total_amount) if invoice.total_amount else 0.0,
+                "currency": "CHF",
+                "invoice_date": invoice.invoice_date.isoformat() if invoice.invoice_date else None,
+                "paid_at": invoice.paid_at.isoformat() if invoice.paid_at else None,
+                "payment_reference": invoice.payment_reference,
+                "direct_link": direct_link,
+                "tradeId": invoice.milestone_id,
+                "tradeTitle": invoice.milestone.title if invoice.milestone else "Unbekanntes Gewerk",
+                "projectName": project.name if project else "Unbekanntes Projekt"
+            }
+            
+            notification = Notification(
+                recipient_id=invoice.service_provider_id,
+                type=NotificationType.PAYMENT_RECEIVED,
+                priority=NotificationPriority.HIGH,
+                title=f"Rechnung bezahlt: {invoice.milestone.title if invoice.milestone else 'Unbekanntes Gewerk'}",
+                message=f"Der Bauträger {bautraeger_name} hat deine Rechnung für das Gewerk '{invoice.milestone.title if invoice.milestone else 'Unbekanntes Gewerk'}' im Projekt '{project.name if project else 'Unbekanntes Projekt'}' als bezahlt markiert. Betrag: {invoice.total_amount} CHF. Direktlink: {direct_link}",
+                data=json.dumps(notification_data),
+                related_milestone_id=invoice.milestone_id,
+                related_project_id=project.id if project else None,
+                is_read=False,
+                is_acknowledged=False,
+                created_at=datetime.utcnow()
+            )
+            
+            db.add(notification)
+            await db.commit()
+            await db.refresh(notification)
+            
+            print(f"[SUCCESS] Payment-Received-Benachrichtigung erstellt: ID {notification.id} für Dienstleister {invoice.service_provider_id}")
+            return notification
+            
+        except Exception as e:
+            print(f"[ERROR] Fehler beim Erstellen der Payment-Received-Benachrichtigung: {e}")
+            await db.rollback()
+            return None

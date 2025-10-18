@@ -620,6 +620,14 @@ class AcceptanceService:
                         milestone.completed_at = datetime.now()
                         print(f"[SUCCESS] Milestone {milestone.title} als abgenommen markiert")
                         
+                        # Sende Benachrichtigung an den Dienstleister über die finale Abnahme
+                        try:
+                            from .notification_service import NotificationService
+                            await NotificationService.create_milestone_completed_notification(db, milestone.id)
+                        except Exception as e:
+                            print(f"[WARNING] Fehler beim Erstellen der Abnahme-Benachrichtigung: {e}")
+                            # Fehler bei Benachrichtigung sollte nicht die Abnahme blockieren
+                        
                         # Inkrementiere completed_offers_count für alle betroffenen Dienstleister
                         try:
                             from .milestone_completion_service import MilestoneCompletionService
@@ -628,6 +636,35 @@ class AcceptanceService:
                         except Exception as e:
                             print(f"[WARNING] Fehler beim Inkrementieren der completed_offers_count: {e}")
                             # Fehler nicht kritisch, da Hauptfunktion (Abnahme) bereits erfolgreich
+                        
+                        # Vergebe Credits an Bauträger für Projekt-Abschluss
+                        try:
+                            from .credit_service import CreditService
+                            from ..models.credit_event import CreditEventType
+                            
+                            # Hole Projekt um Owner (Bauträger) zu ermitteln
+                            project_result = await db.execute(
+                                select(Project).where(Project.id == milestone.project_id)
+                            )
+                            project = project_result.scalar_one_or_none()
+                            
+                            if project:
+                                # Hole Owner-ID
+                                owner_id = project.owner.id if hasattr(project.owner, 'id') else project.owner_id
+                                
+                                # Vergebe Credits für Projekt-Abschluss
+                                await CreditService.add_credits_for_activity(
+                                    db=db,
+                                    user_id=owner_id,
+                                    event_type=CreditEventType.PROJECT_COMPLETED,
+                                    description=f"Projekt abgeschlossen: {milestone.title}",
+                                    related_entity_type="milestone",
+                                    related_entity_id=milestone.id
+                                )
+                                print(f"[SUCCESS] Credits für Projekt-Abschluss an Bauträger {owner_id} vergeben")
+                        except Exception as e:
+                            print(f"[WARNING] Fehler bei Credit-Vergabe für Projekt-Abschluss: {e}")
+                            # Fehler bei Credit-Vergabe sollte nicht die Abnahme blockieren
                     else:
                         milestone.completion_status = 'completed_with_defects'
                         print(f"[WARNING] Milestone {milestone.title} als 'abgenommen unter Vorbehalt' markiert")

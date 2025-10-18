@@ -3070,7 +3070,11 @@ END:VCALENDAR`;
                   // 1. Heute ist der Besichtigungstag ODER die Besichtigung war bereits
                   // 2. Dienstleister hat den Termin zugesagt
                   // 3. Noch kein Angebot wurde angenommen
-                  if ((isInspectionDay || isAfterInspection) && hasAcceptedAppointment && !acceptedQuote) {
+                  // 4. Der aktuelle User hat noch kein Angebot abgegeben
+                  if ((isInspectionDay || isAfterInspection) && 
+                      hasAcceptedAppointment && 
+                      !acceptedQuote && 
+                      !existingQuotes.some(q => q.service_provider_id === user?.id)) {
                     return (
                       <div className="mt-4 p-4 bg-gradient-to-r from-[#ffbd59]/10 to-[#ffa726]/10 border border-[#ffbd59]/30 rounded-xl">
                         <div className="flex items-center justify-between">

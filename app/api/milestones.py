@@ -47,6 +47,7 @@ async def create_milestone_with_documents(
     category: str = Form(...),
     priority: str = Form("medium"),
     planned_date: str = Form(...),
+    submission_deadline: str = Form(None),  # Angebotsfrist (optional)
     notes: str = Form(""),
     requires_inspection: bool = Form(False),
     project_id: int = Form(...),
@@ -111,6 +112,7 @@ async def create_milestone_with_documents(
             "category": category.strip(),
             "priority": priority,
             "planned_date": datetime.fromisoformat(planned_date).date(),
+            "submission_deadline": datetime.fromisoformat(submission_deadline).date() if submission_deadline and submission_deadline.strip() else None,
             "notes": notes.strip() if notes else "",
             "requires_inspection": requires_inspection,
             "project_id": project_id,
@@ -164,7 +166,7 @@ async def read_all_milestones(
                    start_date, end_date, progress_percentage, contractor, 
                    is_critical, requires_inspection, has_unread_messages_bautraeger, 
                    has_unread_messages_dienstleister, has_unread_messages, project_id, 
-                   created_at, updated_at
+                   created_at, updated_at, submission_deadline
             FROM milestones 
             ORDER BY created_at DESC
         """))
@@ -198,6 +200,7 @@ async def read_all_milestones(
                 "project_id": row[20],
                 "created_at": row[21] if row[21] else None,
                 "updated_at": row[22] if row[22] else None,
+                "submission_deadline": row[23] if row[23] else None,
                 "documents": [],  # Vereinfacht
                 "quote_stats": {
                     "total_quotes": 0,  # TODO: Quotes laden wenn nötig
@@ -206,6 +209,10 @@ async def read_all_milestones(
                     "rejected_quotes": 0,
                 }
             }
+            
+            # DEBUG: Log submission_deadline für ID 1 und 4
+            if milestone_dict["id"] in [1, 4]:
+                print(f"[DEBUG] read_all_milestones - Milestone {milestone_dict['id']}: submission_deadline = {milestone_dict['submission_deadline']} (type: {type(milestone_dict['submission_deadline'])})")
             
             # Erstelle MilestoneSummary mit sicheren Defaults
             try:
@@ -218,6 +225,7 @@ async def read_all_milestones(
                     priority=milestone_dict.get("priority", "medium"),
                     category=milestone_dict.get("category"),
                     planned_date=milestone_dict.get("planned_date"),  # Verwende String direkt
+                    submission_deadline=milestone_dict.get("submission_deadline"),  # WICHTIG: submission_deadline hinzufügen
                     actual_date=None,
                     start_date=milestone_dict.get("start_date"),
                     end_date=milestone_dict.get("end_date"),
@@ -268,7 +276,7 @@ async def read_milestones(
                    start_date, end_date, progress_percentage, contractor, 
                    is_critical, requires_inspection, has_unread_messages_bautraeger, 
                    has_unread_messages_dienstleister, has_unread_messages, project_id, 
-                   created_at, updated_at
+                   created_at, updated_at, submission_deadline
             FROM milestones 
             WHERE project_id = :project_id 
             ORDER BY planned_date
@@ -303,6 +311,7 @@ async def read_milestones(
                 "project_id": row[20],
                 "created_at": row[21] if row[21] else None,
                 "updated_at": row[22] if row[22] else None,
+                "submission_deadline": row[23] if row[23] else None,
                 "documents": [],  # Vereinfacht
                 "quote_stats": {
                     "total_quotes": 0,  # TODO: Quotes laden wenn nötig
@@ -347,6 +356,7 @@ async def read_milestones(
                     priority=milestone_dict.get("priority", "medium"),
                     category=milestone_dict.get("category"),
                     planned_date=milestone_dict.get("planned_date"),  # Verwende String direkt
+                    submission_deadline=milestone_dict.get("submission_deadline"),  # WICHTIG: submission_deadline hinzufügen
                     actual_date=milestone_dict.get("actual_date"),
                     start_date=milestone_dict.get("start_date"),
                     end_date=milestone_dict.get("end_date"),
