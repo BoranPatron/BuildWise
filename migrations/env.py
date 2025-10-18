@@ -62,9 +62,10 @@ def run_migrations_online() -> None:
         # Configure SSL for PostgreSQL connections
         connect_args = {}
         if DATABASE_URL.startswith("postgresql"):
-            # For Render's internal network, disable SSL (secure within private network)
+            # Render requires SSL, but doesn't validate certificates for internal connections
+            # Use 'allow' to accept SSL without strict certificate validation
             connect_args = {
-                "sslmode": "disable",  # Disable SSL for internal Render connections
+                "sslmode": "allow",  # Accept SSL but don't require certificate validation
                 "connect_timeout": 10
             }
         
