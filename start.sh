@@ -23,15 +23,29 @@ else
     echo "[SUCCESS] DATABASE_URL is configured"
 fi
 
-# Ensure storage directories exist
+# Ensure storage directories exist (if persistent disk is mounted)
 echo "[INFO] Creating storage directories..."
-mkdir -p /var/data/storage/uploads
-mkdir -p /var/data/storage/pdfs/invoices
-mkdir -p /var/data/storage/temp
-mkdir -p /var/data/storage/cache
-mkdir -p /var/data/storage/company_logos
-chmod -R 755 /var/data/storage
-echo "[SUCCESS] Storage directories created"
+if mkdir -p /var/data/storage 2>/dev/null; then
+    mkdir -p /var/data/storage/uploads
+    mkdir -p /var/data/storage/pdfs/invoices
+    mkdir -p /var/data/storage/temp
+    mkdir -p /var/data/storage/cache
+    mkdir -p /var/data/storage/company_logos
+    chmod -R 755 /var/data/storage
+    echo "[SUCCESS] Storage directories created at /var/data/storage"
+else
+    echo "[WARNING] /var/data not accessible - using temporary storage"
+    echo "[WARNING] Files will NOT persist across deployments!"
+    echo "[WARNING] Upgrade to Starter plan and add Persistent Disk for production use"
+    # Fallback to local storage for free tier
+    mkdir -p ./storage/uploads
+    mkdir -p ./storage/pdfs/invoices
+    mkdir -p ./storage/temp
+    mkdir -p ./storage/cache
+    mkdir -p ./storage/company_logos
+    chmod -R 755 ./storage
+    echo "[INFO] Using temporary storage at ./storage"
+fi
 
 # Run database migrations
 echo "[INFO] Running database migrations..."
