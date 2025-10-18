@@ -23,28 +23,33 @@ else
     echo "[SUCCESS] DATABASE_URL is configured"
 fi
 
-# Ensure storage directories exist (if persistent disk is mounted)
+# Ensure storage directories exist
 echo "[INFO] Creating storage directories..."
-if mkdir -p /var/data/storage 2>/dev/null; then
-    mkdir -p /var/data/storage/uploads
-    mkdir -p /var/data/storage/pdfs/invoices
-    mkdir -p /var/data/storage/temp
-    mkdir -p /var/data/storage/cache
-    mkdir -p /var/data/storage/company_logos
-    chmod -R 755 /var/data/storage
-    echo "[SUCCESS] Storage directories created at /var/data/storage"
+
+# Try to use persistent disk first, fallback to temporary storage
+if [ -w "/var/data" ]; then
+    # Persistent disk is available and writable
+    STORAGE_BASE="/var/data/storage"
+    echo "[INFO] Using persistent disk: ${STORAGE_BASE}"
+    mkdir -p ${STORAGE_BASE}/uploads
+    mkdir -p ${STORAGE_BASE}/pdfs/invoices
+    mkdir -p ${STORAGE_BASE}/temp
+    mkdir -p ${STORAGE_BASE}/cache
+    mkdir -p ${STORAGE_BASE}/company_logos
+    chmod -R 755 ${STORAGE_BASE}
+    echo "[SUCCESS] Persistent storage directories created"
 else
-    echo "[WARNING] /var/data not accessible - using temporary storage"
-    echo "[WARNING] Files will NOT persist across deployments!"
-    echo "[WARNING] Upgrade to Starter plan and add Persistent Disk for production use"
-    # Fallback to local storage for free tier
-    mkdir -p ./storage/uploads
-    mkdir -p ./storage/pdfs/invoices
-    mkdir -p ./storage/temp
-    mkdir -p ./storage/cache
-    mkdir -p ./storage/company_logos
-    chmod -R 755 ./storage
-    echo "[INFO] Using temporary storage at ./storage"
+    # Fallback to temporary storage (ephemeral, will be lost on restart)
+    STORAGE_BASE="/tmp/storage"
+    echo "[WARNING] /var/data not writable - using temporary storage: ${STORAGE_BASE}"
+    echo "[WARNING] Files will be LOST on service restart! Add a persistent disk to fix this."
+    mkdir -p ${STORAGE_BASE}/uploads
+    mkdir -p ${STORAGE_BASE}/pdfs/invoices
+    mkdir -p ${STORAGE_BASE}/temp
+    mkdir -p ${STORAGE_BASE}/cache
+    mkdir -p ${STORAGE_BASE}/company_logos
+    chmod -R 755 ${STORAGE_BASE}
+    echo "[SUCCESS] Temporary storage directories created"
 fi
 
 # Run database migrations

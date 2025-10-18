@@ -18,12 +18,22 @@ def get_storage_base_path() -> Path:
     
     Returns:
         Path: Storage base path
-            - Production (Render): /var/data/storage
+            - Production (Render with persistent disk): /var/data/storage
+            - Production (Render without persistent disk): /tmp/storage (ephemeral)
             - Development: ./storage
     """
     if is_production():
-        # Render persistent disk is mounted at /var/data
-        base_path = Path("/var/data/storage")
+        # Try persistent disk first
+        persistent_disk = Path("/var/data/storage")
+        
+        # Check if persistent disk is available and writable
+        if persistent_disk.parent.exists() and os.access(persistent_disk.parent, os.W_OK):
+            base_path = persistent_disk
+        else:
+            # Fallback to temporary storage (ephemeral, lost on restart)
+            base_path = Path("/tmp/storage")
+            print("[WARNING] Persistent disk not available - using temporary storage")
+            print("[WARNING] Files will be LOST on service restart!")
     else:
         # Development: use local storage directory
         base_path = Path("storage")
