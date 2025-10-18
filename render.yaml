@@ -1,0 +1,83 @@
+# Render Blueprint for BuildWise Production Deployment
+# https://render.com/docs/blueprint-spec
+
+services:
+  # Backend Web Service (FastAPI)
+  - type: web
+    name: buildwise-api
+    env: python
+    region: frankfurt  # or oregon for US
+    plan: starter  # or standard/pro based on needs
+    branch: main
+    buildCommand: bash build.sh
+    startCommand: bash start.sh
+    healthCheckPath: /health
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.11.0
+      - key: ENVIRONMENT
+        value: production
+      - key: DEBUG
+        value: false
+      - key: RENDER
+        value: true
+      # Database URL is automatically provided by Render
+      - key: DATABASE_URL
+        fromDatabase:
+          name: buildwise-db
+          property: connectionString
+      - key: JWT_SECRET_KEY
+        generateValue: true  # Render will generate a secure random value
+      - key: JWT_ALGORITHM
+        value: HS256
+      - key: ACCESS_TOKEN_EXPIRE_MINUTES
+        value: 30
+      # Frontend URL - update after frontend is deployed
+      - key: FRONTEND_URL
+        value: https://buildwise-frontend.onrender.com
+      # CORS origins - update after frontend is deployed
+      - key: ALLOWED_ORIGINS
+        value: https://buildwise-frontend.onrender.com
+      # BuildWise Configuration
+      - key: BUILDWISE_FEE_PERCENTAGE
+        value: 4.7
+      - key: BUILDWISE_FEE_PHASE
+        value: production
+      - key: ENVIRONMENT_MODE
+        value: production
+      # Security settings
+      - key: BCRYPT_ROUNDS
+        value: 12
+      - key: MAX_LOGIN_ATTEMPTS
+        value: 5
+      # Stripe keys - add these in Render dashboard as sensitive values
+      - key: STRIPE_SECRET_KEY
+        sync: false  # Set manually in Render dashboard
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      # OAuth credentials - set manually in Render dashboard
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: MICROSOFT_CLIENT_ID
+        sync: false
+      - key: MICROSOFT_CLIENT_SECRET
+        sync: false
+    disk:
+      name: buildwise-storage
+      mountPath: /var/data
+      sizeGB: 1  # Start with 1GB, can be increased later
+    autoDeploy: true
+
+databases:
+  # PostgreSQL Database
+  - name: buildwise-db
+    databaseName: buildwise_main
+    user: buildwise_admin
+    region: frankfurt  # Same region as web service for low latency
+    plan: starter  # or standard based on needs
+    ipAllowList: []  # Empty = allow all (Render services can connect)
+

@@ -285,15 +285,19 @@ async def get_document_statistics(db: AsyncSession, project_id: int) -> dict:
 
 async def save_uploaded_file(file_content: bytes, filename: str, project_id: int) -> tuple[str, int]:
     """Speichert eine hochgeladene Datei und gibt den Pfad und die Größe zurück"""
-    # Erstelle Projektordner
-    upload_dir = Path(f"storage/uploads/project_{project_id}")
-    upload_dir.mkdir(parents=True, exist_ok=True)
+    from ..core.storage import get_project_upload_path, get_relative_path
     
-    # Generiere eindeutigen Dateinamen
+    # Get project upload directory (works in dev and production)
+    upload_dir = get_project_upload_path(project_id)
+    
+    # Generate file path
     file_path = upload_dir / filename
     
-    # Speichere Datei
+    # Save file
     async with aiofiles.open(file_path, 'wb') as f:
         await f.write(file_content)
     
-    return str(file_path), len(file_content) 
+    # Return relative path for database storage
+    relative_path = get_relative_path(file_path)
+    
+    return relative_path, len(file_content) 

@@ -26,7 +26,7 @@ def get_script_dir() -> Path:
 def print_banner():
     """Zeigt einen schönen Banner."""
     print("=" * 60)
-    print("🔄 BuildWise Database Auto-Reset")
+    print("BuildWise Database Auto-Reset")
     print("=" * 60)
 
 
@@ -41,13 +41,13 @@ async def clear_database_data(seed_admin: bool = True) -> None:
     script_dir = get_script_dir()
     db_path = script_dir / "buildwise.db"
 
-    print(f"📍 Arbeitsverzeichnis: {script_dir}")
-    print(f"🎯 Datenbank-Pfad: {db_path}")
+    print(f"[INFO] Arbeitsverzeichnis: {script_dir}")
+    print(f"[INFO] Datenbank-Pfad: {db_path}")
 
     # 1) Prüfen ob DB existiert
     if not db_path.exists():
-        print(f"❌ Datenbank nicht gefunden: {db_path}")
-        print("💡 Erstelle neue Datenbank mit Struktur...")
+        print(f"[ERROR] Datenbank nicht gefunden: {db_path}")
+        print("[INFO] Erstelle neue Datenbank mit Struktur...")
         await create_fresh_database()
         if seed_admin:
             await seed_minimal_admin()
@@ -58,7 +58,7 @@ async def clear_database_data(seed_admin: bool = True) -> None:
         from app.core.database import engine, optimize_sqlite_connection
         from app.models import Base  # noqa: F401 - import needed to register models
 
-        print("🧹 Lösche alle Daten (Struktur bleibt erhalten)...")
+        print("[INFO] Lösche alle Daten (Struktur bleibt erhalten)...")
         
         async with engine.begin() as conn:
             # Alle Tabellen-Namen ermitteln
@@ -73,9 +73,9 @@ async def clear_database_data(seed_admin: bool = True) -> None:
             fts_tables = [t for t in all_tables if t.endswith('_fts')]
             
             if not tables and not fts_tables:
-                print("ℹ️  Keine Tabellen gefunden - erstelle Struktur...")
+                print("[INFO]  Keine Tabellen gefunden - erstelle Struktur...")
                 await conn.run_sync(Base.metadata.create_all)
-                print("✅ Tabellen-Struktur erstellt")
+                print("[OK] Tabellen-Struktur erstellt")
             else:
                 # Foreign Key Constraints temporär deaktivieren
                 await conn.execute(text("PRAGMA foreign_keys = OFF"))
@@ -88,18 +88,18 @@ async def clear_database_data(seed_admin: bool = True) -> None:
                         count = result.rowcount or 0
                         deleted_count += count
                         if count > 0:
-                            print(f"   🗑️  {table}: {count} Einträge gelöscht")
+                            print(f"   [DEL]  {table}: {count} Einträge gelöscht")
                     except Exception as e:
-                        print(f"   ⚠️  Fehler bei Tabelle {table}: {e}")
+                        print(f"   [WARN]  Fehler bei Tabelle {table}: {e}")
                 
                 # FTS5-Tabellen behandeln
                 for fts_table in fts_tables:
                     try:
                         # FTS5-Tabellen mit Rebuild leeren
                         await conn.execute(text(f"INSERT INTO {fts_table}({fts_table}) VALUES('rebuild')"))
-                        print(f"   🔧 FTS5-Index für {fts_table} neu aufgebaut")
+                        print(f"   [FIX] FTS5-Index für {fts_table} neu aufgebaut")
                     except Exception as e:
-                        print(f"   ⚠️  Fehler bei FTS5-Tabelle {fts_table}: {e}")
+                        print(f"   [WARN]  Fehler bei FTS5-Tabelle {fts_table}: {e}")
                 
                 # Foreign Key Constraints wieder aktivieren
                 await conn.execute(text("PRAGMA foreign_keys = ON"))
@@ -107,23 +107,23 @@ async def clear_database_data(seed_admin: bool = True) -> None:
                 # SQLite-spezifische Bereinigung
                 await conn.execute(text("VACUUM"))
                 
-                print(f"✅ Insgesamt {deleted_count} Einträge aus {len(tables)} Tabellen gelöscht")
+                print(f"[OK] Insgesamt {deleted_count} Einträge aus {len(tables)} Tabellen gelöscht")
                 if fts_tables:
-                    print(f"🔧 {len(fts_tables)} FTS5-Indizes neu aufgebaut")
+                    print(f"[FIX] {len(fts_tables)} FTS5-Indizes neu aufgebaut")
 
         # 3) SQLite-Optimierungen anwenden
         try:
             await optimize_sqlite_connection()
-            print("⚡ SQLite-Optimierungen angewendet")
+            print("[OK] SQLite-Optimierungen angewendet")
         except Exception as e:
-            print(f"⚠️  SQLite-Optimierungen fehlgeschlagen: {e}")
+            print(f"[WARN]  SQLite-Optimierungen fehlgeschlagen: {e}")
 
     except ImportError as e:
-        print(f"❌ Konnte App-Module nicht importieren: {e}")
-        print("💡 Stelle sicher, dass du im BuildWise-Verzeichnis bist")
+        print(f"[ERROR] Konnte App-Module nicht importieren: {e}")
+        print("[INFO] Stelle sicher, dass du im BuildWise-Verzeichnis bist")
         raise
     except Exception as e:
-        print(f"❌ Fehler beim Leeren der Datenbank: {e}")
+        print(f"[ERROR] Fehler beim Leeren der Datenbank: {e}")
         raise
 
     # 4) Optional: Admin-User anlegen
@@ -139,17 +139,17 @@ async def create_fresh_database() -> None:
 
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
-            print("✅ Neue Datenbank mit vollständiger Struktur erstellt")
+            print("[OK] Neue Datenbank mit vollständiger Struktur erstellt")
 
         # SQLite-Optimierungen anwenden
         try:
             await optimize_sqlite_connection()
-            print("⚡ SQLite-Optimierungen angewendet")
+            print("[OK] SQLite-Optimierungen angewendet")
         except Exception as e:
-            print(f"⚠️  SQLite-Optimierungen fehlgeschlagen: {e}")
+            print(f"[WARN]  SQLite-Optimierungen fehlgeschlagen: {e}")
 
     except Exception as e:
-        print(f"❌ Fehler beim Erstellen der neuen Datenbank: {e}")
+        print(f"[ERROR] Fehler beim Erstellen der neuen Datenbank: {e}")
         raise
 
 
@@ -163,18 +163,18 @@ async def recreate_database_structure(seed_admin: bool = True) -> None:
     script_dir = get_script_dir()
     db_path = script_dir / "buildwise.db"
 
-    print(f"📍 Arbeitsverzeichnis: {script_dir}")
-    print(f"🎯 Datenbank-Pfad: {db_path}")
+    print(f"[INFO] Arbeitsverzeichnis: {script_dir}")
+    print(f"[INFO] Datenbank-Pfad: {db_path}")
 
     # 1) DB-Datei komplett löschen
     try:
         if db_path.exists():
             db_path.unlink()
-            print(f"🧹 Datenbank komplett gelöscht: {db_path.name}")
+            print(f"[INFO] Datenbank komplett gelöscht: {db_path.name}")
         else:
-            print(f"ℹ️  Keine bestehende Datenbank gefunden")
+            print(f"[INFO]  Keine bestehende Datenbank gefunden")
     except Exception as e:
-        print(f"❌ Konnte Datenbank nicht löschen: {e}")
+        print(f"[ERROR] Konnte Datenbank nicht löschen: {e}")
         raise
 
     # 2) Neue Datenbank mit Struktur erstellen
@@ -200,10 +200,10 @@ async def seed_minimal_admin() -> None:
             test_hash = get_password_hash("test")
             use_secure_hash = True
         except Exception as hash_error:
-            print(f"⚠️  Sichere Passwort-Hash-Funktion nicht verfügbar: {hash_error}")
-            print("💡 Verwende einfachen Hash für Admin-User")
+            print(f"[WARN]  Sichere Passwort-Hash-Funktion nicht verfügbar: {hash_error}")
+            print("[INFO] Verwende einfachen Hash für Admin-User")
             if "bcrypt" in str(hash_error).lower():
-                print("💡 Hinweis: bcrypt-Version könnte inkompatibel sein. Versuche: pip install 'bcrypt>=4.0.0'")
+                print("[INFO] Hinweis: bcrypt-Version könnte inkompatibel sein. Versuche: pip install 'bcrypt>=4.0.0'")
             use_secure_hash = False
 
         async with AsyncSessionLocal() as session:
@@ -214,7 +214,7 @@ async def seed_minimal_admin() -> None:
             existing = result.scalar_one_or_none()
             
             if existing:
-                print("ℹ️  Admin-User existiert bereits")
+                print("[INFO]  Admin-User existiert bereits")
                 return
 
             # Erstelle neuen Admin
@@ -234,19 +234,19 @@ async def seed_minimal_admin() -> None:
                 # Fallback: einfacher Hash (nur für Entwicklung!)
                 import hashlib
                 admin.hashed_password = hashlib.sha256("Admin123!ChangeMe".encode()).hexdigest()
-                print("⚠️  WARNUNG: Einfacher SHA256-Hash verwendet - nur für Entwicklung!")
+                print("[WARN]  WARNUNG: Einfacher SHA256-Hash verwendet - nur für Entwicklung!")
 
             session.add(admin)
             await session.commit()
-            print("👤 Admin-User erstellt:")
-            print("   📧 E-Mail: admin@buildwise.local")
-            print("   🔑 Passwort: Admin123!ChangeMe")
-            print("   ⚠️  Bitte Passwort nach dem ersten Login ändern!")
+            print("[USER] Admin-User erstellt:")
+            print("   [EMAIL] E-Mail: admin@buildwise.local")
+            print("   [KEY] Passwort: Admin123!ChangeMe")
+            print("   [WARN]  Bitte Passwort nach dem ersten Login ändern!")
 
     except Exception as e:
-        print(f"❌ Fehler beim Erstellen des Admin-Users: {e}")
+        print(f"[ERROR] Fehler beim Erstellen des Admin-Users: {e}")
         # Nicht kritisch - Datenbank ist trotzdem verwendbar
-        print("💡 Datenbank ist trotzdem einsatzbereit")
+        print("[INFO] Datenbank ist trotzdem einsatzbereit")
 
 
 def cleanup_storage(storage_path: Optional[Path] = None) -> None:
@@ -258,11 +258,11 @@ def cleanup_storage(storage_path: Optional[Path] = None) -> None:
         storage_path = get_script_dir() / "storage"
 
     if not storage_path.exists():
-        print(f"ℹ️  Kein Storage-Verzeichnis gefunden: {storage_path}")
+        print(f"[INFO]  Kein Storage-Verzeichnis gefunden: {storage_path}")
         return
 
     if not storage_path.is_dir():
-        print(f"⚠️  Storage-Pfad ist kein Verzeichnis: {storage_path}")
+        print(f"[WARN]  Storage-Pfad ist kein Verzeichnis: {storage_path}")
         return
 
     removed_files = 0
@@ -284,14 +284,14 @@ def cleanup_storage(storage_path: Optional[Path] = None) -> None:
                         # Ordner nicht leer - ignorieren
                         pass
             except Exception as e:
-                print(f"⚠️  Konnte nicht entfernen {item}: {e}")
+                print(f"[WARN]  Konnte nicht entfernen {item}: {e}")
 
-        print(f"🧹 Storage bereinigt:")
-        print(f"   📄 Dateien entfernt: {removed_files}")
-        print(f"   📁 Ordner entfernt: {removed_dirs}")
+        print(f"[INFO] Storage bereinigt:")
+        print(f"   [FILE] Dateien entfernt: {removed_files}")
+        print(f"   [DIR] Ordner entfernt: {removed_dirs}")
 
     except Exception as e:
-        print(f"❌ Fehler beim Bereinigen des Storage: {e}")
+        print(f"[ERROR] Fehler beim Bereinigen des Storage: {e}")
 
 
 def create_backup(db_path: Path) -> Optional[Path]:
@@ -307,10 +307,10 @@ def create_backup(db_path: Path) -> Optional[Path]:
     
     try:
         shutil.copy2(db_path, backup_path)
-        print(f"💾 Backup erstellt: {backup_path.name}")
+        print(f"[BACKUP] Backup erstellt: {backup_path.name}")
         return backup_path
     except Exception as e:
-        print(f"⚠️  Backup fehlgeschlagen: {e}")
+        print(f"[WARN]  Backup fehlgeschlagen: {e}")
         return None
 
 
@@ -372,7 +372,7 @@ Beispiele:
     db_path = script_dir / "buildwise.db"
     
     if not (script_dir / "app").exists():
-        print("❌ Fehler: Nicht im BuildWise-Verzeichnis!")
+        print("[ERROR] Fehler: Nicht im BuildWise-Verzeichnis!")
         print(f"   Aktuell: {script_dir}")
         print("   Erwartet: Verzeichnis mit 'app' Ordner")
         sys.exit(1)
@@ -390,7 +390,7 @@ Beispiele:
         seed_admin = not args.no_admin
         
         if args.recreate_structure:
-            print("⚠️  Struktur wird komplett neu erstellt...")
+            print("[WARN]  Struktur wird komplett neu erstellt...")
             await recreate_database_structure(seed_admin=seed_admin)
         else:
             # Standard: Nur Daten löschen, Struktur beibehalten
@@ -399,17 +399,17 @@ Beispiele:
         # Erfolgsmeldung
         if not args.quiet:
             print("=" * 60)
-            print("🎉 BuildWise Datenbank erfolgreich zurückgesetzt!")
+            print("[SUCCESS] BuildWise Datenbank erfolgreich zurückgesetzt!")
             print("=" * 60)
             if seed_admin:
-                print("👤 Admin-Login: admin@buildwise.local / Admin123!ChangeMe")
-            print("🚀 Die Anwendung kann jetzt gestartet werden.")
+                print("[USER] Admin-Login: admin@buildwise.local / Admin123!ChangeMe")
+            print("[START] Die Anwendung kann jetzt gestartet werden.")
 
     except KeyboardInterrupt:
-        print("\n⚠️  Abgebrochen durch Benutzer")
+        print("\n[WARN]  Abgebrochen durch Benutzer")
         sys.exit(1)
     except Exception as e:
-        print(f"\n❌ Unerwarteter Fehler: {e}")
+        print(f"\n[ERROR] Unerwarteter Fehler: {e}")
         if not args.quiet:
             import traceback
             traceback.print_exc()

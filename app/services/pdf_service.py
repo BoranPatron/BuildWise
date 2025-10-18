@@ -18,15 +18,18 @@ class PDFService:
     def generate_acceptance_protocol(acceptance: Acceptance) -> str:
         """Generiere Abnahmeprotokoll als PDF"""
         try:
-            # Erstelle Verzeichnis falls nicht vorhanden (projektbasiert, wenn bekannt)
-            project_id = data.get('project_id') if isinstance(data, dict) else None
-            pdf_dir = f"storage/acceptances/project_{project_id}" if project_id else "storage/acceptances"
-            os.makedirs(pdf_dir, exist_ok=True)
+            from ..core.storage import get_pdf_path, get_relative_path
+            from pathlib import Path
+            
+            # Get PDF directory (works in dev and production)
+            pdf_base = get_pdf_path()
+            pdf_dir = pdf_base / "acceptances"
+            pdf_dir.mkdir(parents=True, exist_ok=True)
             
             # PDF-Dateiname
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             filename = f"abnahmeprotokoll_{acceptance.id}_{timestamp}.pdf"
-            filepath = os.path.join(pdf_dir, filename)
+            filepath = str(pdf_dir / filename)
             
             # PDF-Dokument erstellen
             doc = SimpleDocTemplate(

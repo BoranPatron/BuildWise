@@ -196,3 +196,7 @@ cython_debug/
 # BuildWise specific
 buildwise.db
 *.db
+
+# User uploads (company logos, documents, etc.)
+uploads/company_logos/*
+!uploads/company_logos/.gitkeep

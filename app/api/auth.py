@@ -1,8 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Request, Response
+from fastapi import APIRouter, Depends, HTTPException, status, Request, Response, UploadFile, File
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional
 from pydantic import BaseModel
+import os
+import shutil
+from datetime import datetime
+from pathlib import Path
 
 from ..core.database import get_db
 from ..core.security import create_access_token
@@ -525,6 +529,8 @@ class CompanyInfoRequest(BaseModel):
     company_name: str
     company_address: Optional[str] = None
     company_uid: Optional[str] = None
+    company_logo: Optional[str] = None
+    company_logo_advertising_consent: Optional[bool] = False
 
 
 class OnboardingStepRequest(BaseModel):
@@ -773,6 +779,76 @@ async def complete_first_login(
         )
 
 
+@router.post("/upload-company-logo")
+async def upload_company_logo(
+    file: UploadFile = File(...),
+    current_user = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+    req: Request = None
+):
+    """Upload eines Firmenlogos"""
+    
+    # Validiere Dateityp
+    allowed_extensions = {".jpg", ".jpeg", ".png", ".svg", ".webp"}
+    file_ext = os.path.splitext(file.filename)[1].lower()
+    
+    if file_ext not in allowed_extensions:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Ungültiger Dateityp. Erlaubt sind: {', '.join(allowed_extensions)}"
+        )
+    
+    # Validiere Dateigröße (max 5MB)
+    max_size = 5 * 1024 * 1024  # 5MB in bytes
+    file.file.seek(0, 2)  # Seek to end
+    file_size = file.file.tell()
+    file.file.seek(0)  # Seek back to start
+    
+    if file_size > max_size:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Datei ist zu groß. Maximal 5MB erlaubt."
+        )
+    
+    try:
+        # Erstelle Upload-Verzeichnis im Storage (konsistent mit anderen Dokumenten)
+        upload_dir = Path("storage/company_logos")
+        upload_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Generiere eindeutigen Dateinamen
+        timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+        filename = f"{current_user.id}_{timestamp}{file_ext}"
+        file_path = upload_dir / filename
+        
+        # Speichere Datei
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+        
+        # Relativer Pfad für Datenbank (mit /storage Prefix für konsistente URL-Generierung)
+        relative_path = f"storage/company_logos/{filename}"
+        
+        # Audit-Log
+        ip_address = req.client.host if req else None
+        await SecurityService.create_audit_log(
+            db, current_user.id, AuditAction.USER_UPDATE,
+            f"Firmenlogo hochgeladen: {filename}",
+            resource_type="user", resource_id=current_user.id,
+            ip_address=SecurityService.anonymize_ip_address(ip_address) if ip_address else None
+        )
+        
+        return {
+            "message": "Logo erfolgreich hochgeladen",
+            "file_path": relative_path
+        }
+        
+    except Exception as e:
+        print(f"[ERROR] Fehler beim Upload des Logos: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Fehler beim Hochladen des Logos"
+        )
+
+
 @router.post("/update-company-info")
 async def update_company_info(
     company_data: CompanyInfoRequest,
@@ -790,6 +866,8 @@ async def update_company_info(
         company_name = company_data.company_name.strip()
         company_address = company_data.company_address.strip() if company_data.company_address else None
         company_uid = company_data.company_uid.strip() if company_data.company_uid else None
+        company_logo = company_data.company_logo
+        company_logo_advertising_consent = company_data.company_logo_advertising_consent or False
         
         if not company_name:
             raise HTTPException(
@@ -798,15 +876,22 @@ async def update_company_info(
             )
         
         # Update der Benutzerinformationen
+        update_values = {
+            "company_name": company_name,
+            "company_address": company_address,
+            "company_uid": company_uid,
+            "company_logo_advertising_consent": company_logo_advertising_consent,
+            "updated_at": datetime.utcnow()
+        }
+        
+        # Logo nur hinzufügen wenn vorhanden
+        if company_logo:
+            update_values["company_logo"] = company_logo
+        
         await db.execute(
             update(User)
             .where(User.id == current_user.id)
-            .values(
-                company_name=company_name,
-                company_address=company_address,
-                company_uid=company_uid,
-                updated_at=datetime.utcnow()
-            )
+            .values(**update_values)
         )
         await db.commit()
         

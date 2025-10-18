@@ -63,6 +63,28 @@ async def get_service_providers_list(
     return providers
 
 
+@router.get("/{user_id}/company-logo")
+async def get_user_company_logo(
+    user_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    """Holt das Firmenlogo eines Benutzers"""
+    user = await get_user_by_id(db, user_id)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="Benutzer nicht gefunden"
+        )
+    
+    return {
+        "user_id": user.id,
+        "company_name": user.company_name,
+        "company_logo": user.company_logo,
+        "company_logo_advertising_consent": user.company_logo_advertising_consent
+    }
+
+
 @router.get("/search", response_model=List[UserProfile])
 async def search_users_endpoint(
     q: str,

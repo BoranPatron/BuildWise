@@ -145,6 +145,8 @@ class User(Base):
     company_phone = Column(String, nullable=True)
     company_website = Column(String, nullable=True)
     business_license = Column(String, nullable=True)  # Gewerbeschein
+    company_logo = Column(String, nullable=True)  # Firmenlogo Dateipfad
+    company_logo_advertising_consent = Column(Boolean, default=False)  # Werbeeinwilligung
     
     # Kleinunternehmerregelung
     is_small_business = Column(Boolean, default=False)  # Kleinunternehmerregelung

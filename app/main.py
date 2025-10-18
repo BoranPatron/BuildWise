@@ -22,40 +22,51 @@ app = FastAPI(
     redoc_url="/redoc"
 )
 
-# CORS-Konfiguration für Netzwerk-Zugriff
-allowed_origins_env = os.getenv('ALLOWED_ORIGINS')
-if allowed_origins_env:
-    allowed_origins = [origin.strip() for origin in allowed_origins_env.split(',')]
-else:
-    allowed_origins = [
+# CORS-Konfiguration für Production und Development
+def get_allowed_origins():
+    """Get allowed origins based on environment"""
+    allowed_origins_env = os.getenv('ALLOWED_ORIGINS')
+    
+    if allowed_origins_env:
+        # Production: use environment variable
+        origins = [origin.strip() for origin in allowed_origins_env.split(',')]
+        print(f"[INFO] CORS configured for PRODUCTION: {len(origins)} origins")
+        return origins
+    
+    # Development: allow localhost and local network
+    origins = [
         "http://localhost:5173",
         "http://127.0.0.1:5173",
         "http://localhost:3000",
         "http://127.0.0.1:3000",
         "http://localhost:5174",
         "http://127.0.0.1:5174",
-        # Netzwerk-Zugriff für mobile Geräte
+        # Local network access for mobile devices
         "http://192.168.1.65:5173",
         "http://192.168.1.65:3000",
         "http://192.168.1.65:5174",
-        # Zusätzliche Netzwerk-IPs für verschiedene Geräte
         "http://192.168.1.42:5173",
         "http://192.168.1.42:3000",
         "http://192.168.1.42:5174"
     ]
+    print(f"[INFO] CORS configured for DEVELOPMENT: {len(origins)} origins")
+    return origins
 
-# Debug-Ausgabe für CORS-Konfiguration
-print(f"[DEBUG] CORS allowed origins: {allowed_origins}")
+allowed_origins = get_allowed_origins()
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_credentials=True,  # Aktiviert für OAuth-Flows
+    allow_credentials=True,  # Required for OAuth flows
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     allow_headers=["*"],
     expose_headers=["*"],
-    max_age=86400
+    max_age=86400  # Cache preflight requests for 24 hours
 )
+
+# Add GZip compression for better performance
+from fastapi.middleware.gzip import GZipMiddleware
+app.add_middleware(GZipMiddleware, minimum_size=1000)  # Compress responses > 1KB
 
 # Trusted Host Middleware
 app.add_middleware(
@@ -103,14 +114,31 @@ app.include_router(api_router, prefix="/api/v1")
 # Static Files für Storage
 from fastapi.staticfiles import StaticFiles
 import os
+from .core.storage import get_storage_base_path, ensure_storage_structure
 
-# Erstelle Storage-Verzeichnis falls nicht vorhanden
-storage_path = "storage"
-if not os.path.exists(storage_path):
-    os.makedirs(storage_path)
-
-# Mount static files für Storage
-app.mount("/storage", StaticFiles(directory="storage"), name="storage")
+# Initialize storage structure (works for dev and production)
+try:
+    ensure_storage_structure()
+    storage_path = str(get_storage_base_path())
+    
+    # Create company logos directory
+    company_logos_path = os.path.join(storage_path, "company_logos")
+    if not os.path.exists(company_logos_path):
+        os.makedirs(company_logos_path)
+    
+    # Mount static files für Storage
+    app.mount("/storage", StaticFiles(directory=storage_path), name="storage")
+    print(f"[SUCCESS] Static files mounted at: {storage_path}")
+except Exception as e:
+    print(f"[WARNING] Could not initialize dynamic storage: {e}")
+    # Fallback to local storage for development
+    storage_path = "storage"
+    if not os.path.exists(storage_path):
+        os.makedirs(storage_path)
+    company_logos_path = os.path.join("storage", "company_logos")
+    if not os.path.exists(company_logos_path):
+        os.makedirs(company_logos_path)
+    app.mount("/storage", StaticFiles(directory="storage"), name="storage")
 
 # Authentifizierte Datei-Serving Route
 from fastapi import Depends, HTTPException, status, Query
@@ -166,11 +194,13 @@ async def serve_authenticated_file(
         
         print(f"[SUCCESS] serve_authenticated_file: Benutzer authentifiziert: {user.id}, {user.email}")
         
-        # Vollständiger Pfad zur Datei
-        full_path = os.path.join("storage", file_path)
+        # Resolve file path using storage module
+        from .core.storage import resolve_storage_path, get_storage_base_path
+        storage_base = str(get_storage_base_path())
+        full_path = str(resolve_storage_path(file_path))
         
         # Sicherheitsprüfung: Stelle sicher, dass der Pfad innerhalb des storage-Verzeichnisses liegt
-        if not os.path.abspath(full_path).startswith(os.path.abspath("storage")):
+        if not os.path.abspath(full_path).startswith(os.path.abspath(storage_base)):
             print(f"[ERROR] serve_authenticated_file: Zugriff verweigert für Pfad: {full_path}")
             raise HTTPException(status_code=403, detail="Zugriff verweigert")
         
@@ -219,23 +249,43 @@ app.mount("/storage", StaticFiles(directory="storage"), name="storage")
 # Datenbank-Tabellen erstellen
 @app.on_event("startup")
 async def on_startup():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    """Application startup handler"""
+    print("[INFO] Starting BuildWise application...")
     
-    # SQLite-Optimierungen anwenden
+    # Check database connection first
+    try:
+        from .core.database import check_database_connection
+        connected = await check_database_connection()
+        if not connected:
+            print("[ERROR] Failed to connect to database at startup!")
+            # Continue anyway - let the app fail on actual requests
+    except Exception as e:
+        print(f"[ERROR] Database connection check failed: {e}")
+    
+    # Create database tables
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        print("[SUCCESS] Database tables created/verified")
+    except Exception as e:
+        print(f"[ERROR] Failed to create database tables: {e}")
+    
+    # Apply SQLite optimizations (only for SQLite)
     try:
         from .core.database import optimize_sqlite_connection
         await optimize_sqlite_connection()
     except Exception as e:
-        print(f"[WARNING] SQLite-Optimierungen konnten nicht angewendet werden: {e}")
+        print(f"[WARNING] Database optimizations failed: {e}")
     
-    # Starte Credit-Scheduler
+    # Start Credit Scheduler
     try:
         from .core.scheduler import start_credit_scheduler
         await start_credit_scheduler()
-        print("[SUCCESS] Credit-Scheduler gestartet")
+        print("[SUCCESS] Credit-Scheduler started")
     except Exception as e:
-        print(f"[ERROR] Fehler beim Starten des Credit-Schedulers: {e}")
+        print(f"[ERROR] Failed to start Credit-Scheduler: {e}")
+    
+    print("[SUCCESS] BuildWise application startup complete")
 
 
 @app.on_event("shutdown")
