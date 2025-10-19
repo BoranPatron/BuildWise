@@ -1,0 +1,105 @@
+================================================================================
+DAILY CREDIT DEDUCTION - PROBLEM ANALYSE UND LÖSUNG
+================================================================================
+
+PROBLEM:
+--------
+Der tägliche Credit-Abzug für Bauträger wurde mehrmals am Tag ausgeführt.
+Im Screenshot sichtbar: Bis zu 29 Abzüge am 08.10.2025 (siehe Spalte "created_at").
+
+URSACHE:
+--------
+1. TIMEZONE-INKONSISTENZ IM BACKEND:
+   - app/services/credit_service.py (Zeile 210):
+     * Speicherte: datetime.now() - OHNE Timezone!
+     * Verglich aber mit: datetime.now(timezone.utc) in has_daily_deduction_today()
+     * Resultat: "Naive datetime" vs UTC-Vergleich schlug fehl
+
+2. FEHLENDE PRÜFUNG:
+   - process_all_daily_deductions() hatte keine Prüfung ob bereits heute abgezogen
+   - Setzte auch last_daily_deduction nicht
+
+3. FRONTEND-BACKEND MISMATCH:
+   - Frontend: new Date() → Lokale Zeit (UTC+2 in Deutschland)
+   - Backend: datetime.now(timezone.utc) → UTC
+   - Resultat: Unterschiedliche "heute" Definitionen
+
+LÖSUNG:
+-------
+✓ Backend Fixes:
+  - credit_service.py: datetime.now(timezone.utc) statt datetime.now()
+  - user_credits.py: Robuste has_daily_deduction_today() mit naive datetime Handling
+  - process_all_daily_deductions(): Prüfung hinzugefügt + last_daily_deduction setzen
+
+✓ Frontend Fix:
+  - AuthContext.tsx: UTC-basierter Datums-Vergleich statt lokaler Zeit
+
+✓ Unit-Tests:
+  - 8 Tests für verschiedene Timezone-Szenarien
+  - Alle Tests bestanden ✓
+
+DATEIEN GEÄNDERT:
+-----------------
+1. C:\Users\user\Documents\04_Repo\BuildWise\app\services\credit_service.py
+   - Zeile 210: datetime.now(timezone.utc)
+   - Zeile 645-654: Prüfung hinzugefügt in process_all_daily_deductions()
+
+2. C:\Users\user\Documents\04_Repo\BuildWise\app\models\user_credits.py
+   - Zeile 89-104: Robuste has_daily_deduction_today() Funktion
+
+3. C:\Users\user\Documents\04_Repo\Frontend\Frontend\src\context\AuthContext.tsx
+   - Zeile 32-59: UTC-basierter hasDailyCreditDeductionBeenProcessed()
+
+NEUE DATEIEN:
+-------------
+1. test_daily_deduction_timezone.py - Unit-Tests (8/8 bestanden)
+2. fix_daily_deduction_timezone.py - Datenbank-Bereinigungsskript
+3. DAILY_DEDUCTION_TIMEZONE_FIX.md - Ausführliche Dokumentation
+
+NÄCHSTE SCHRITTE:
+-----------------
+1. DATENBANK BEREINIGEN:
+   cd C:\Users\user\Documents\04_Repo\BuildWise
+   python fix_daily_deduction_timezone.py
+   
+   Das Skript wird:
+   - Naive datetimes zu UTC-aware konvertieren
+   - Mehrfache Abzüge identifizieren
+   - last_daily_deduction korrigieren
+
+2. VERIFIZIEREN:
+   Nach dem Fix sollten keine mehrfachen Abzüge mehr auftreten.
+   Prüfe in der Datenbank:
+   
+   SELECT DATE(created_at), user_credits_id, COUNT(*) 
+   FROM credit_events 
+   WHERE event_type = 'DAILY_DEDUCTION'
+   GROUP BY DATE(created_at), user_credits_id
+   HAVING COUNT(*) > 1;
+   
+   → Sollte leer sein nach dem Fix
+
+3. MONITORING:
+   - Backend-Logs überwachen
+   - Bei mehrfachen Login-Versuchen sollte erscheinen:
+     "User X hat heute bereits einen Credit-Abzug erhalten"
+
+ZUSAMMENFASSUNG:
+----------------
+Das Problem wurde durch Timezone-Inkonsistenzen verursacht.
+Alle betroffenen Stellen wurden identifiziert und korrigiert.
+Tests bestätigen die korrekte Funktionalität.
+
+Die Änderungen stellen sicher dass:
+✓ Nur noch 1 Credit-Abzug pro Tag stattfindet
+✓ Backend und Frontend dieselbe Timezone (UTC) verwenden
+✓ Naive datetimes korrekt behandelt werden
+✓ Bestehende Daten bereinigt werden können
+
+================================================================================
+Autor: AI Assistant
+Datum: 2025-10-09
+Status: BEHOBEN ✓
+================================================================================
+
+

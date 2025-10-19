@@ -57,7 +57,7 @@ def get_storage_base_path() -> Path:
 def get_uploads_path() -> Path:
     """Get the uploads directory path"""
     uploads_path = get_storage_base_path() / "uploads"
-    uploads_path.mkdir(parents=True, exist_ok=True)
+    uploads_path.mkdir(exist_ok=True)
     return uploads_path
 
 
@@ -72,35 +72,35 @@ def get_project_upload_path(project_id: int) -> Path:
         Path: Project-specific upload directory
     """
     project_path = get_uploads_path() / f"project_{project_id}"
-    project_path.mkdir(parents=True, exist_ok=True)
+    project_path.mkdir(exist_ok=True)
     return project_path
 
 
 def get_temp_path() -> Path:
     """Get temporary files directory"""
     temp_path = get_storage_base_path() / "temp"
-    temp_path.mkdir(parents=True, exist_ok=True)
+    temp_path.mkdir(exist_ok=True)
     return temp_path
 
 
 def get_pdf_path() -> Path:
     """Get PDF output directory"""
     pdf_path = get_storage_base_path() / "pdfs"
-    pdf_path.mkdir(parents=True, exist_ok=True)
+    pdf_path.mkdir(exist_ok=True)
     return pdf_path
 
 
 def get_invoice_path() -> Path:
     """Get invoice PDF directory"""
     invoice_path = get_pdf_path() / "invoices"
-    invoice_path.mkdir(parents=True, exist_ok=True)
+    invoice_path.mkdir(exist_ok=True)
     return invoice_path
 
 
 def get_cache_path() -> Path:
     """Get cache directory"""
     cache_path = get_storage_base_path() / "cache"
-    cache_path.mkdir(parents=True, exist_ok=True)
+    cache_path.mkdir(exist_ok=True)
     return cache_path
 
 

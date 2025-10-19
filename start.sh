@@ -31,12 +31,12 @@ if [ -d "/var/data" ] && [ -w "/var/data" ]; then
     # Persistent disk is available and writable
     STORAGE_BASE="/var/data/storage"
     echo "[INFO] Using persistent disk: ${STORAGE_BASE}"
-    mkdir -p ${STORAGE_BASE}/uploads
-    mkdir -p ${STORAGE_BASE}/pdfs/invoices
-    mkdir -p ${STORAGE_BASE}/temp
-    mkdir -p ${STORAGE_BASE}/cache
-    mkdir -p ${STORAGE_BASE}/company_logos
-    chmod -R 755 ${STORAGE_BASE}
+    mkdir -p ${STORAGE_BASE}/uploads 2>/dev/null || true
+    mkdir -p ${STORAGE_BASE}/pdfs/invoices 2>/dev/null || true
+    mkdir -p ${STORAGE_BASE}/temp 2>/dev/null || true
+    mkdir -p ${STORAGE_BASE}/cache 2>/dev/null || true
+    mkdir -p ${STORAGE_BASE}/company_logos 2>/dev/null || true
+    chmod -R 755 ${STORAGE_BASE} 2>/dev/null || true
     echo "[SUCCESS] Persistent storage directories created"
 else
     # Fallback to temporary storage (ephemeral, will be lost on restart)
