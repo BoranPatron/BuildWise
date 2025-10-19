@@ -27,7 +27,7 @@ fi
 echo "[INFO] Creating storage directories..."
 
 # Try to use persistent disk first, fallback to temporary storage
-if [ -w "/var/data" ]; then
+if [ -d "/var/data" ] && [ -w "/var/data" ]; then
     # Persistent disk is available and writable
     STORAGE_BASE="/var/data/storage"
     echo "[INFO] Using persistent disk: ${STORAGE_BASE}"
@@ -41,7 +41,7 @@ if [ -w "/var/data" ]; then
 else
     # Fallback to temporary storage (ephemeral, will be lost on restart)
     STORAGE_BASE="/tmp/storage"
-    echo "[WARNING] /var/data not writable - using temporary storage: ${STORAGE_BASE}"
+    echo "[WARNING] /var/data not available or not writable - using temporary storage: ${STORAGE_BASE}"
     echo "[WARNING] Files will be LOST on service restart! Add a persistent disk to fix this."
     mkdir -p ${STORAGE_BASE}/uploads
     mkdir -p ${STORAGE_BASE}/pdfs/invoices
