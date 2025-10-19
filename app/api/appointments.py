@@ -294,23 +294,14 @@ async def get_my_appointments(
 
 @router.get("/my-appointments-simple")
 async def get_my_appointments_simple(
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
     """
-    EINFACHER Endpoint für Appointments - TEMPORÄR ohne Authentifizierung
+    EINFACHER Endpoint für Appointments
     Arbeitet direkt mit der echten Datenbankstruktur
     """
     try:
-        print(f"[DEBUG] [APPOINTMENTS-API] get_my_appointments_simple called")
-        
-        # TEMPORÄR: Verwende User ID 2 (Bauträger) ohne Authentifizierung
-        user_id = 2  # Bauträger
-        user_role = "BAUTRAEGER"
-        
-        print(f"[DEBUG] [APPOINTMENTS-API] Using user_id={user_id}, user_role={user_role}")
-        
-        # Für Bauträger: Nur eigene Termine
-        print(f"[DEBUG] [APPOINTMENTS-API] Bauträger: Lade nur eigene Termine")
         from sqlalchemy import text
         
         query = text("""
@@ -330,10 +321,8 @@ async def get_my_appointments_simple(
             ORDER BY scheduled_date DESC
         """)
         
-        result = await db.execute(query, {"user_id": user_id})
+        result = await db.execute(query, {"user_id": current_user.id})
         appointments = result.fetchall()
-        
-        print(f"[DEBUG] [APPOINTMENTS-API] Found {len(appointments)} appointments for user {user_id}")
         
         # Konvertiere zu einfachem Dictionary
         simple_appointments = []
@@ -379,15 +368,11 @@ async def get_my_appointments_simple(
                 "updated_at": safe_isoformat(apt.updated_at),
                 "completed_at": safe_isoformat(apt.completed_at)
             }
-            simple_appointments.append(simple_appointment)
+                simple_appointments.append(simple_appointment)
         
-        print(f"[SUCCESS] [APPOINTMENTS-API] Returning {len(simple_appointments)} appointments")
         return {"appointments": simple_appointments, "count": len(simple_appointments)}
         
     except Exception as e:
-        print(f"[ERROR] [APPOINTMENTS-API] Error in get_my_appointments_simple: {e}")
-        import traceback
-        traceback.print_exc()
         return {"appointments": [], "count": 0, "error": str(e)}
         
         result = await db.execute(query, {"user_id": current_user.id})

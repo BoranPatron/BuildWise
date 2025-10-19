@@ -20,30 +20,19 @@ async def get_notifications(
     offset: int = Query(0, ge=0),
     unread_only: bool = Query(False),
     unacknowledged_only: bool = Query(False),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Holt Benachrichtigungen für den aktuellen Benutzer - TEMPORÄR ohne Authentifizierung"""
-    try:
-        print(f"[DEBUG] [NOTIFICATIONS-API] get_notifications called with limit={limit}, unacknowledged_only={unacknowledged_only}")
-        
-        # TEMPORÄR: Verwende User ID 2 (Bauträger) ohne Authentifizierung
-        notifications = await NotificationService.get_user_notifications(
-            db=db,
-            user_id=2,  # Verwende User ID 2 (Bauträger)
-            limit=limit,
-            offset=offset,
-            unread_only=unread_only,
-            unacknowledged_only=unacknowledged_only
-        )
-        
-        print(f"[SUCCESS] [NOTIFICATIONS-API] Returning {len(notifications)} notifications")
-        return notifications
-        
-    except Exception as e:
-        print(f"[ERROR] [NOTIFICATIONS-API] Error in get_notifications: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Error loading notifications: {str(e)}")
+    """Holt Benachrichtigungen für den aktuellen Benutzer"""
+    notifications = await NotificationService.get_user_notifications(
+        db=db,
+        user_id=current_user.id,
+        limit=limit,
+        offset=offset,
+        unread_only=unread_only,
+        unacknowledged_only=unacknowledged_only
+    )
+    return notifications
 
 @router.get("/stats", response_model=NotificationStats)
 async def get_notification_stats(

@@ -50,42 +50,18 @@ async def create_new_task(
 async def read_tasks(
     project_id: int = None,
     assigned_to: int = None,
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    try:
-        print(f"[DEBUG] [TASKS-API] read_tasks called with project_id={project_id}, assigned_to={assigned_to}")
-        
-        # TEMPORÄR: Komplett ohne Authentifizierung für Debugging
-        if assigned_to:
-            print(f"[DEBUG] [TASKS-API] TEMPORÄR: Loading tasks assigned to user {assigned_to}")
-            try:
-                tasks = await get_tasks_assigned_to_user(db, assigned_to)
-                print(f"[SUCCESS] [TASKS-API] Found {len(tasks)} tasks for user {assigned_to}")
-                return tasks
-            except Exception as db_error:
-                print(f"[ERROR] [TASKS-API] Database error loading tasks for user {assigned_to}: {db_error}")
-                raise HTTPException(status_code=500, detail=f"Database error: {str(db_error)}")
-        elif project_id:
-            print(f"[DEBUG] [TASKS-API] TEMPORÄR: Loading tasks for project {project_id}")
-            try:
-                tasks = await get_tasks_for_project(db, project_id)
-                print(f"[SUCCESS] [TASKS-API] Found {len(tasks)} tasks for project {project_id}")
-                return tasks
-            except Exception as db_error:
-                print(f"[ERROR] [TASKS-API] Database error loading tasks for project {project_id}: {db_error}")
-                raise HTTPException(status_code=500, detail=f"Database error: {str(db_error)}")
-        else:
-            print(f"[DEBUG] [TASKS-API] TEMPORÄR: No specific filter - returning empty list")
-            return []
-        
-    except HTTPException as he:
-        print(f"[ERROR] [TASKS-API] HTTPException in read_tasks: {he.status_code} - {he.detail}")
-        raise he
-    except Exception as e:
-        print(f"[ERROR] [TASKS-API] Error in read_tasks: {e}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=f"Error loading tasks: {str(e)}")
+    """Listet Aufgaben für ein Projekt oder einen User"""
+    if assigned_to:
+        tasks = await get_tasks_assigned_to_user(db, assigned_to)
+        return tasks
+    elif project_id:
+        tasks = await get_tasks_for_project(db, project_id)
+        return tasks
+    else:
+        return []
 
 
 @router.get("/{task_id}", response_model=TaskRead)

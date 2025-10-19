@@ -406,21 +406,17 @@ async def read_documents(
     limit: int = Query(100, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     milestone_id: Optional[int] = Query(None, description="Filter nach spezifischer Ausschreibung (Milestone)"),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Erweiterte Dokumentensuche mit Filtern und Sortierung - TEMPORÄR ohne Authentifizierung für mobile Ansicht"""
+    """Erweiterte Dokumentensuche mit Filtern und Sortierung"""
     
     try:
-        print(f"[DEBUG] [DOCUMENTS-API] read_documents called with project_id={project_id}, milestone_id={milestone_id}")
-        
-        # TEMPORÄR: Umgehe Authentifizierung für mobile Ansicht
-        # Für jetzt verwenden wir die bestehende Funktion und filtern nachträglich
+        # Lade Dokumente für Projekt
         documents = await get_documents_for_project(db, project_id)
         
-        print(f"[DEBUG] [DOCUMENTS-API] Found {len(documents)} documents for project {project_id}")
-        
-        # Erweitere Dokumente um Ausschreibungsinformationen (ohne current_user)
-        documents = await add_milestone_info_to_documents(db, project_id, documents, 2)  # Verwende User ID 2 (Bauträger)
+        # Erweitere Dokumente um Ausschreibungsinformationen
+        documents = await add_milestone_info_to_documents(db, project_id, documents, current_user.id)
         
         # Filter für spezifische Ausschreibung (Milestone)
         if milestone_id:
@@ -540,13 +536,9 @@ async def read_documents(
         # Paginierung
         documents = documents[offset:offset + limit]
         
-        print(f"[SUCCESS] [DOCUMENTS-API] Returning {len(documents)} documents")
         return documents
         
     except Exception as e:
-        print(f"[ERROR] [DOCUMENTS-API] Error in read_documents: {e}")
-        import traceback
-        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Error loading documents: {str(e)}")
 
 

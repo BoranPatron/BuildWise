@@ -23,26 +23,17 @@ router = APIRouter(prefix="/credits", tags=["credits"])
 
 @router.get("/balance", response_model=CreditBalanceResponse)
 async def get_credit_balance(
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db)
 ):
-    """Holt den aktuellen Credit-Status des Benutzers - TEMPORÄR ohne Authentifizierung"""
-    
+    """Holt den aktuellen Credit-Status des Benutzers"""
     try:
-        print(f"[DEBUG] [CREDITS-API] get_credit_balance called")
-        
-        # TEMPORÄR: Verwende User ID 2 (Bauträger) ohne Authentifizierung
-        logger.info(f"Abrufen der Credit-Balance für User 2 (Bauträger)")
-        balance = await CreditService.get_credit_balance(db, 2)  # Verwende User ID 2 (Bauträger)
-        logger.info(f"Credit-Balance erfolgreich abgerufen für User 2: {balance.credits} Credits")
-        
-        print(f"[SUCCESS] [CREDITS-API] Returning balance: {balance.credits} credits")
+        logger.info(f"Abrufen der Credit-Balance für User {current_user.id}")
+        balance = await CreditService.get_credit_balance(db, current_user.id)
+        logger.info(f"Credit-Balance erfolgreich abgerufen für User {current_user.id}: {balance.credits} Credits")
         return balance
-        
     except Exception as e:
-        print(f"[ERROR] [CREDITS-API] Error in get_credit_balance: {e}")
-        logger.error(f"Fehler beim Abrufen der Credit-Balance für User 2: {e}")
-        import traceback
-        logger.error(f"Traceback: {traceback.format_exc()}")
+        logger.error(f"Fehler beim Abrufen der Credit-Balance für User {current_user.id}: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Fehler beim Abrufen der Credit-Balance: {str(e)}"

@@ -15,10 +15,26 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/auth/login")
 async def get_current_user(
     db: AsyncSession = Depends(get_db), token: str = Depends(oauth2_scheme)
 ) -> User:
-    """GLOBAL FIX: Umgehe Authentifizierung komplett - Gebe IMMER User ID 2 zurück"""
-    print(f"[SUCCESS] [CORE-DEPS] get_current_user called - GLOBAL AUTH BYPASS")
+    """
+    Authentifiziert den aktuellen User über JWT Token
+    """
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
     
-    # GLOBAL FIX: Gebe IMMER User ID 2 zurück, ohne Datenbankabfrage
-    user = User(id=2, email="stephan.schellworth@t-online.de")
-    print(f"[SUCCESS] [CORE-DEPS] Returning user: {user.id}, {user.email}")
+    # Token dekodieren
+    payload = decode_access_token(token)
+    if not payload or "sub" not in payload:
+        raise credentials_exception
+    
+    # User-Email aus Token holen
+    email: str = payload["sub"]
+    
+    # User aus Datenbank laden
+    user = await get_user_by_email(db, email=email)
+    if not user:
+        raise credentials_exception
+    
     return user 
