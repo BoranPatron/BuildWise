@@ -43,6 +43,10 @@ async def get_current_user(
         try:
             user = await get_user_by_email(db, email=email)
             print(f"[DEBUG] get_current_user: User gefunden via E-Mail: {user is not None}")
+        except HTTPException as http_exc:
+            # HTTPException von OAuth2PasswordBearer - weitergeben statt als Datenbankfehler zu behandeln
+            print(f"[ERROR] get_current_user: HTTPException während User-Lookup: {http_exc.status_code} - {http_exc.detail}")
+            raise http_exc
         except Exception as db_error:
             print(f"[ERROR] get_current_user: Datenbankfehler bei E-Mail-Suche: {db_error}")
             print(f"[ERROR] get_current_user: Database error type: {type(db_error).__name__}")
@@ -62,6 +66,10 @@ async def get_current_user(
                 print(f"[DEBUG] get_current_user: Suche User mit ID: {user_id}")
                 user = await get_user_by_id(db, user_id)
                 print(f"[DEBUG] get_current_user: User gefunden via ID: {user is not None}")
+            except HTTPException as http_exc:
+                # HTTPException von OAuth2PasswordBearer - weitergeben statt als Datenbankfehler zu behandeln
+                print(f"[ERROR] get_current_user: HTTPException während User-ID-Lookup: {http_exc.status_code} - {http_exc.detail}")
+                raise http_exc
             except Exception as db_error:
                 print(f"[ERROR] get_current_user: Datenbankfehler bei ID-Suche: {db_error}")
                 print(f"[ERROR] get_current_user: Database error type: {type(db_error).__name__}")

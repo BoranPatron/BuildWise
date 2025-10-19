@@ -19,7 +19,10 @@ app = FastAPI(
     description="Digitaler Assistent für Immobilienprojekte - Vollständige Backend-API",
     version="1.0.0",
     docs_url="/docs",
-    redoc_url="/redoc"
+    redoc_url="/redoc",
+    # WICHTIG: Keine automatischen Redirects bei trailing slashes
+    # iOS Safari verliert Authorization-Header bei 307-Redirects
+    redirect_slashes=False
 )
 
 # CORS-Konfiguration für Production und Development
