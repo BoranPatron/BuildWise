@@ -1,6 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query, File, UploadFile, Form
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, delete
 
 from ..core.database import get_db
 from ..api.deps import get_current_user
@@ -9,6 +10,23 @@ import os
 from ..schemas.milestone import MilestoneCreate, MilestoneRead, MilestoneUpdate, MilestoneSummary
 # Milestone service functions sind direkt in dieser Datei implementiert
 # from ..services.milestone_service import archive_milestone
+
+# Helper functions for milestone operations
+async def get_milestone_by_id(db: AsyncSession, milestone_id: int) -> Optional[Milestone]:
+    """Get milestone by ID from database"""
+    result = await db.execute(select(Milestone).where(Milestone.id == milestone_id))
+    return result.scalar_one_or_none()
+
+async def delete_milestone(db: AsyncSession, milestone_id: int) -> bool:
+    """Delete milestone from database"""
+    try:
+        result = await db.execute(delete(Milestone).where(Milestone.id == milestone_id))
+        await db.commit()
+        return result.rowcount > 0
+    except Exception as e:
+        await db.rollback()
+        print(f"[ERROR] Failed to delete milestone {milestone_id}: {e}")
+        return False
 
 router = APIRouter(prefix="/milestones", tags=["milestones"])
 
