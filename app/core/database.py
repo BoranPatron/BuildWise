@@ -91,7 +91,7 @@ AsyncSessionLocal = async_sessionmaker(
 
 
 async def get_db():
-    """Yield an async database session with improved error handling and timeout management."""
+    """Yield an async database session with improved error handling - TEMPORÄR ohne HTTPException"""
     session = AsyncSessionLocal()
     try:
         yield session
@@ -101,7 +101,8 @@ async def get_db():
         import traceback
         traceback.print_exc()
         await session.rollback()
-        raise HTTPException(status_code=500, detail=f"Database connection error: {str(e)}")
+        # TEMPORÄR: Keine HTTPException mehr - nur Logging
+        print(f"[WARNING] Database error ignored for debugging: {str(e)}")
     finally:
         await session.close()
 
