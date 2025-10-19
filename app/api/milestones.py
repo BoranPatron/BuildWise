@@ -480,18 +480,25 @@ async def delete_milestone_endpoint(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    milestone = await get_milestone_by_id(db, milestone_id)
-    if not milestone:
+    try:
+        # Direct delete without checking existence first
+        result = await db.execute(delete(Milestone).where(Milestone.id == milestone_id))
+        await db.commit()
+        
+        if result.rowcount == 0:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Meilenstein nicht gefunden"
+            )
+            
+    except HTTPException:
+        raise
+    except Exception as e:
+        await db.rollback()
+        print(f"[ERROR] Fehler beim Löschen des Milestones {milestone_id}: {e}")
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Meilenstein nicht gefunden"
-        )
-    
-    success = await delete_milestone(db, milestone_id)
-    if not success:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Meilenstein konnte nicht gelöscht werden"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Datenbankfehler"
         )
     
     return None
