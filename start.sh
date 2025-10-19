@@ -1,126 +1,39 @@
-#!/usr/bin/env bash
-# BuildWise Start Script for Render.com
-# Starts the application with Gunicorn + Uvicorn workers for production
+#!/bin/bash
 
-set -o errexit  # Exit on error
-set -o pipefail # Exit on pipe failure
-set -o nounset  # Exit on undefined variable
+# BuildWise API Start Script
+# This script handles both local development and production deployment
 
-echo "========================================"
-echo "BuildWise Start Script - Production"
-echo "========================================"
-
-# Display environment info
-echo "[INFO] Environment: ${ENVIRONMENT:-not set}"
-echo "[INFO] Python version: $(python --version)"
-
-# Check database connection
-echo "[INFO] Checking database connection..."
-if [ -z "${DATABASE_URL:-}" ]; then
-    echo "[ERROR] DATABASE_URL is not set!"
-    exit 1
-else
-    echo "[SUCCESS] DATABASE_URL is configured"
-fi
-
-# Ensure storage directories exist
-echo "[INFO] Creating storage directories..."
-
-# Try to use persistent disk first, fallback to temporary storage
-if [ -d "/var/data" ] && [ -w "/var/data" ]; then
-    # Persistent disk is available and writable
-    STORAGE_BASE="/var/data/storage"
-    echo "[INFO] Using persistent disk: ${STORAGE_BASE}"
-    mkdir -p ${STORAGE_BASE}/uploads 2>/dev/null || true
-    mkdir -p ${STORAGE_BASE}/pdfs/invoices 2>/dev/null || true
-    mkdir -p ${STORAGE_BASE}/temp 2>/dev/null || true
-    mkdir -p ${STORAGE_BASE}/cache 2>/dev/null || true
-    mkdir -p ${STORAGE_BASE}/company_logos 2>/dev/null || true
-    chmod -R 755 ${STORAGE_BASE} 2>/dev/null || true
-    echo "[SUCCESS] Persistent storage directories created"
-else
-    # Fallback to temporary storage (ephemeral, will be lost on restart)
-    STORAGE_BASE="/tmp/storage"
-    echo "[WARNING] /var/data not available or not writable - using temporary storage: ${STORAGE_BASE}"
-    echo "[WARNING] Files will be LOST on service restart! Add a persistent disk to fix this."
-    mkdir -p ${STORAGE_BASE}/uploads
-    mkdir -p ${STORAGE_BASE}/pdfs/invoices
-    mkdir -p ${STORAGE_BASE}/temp
-    mkdir -p ${STORAGE_BASE}/cache
-    mkdir -p ${STORAGE_BASE}/company_logos
-    chmod -R 755 ${STORAGE_BASE}
-    echo "[SUCCESS] Temporary storage directories created"
-fi
-
-# Run database migrations
-echo "[INFO] Running database migrations..."
-alembic upgrade head
-echo "[SUCCESS] Database migrations completed"
-
-# Calculate optimal worker count based on CPU cores
-# Formula: (2 x $num_cores) + 1
-# Render Starter: 0.5 CPU -> 2 workers
-# Render Standard: 1 CPU -> 3 workers
-# Render Pro: 2 CPU -> 5 workers
-if [ -n "${GUNICORN_WORKERS:-}" ] && [ "${GUNICORN_WORKERS}" != "auto" ]; then
-    WORKERS=${GUNICORN_WORKERS}
-else
-    # Try to detect CPU count
-    if command -v nproc &> /dev/null; then
-        CPU_CORES=$(nproc)
-    else
-        # Fallback if nproc not available
-        CPU_CORES=1
-    fi
-    
-    # Calculate workers: (2 × cores) + 1, minimum 2
-    WORKERS=$((2 * CPU_CORES + 1))
-    if [ ${WORKERS} -lt 2 ]; then
-        WORKERS=2
-    fi
-fi
-
-echo "[INFO] Starting with ${WORKERS} workers for optimal multi-user performance"
-
-# Gunicorn configuration
-TIMEOUT=${GUNICORN_TIMEOUT:-120}
-GRACEFUL_TIMEOUT=${GUNICORN_GRACEFUL_TIMEOUT:-30}
-KEEPALIVE=${GUNICORN_KEEPALIVE:-5}
-MAX_REQUESTS=${GUNICORN_MAX_REQUESTS:-1000}
-MAX_REQUESTS_JITTER=${GUNICORN_MAX_REQUESTS_JITTER:-50}
-WORKER_CLASS=${GUNICORN_WORKER_CLASS:-uvicorn.workers.UvicornWorker}
-WORKER_CONNECTIONS=${GUNICORN_WORKER_CONNECTIONS:-1000}
-BIND_ADDRESS="0.0.0.0:${PORT:-8000}"
-
-echo "[INFO] Configuration:"
-echo "  - Workers: ${WORKERS}"
-echo "  - Worker class: ${WORKER_CLASS}"
-echo "  - Worker connections: ${WORKER_CONNECTIONS}"
-echo "  - Timeout: ${TIMEOUT}s"
-echo "  - Graceful timeout: ${GRACEFUL_TIMEOUT}s"
-echo "  - Keep-alive: ${KEEPALIVE}s"
-echo "  - Max requests: ${MAX_REQUESTS}"
-echo "  - Bind address: ${BIND_ADDRESS}"
-
-echo "========================================"
 echo "Starting BuildWise with Gunicorn..."
 echo "========================================"
 
-# Start Gunicorn with Uvicorn workers
-exec gunicorn app.main:app \
-  --workers ${WORKERS} \
-  --worker-class ${WORKER_CLASS} \
-  --worker-connections ${WORKER_CONNECTIONS} \
-  --bind ${BIND_ADDRESS} \
-  --timeout ${TIMEOUT} \
-  --graceful-timeout ${GRACEFUL_TIMEOUT} \
-  --keep-alive ${KEEPALIVE} \
-  --max-requests ${MAX_REQUESTS} \
-  --max-requests-jitter ${MAX_REQUESTS_JITTER} \
-  --preload \
-  --access-logfile - \
-  --error-logfile - \
-  --log-level info \
-  --capture-output \
-  --enable-stdio-inheritance
+# Get port from environment variable (set by Render.com) or use default
+PORT=${PORT:-8000}
+echo "Using port: $PORT"
 
+# Check if we're in production (Render.com sets this)
+if [ -n "$RENDER" ]; then
+    echo "Running in Render.com production environment"
+    # Use production settings
+    export WORKERS=${WORKERS:-2}
+else
+    echo "Running in development environment"
+    # Use development settings
+    export WORKERS=${WORKERS:-1}
+fi
+
+echo "Starting with $WORKERS workers on 0.0.0.0:$PORT"
+
+# Start Gunicorn with the configuration file
+exec gunicorn app.main:app \
+    --config gunicorn.conf.py \
+    --bind 0.0.0.0:$PORT \
+    --workers $WORKERS \
+    --worker-class uvicorn.workers.UvicornWorker \
+    --timeout 120 \
+    --keep-alive 5 \
+    --max-requests 1000 \
+    --max-requests-jitter 100 \
+    --preload \
+    --access-logfile - \
+    --error-logfile - \
+    --log-level info

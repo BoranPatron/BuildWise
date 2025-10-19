@@ -42,15 +42,19 @@ WORKDIR /app
 # Copy application code
 COPY --chown=buildwise:buildwise . .
 
+# Make start script executable
+RUN chmod +x start.sh
+
 # Switch to non-root user
 USER buildwise
 
-# Expose port
+# Expose port (will be overridden by Render.com)
 EXPOSE 8000
 
-# Health check
+# Health check - use PORT environment variable
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f http://localhost:${PORT:-8000}/health || exit 1
 
 # Default command (can be overridden by start.sh in production)
-CMD ["gunicorn", "app.main:app", "--workers", "2", "--worker-class", "uvicorn.workers.UvicornWorker", "--bind", "0.0.0.0:8000", "--timeout", "120"]
+# Use PORT environment variable for Render.com compatibility
+CMD ["./start.sh"]
