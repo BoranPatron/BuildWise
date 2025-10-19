@@ -38,8 +38,18 @@ def get_storage_base_path() -> Path:
         # Development: use local storage directory
         base_path = Path("storage")
     
-    # Ensure directory exists
-    base_path.mkdir(parents=True, exist_ok=True)
+    # Ensure directory exists (but don't create parent directories in production)
+    if is_production() and str(base_path).startswith("/var/data"):
+        # In production, only create if parent directory exists
+        if base_path.parent.exists():
+            base_path.mkdir(parents=True, exist_ok=True)
+        else:
+            # Fallback to temporary storage
+            base_path = Path("/tmp/storage")
+            base_path.mkdir(parents=True, exist_ok=True)
+    else:
+        # In development or for /tmp paths, create normally
+        base_path.mkdir(parents=True, exist_ok=True)
     
     return base_path
 
