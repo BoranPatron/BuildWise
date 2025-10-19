@@ -1,6 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy import text
-from fastapi import HTTPException
+from fastapi import HTTPException, status
 from .config import settings
 import os
 
@@ -91,18 +91,24 @@ AsyncSessionLocal = async_sessionmaker(
 
 
 async def get_db():
-    """Yield an async database session with improved error handling - TEMPORÄR ohne HTTPException"""
+    """Yield an async database session with improved error handling"""
     session = AsyncSessionLocal()
     try:
         yield session
+    except HTTPException:
+        # HTTPExceptions (z.B. 401 Unauthorized) durchreichen, nicht als DB-Fehler behandeln
+        await session.close()
+        raise
     except Exception as e:
         print(f"[ERROR] Datenbankfehler: {e}")
         print(f"[ERROR] Database error type: {type(e).__name__}")
         import traceback
         traceback.print_exc()
         await session.rollback()
-        # TEMPORÄR: Keine HTTPException mehr - nur Logging
-        print(f"[WARNING] Database error ignored for debugging: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Database error occurred"
+        )
     finally:
         await session.close()
 
