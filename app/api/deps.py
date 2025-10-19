@@ -73,6 +73,12 @@ async def get_current_user(
             raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="User not found")
         
         print(f"[SUCCESS] get_current_user: User erfolgreich geladen: {user.id}, {user.email}")
+        
+        # Zusätzliche Validierung für Tasks API
+        if not hasattr(user, 'id') or not user.id:
+            print(f"[ERROR] get_current_user: User hat keine gültige ID: {user}")
+            raise HTTPException(status_code=401, detail="Invalid user data")
+        
         return user
         
     except HTTPException as he:

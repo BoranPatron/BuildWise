@@ -18,6 +18,16 @@ from ..services.task_archiving_service import (
 router = APIRouter(prefix="/tasks", tags=["tasks"])
 
 
+@router.get("/health")
+async def tasks_health_check():
+    """Health check für Tasks API"""
+    return {
+        "status": "healthy",
+        "service": "Tasks API",
+        "timestamp": "2025-10-19T08:32:00Z"
+    }
+
+
 @router.post("/", response_model=TaskRead, status_code=status.HTTP_201_CREATED)
 async def create_new_task(
     task_in: TaskCreate,
@@ -45,6 +55,12 @@ async def read_tasks(
 ):
     try:
         print(f"[DEBUG] [TASKS-API] read_tasks called with project_id={project_id}, assigned_to={assigned_to}, user={current_user.id}")
+        print(f"[DEBUG] [TASKS-API] Current user details: id={current_user.id}, email={current_user.email}, type={getattr(current_user, 'user_type', 'unknown')}")
+        
+        # Zusätzliche Validierung des Users
+        if not current_user or not current_user.id:
+            print(f"[ERROR] [TASKS-API] Invalid current_user: {current_user}")
+            raise HTTPException(status_code=401, detail="Invalid user authentication")
         
         if assigned_to:
             # Lade Tasks für einen bestimmten Benutzer
@@ -60,6 +76,9 @@ async def read_tasks(
         print(f"[SUCCESS] [TASKS-API] Found {len(tasks)} tasks")
         return tasks
         
+    except HTTPException as he:
+        print(f"[ERROR] [TASKS-API] HTTPException in read_tasks: {he.status_code} - {he.detail}")
+        raise he
     except Exception as e:
         print(f"[ERROR] [TASKS-API] Error in read_tasks: {e}")
         import traceback
