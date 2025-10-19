@@ -483,60 +483,60 @@ async def read_documents(
             else:
                 # Milestone nicht gefunden
                 documents = []
-    
-    # Filter anwenden
-    if category:
-        def category_matches(doc_category):
-            if doc_category is None:
-                return False
-            # Vergleiche sowohl Enum-Wert als auch String-Repräsentation
-            return (doc_category == category or 
-                    doc_category == category.value or
-                    str(doc_category) == str(category) or
-                    str(doc_category) == category.value)
         
-        documents = [doc for doc in documents if category_matches(getattr(doc, 'category', None))]
-    
-    if subcategory:
-        documents = [doc for doc in documents if getattr(doc, 'subcategory', None) == subcategory]
-    
-    if document_type:
-        documents = [doc for doc in documents if doc.document_type == document_type]
-    
-    if status_filter:
-        def status_matches(doc_status):
-            if doc_status is None:
-                doc_status = 'draft'
-            # Vergleiche sowohl Enum-Wert als auch String-Repräsentation
-            return (doc_status == status_filter or 
-                    doc_status == status_filter.value or
-                    str(doc_status) == str(status_filter) or
-                    str(doc_status) == status_filter.value)
+        # Filter anwenden
+        if category:
+            def category_matches(doc_category):
+                if doc_category is None:
+                    return False
+                # Vergleiche sowohl Enum-Wert als auch String-Repräsentation
+                return (doc_category == category or 
+                        doc_category == category.value or
+                        str(doc_category) == str(category) or
+                        str(doc_category) == category.value)
+            
+            documents = [doc for doc in documents if category_matches(getattr(doc, 'category', None))]
         
-        documents = [doc for doc in documents if status_matches(getattr(doc, 'status', 'draft'))]
-    
-    if is_favorite is not None:
-        documents = [doc for doc in documents if getattr(doc, 'is_favorite', False) == is_favorite]
-    
-    # Volltextsuche
-    if search:
-        search_term = search.lower()
-        documents = [doc for doc in documents if 
-                    search_term in doc.title.lower() or
-                    search_term in (doc.description or '').lower() or
-                    search_term in (doc.tags or '').lower() or
-                    search_term in doc.file_name.lower()]
-    
-    # Sortierung
-    if sort_by == 'title':
-        documents = sorted(documents, key=lambda x: x.title, reverse=(sort_order == 'desc'))
-    elif sort_by == 'file_size':
-        documents = sorted(documents, key=lambda x: x.file_size, reverse=(sort_order == 'desc'))
-    elif sort_by == 'accessed_at':
-        documents = sorted(documents, key=lambda x: getattr(x, 'accessed_at', None) or x.created_at, reverse=(sort_order == 'desc'))
-    else:  # created_at
-        documents = sorted(documents, key=lambda x: x.created_at, reverse=(sort_order == 'desc'))
-    
+        if subcategory:
+            documents = [doc for doc in documents if getattr(doc, 'subcategory', None) == subcategory]
+        
+        if document_type:
+            documents = [doc for doc in documents if doc.document_type == document_type]
+        
+        if status_filter:
+            def status_matches(doc_status):
+                if doc_status is None:
+                    doc_status = 'draft'
+                # Vergleiche sowohl Enum-Wert als auch String-Repräsentation
+                return (doc_status == status_filter or 
+                        doc_status == status_filter.value or
+                        str(doc_status) == str(status_filter) or
+                        str(doc_status) == status_filter.value)
+            
+            documents = [doc for doc in documents if status_matches(getattr(doc, 'status', 'draft'))]
+        
+        if is_favorite is not None:
+            documents = [doc for doc in documents if getattr(doc, 'is_favorite', False) == is_favorite]
+        
+        # Volltextsuche
+        if search:
+            search_term = search.lower()
+            documents = [doc for doc in documents if 
+                        search_term in doc.title.lower() or
+                        search_term in (doc.description or '').lower() or
+                        search_term in (doc.tags or '').lower() or
+                        search_term in doc.file_name.lower()]
+        
+        # Sortierung
+        if sort_by == 'title':
+            documents = sorted(documents, key=lambda x: x.title, reverse=(sort_order == 'desc'))
+        elif sort_by == 'file_size':
+            documents = sorted(documents, key=lambda x: x.file_size, reverse=(sort_order == 'desc'))
+        elif sort_by == 'accessed_at':
+            documents = sorted(documents, key=lambda x: getattr(x, 'accessed_at', None) or x.created_at, reverse=(sort_order == 'desc'))
+        else:  # created_at
+            documents = sorted(documents, key=lambda x: x.created_at, reverse=(sort_order == 'desc'))
+        
         # Paginierung
         documents = documents[offset:offset + limit]
         
