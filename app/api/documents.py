@@ -9,7 +9,8 @@ from datetime import datetime
 import json
 
 from ..core.database import get_db
-from ..api.deps import get_current_user
+from ..api.deps import get_current_user, get_current_user_optional
+from ..services.user_service import get_user_by_email
 from ..models import User, Milestone, Project, Document
 from ..schemas.document import (
     Document, DocumentUpdate, DocumentSummary, DocumentUploadResponse, DocumentCreate,
@@ -1163,11 +1164,28 @@ async def delete_comment(
 @router.get("/{document_id}/content")
 async def get_document_content(
     document_id: int,
+    token: Optional[str] = Query(None, description="Authentication token"),
     db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
+    current_user: Optional[User] = Depends(get_current_user_optional)
 ):
-    """Lade Dokument-Inhalt für Inline-Anzeige"""
+    """Lade Dokument-Inhalt für Inline-Anzeige mit Token-Unterstützung"""
     try:
+        # Prüfe Authentifizierung (Token oder Header)
+        if token:
+            # Validiere Token über Query-Parameter
+            from ..core.security import decode_access_token
+            payload = decode_access_token(token)
+            if not payload or "sub" not in payload:
+                raise HTTPException(status_code=401, detail="Ungültiger Token")
+            email = payload["sub"]
+            user = await get_user_by_email(db, email=email)
+            if not user:
+                raise HTTPException(status_code=401, detail="Benutzer nicht gefunden")
+        elif not current_user:
+            raise HTTPException(status_code=401, detail="Authentifizierung erforderlich")
+        else:
+            user = current_user
+        
         # Prüfe ob Dokument existiert und User Zugriff hat
         document = await get_document_by_id(db, document_id)
         if not document:

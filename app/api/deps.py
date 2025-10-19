@@ -1,5 +1,6 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer
+from typing import Optional
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -38,3 +39,26 @@ async def get_current_user(
         raise credentials_exception
     
     return user
+
+
+async def get_current_user_optional(
+    db: AsyncSession = Depends(get_db), token: str = Depends(oauth2_scheme)
+) -> Optional[User]:
+    """
+    Authentifiziert den aktuellen User über JWT Token (optional)
+    Gibt None zurück wenn Token ungültig ist, statt Exception zu werfen
+    """
+    try:
+        # Token dekodieren
+        payload = decode_access_token(token)
+        if not payload or "sub" not in payload:
+            return None
+        
+        # User-Email aus Token holen
+        email: str = payload["sub"]
+        
+        # User aus Datenbank laden
+        user = await get_user_by_email(db, email=email)
+        return user
+    except Exception:
+        return None
