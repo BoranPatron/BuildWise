@@ -61,7 +61,9 @@ async def read_tasks(
         tasks = await get_tasks_for_project(db, project_id)
         return tasks
     else:
-        return []
+        # Default: Zeige alle Tasks die dem aktuellen User zugewiesen sind
+        tasks = await get_tasks_assigned_to_user(db, current_user.id)
+        return tasks
 
 
 @router.get("/{task_id}", response_model=TaskRead)
