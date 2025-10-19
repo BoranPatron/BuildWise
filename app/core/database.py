@@ -94,8 +94,6 @@ async def get_db():
     """Yield an async database session with improved error handling and timeout management."""
     session = AsyncSessionLocal()
     try:
-        # Test connection before yielding
-        await session.execute(text("SELECT 1"))
         yield session
     except Exception as e:
         print(f"[ERROR] Datenbankfehler: {e}")

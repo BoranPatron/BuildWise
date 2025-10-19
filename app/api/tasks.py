@@ -65,13 +65,25 @@ async def read_tasks(
         if assigned_to:
             # Lade Tasks für einen bestimmten Benutzer
             print(f"[DEBUG] [TASKS-API] Loading tasks assigned to user {assigned_to}")
-            tasks = await get_tasks_assigned_to_user(db, assigned_to)
+            try:
+                tasks = await get_tasks_assigned_to_user(db, assigned_to)
+            except Exception as db_error:
+                print(f"[ERROR] [TASKS-API] Database error loading tasks for user {assigned_to}: {db_error}")
+                raise HTTPException(status_code=500, detail=f"Database error: {str(db_error)}")
         elif project_id:
             print(f"[DEBUG] [TASKS-API] Loading tasks for project {project_id}")
-            tasks = await get_tasks_for_project(db, project_id)
+            try:
+                tasks = await get_tasks_for_project(db, project_id)
+            except Exception as db_error:
+                print(f"[ERROR] [TASKS-API] Database error loading tasks for project {project_id}: {db_error}")
+                raise HTTPException(status_code=500, detail=f"Database error: {str(db_error)}")
         else:
             print(f"[DEBUG] [TASKS-API] Loading tasks for current user {current_user.id}")
-            tasks = await get_tasks_for_user(db, current_user.id)
+            try:
+                tasks = await get_tasks_for_user(db, current_user.id)
+            except Exception as db_error:
+                print(f"[ERROR] [TASKS-API] Database error loading tasks for user {current_user.id}: {db_error}")
+                raise HTTPException(status_code=500, detail=f"Database error: {str(db_error)}")
         
         print(f"[SUCCESS] [TASKS-API] Found {len(tasks)} tasks")
         return tasks
