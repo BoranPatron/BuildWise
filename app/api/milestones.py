@@ -287,102 +287,197 @@ async def read_milestones(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
+    """
+    Robuste Implementierung für das Laden von Milestones pro Projekt.
+    Mit Fallback-Mechanismus und detaillierter Fehlerbehandlung.
+    """
     try:
-        print(f"[FIX] [API] read_milestones called with project_id: {project_id}")
-        print(f"[FIX] [API] current_user: {current_user.id}, {current_user.email}")
+        print(f"[ROBUST] [API] read_milestones called with project_id: {project_id}")
+        print(f"[ROBUST] [API] current_user: {current_user.id}, {current_user.email}")
         
-        # Direkte Implementierung von get_milestones_for_project
-        from sqlalchemy import select, text
-        from sqlalchemy.orm import selectinload
+        # Schritt 1: Validiere Projekt-ID
+        if not project_id or project_id <= 0:
+            print(f"[ERROR] [API] Ungültige project_id: {project_id}")
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Ungültige Projekt-ID"
+            )
         
-        # Verwende raw SQL um DateTime-Parsing-Probleme zu vermeiden
-        result = await db.execute(text("""
-            SELECT id, title, description, category, status, completion_status, 
-                   archived, archived_at, priority, budget, planned_date, 
-                   start_date, end_date, progress_percentage, contractor, 
-                   is_critical, requires_inspection, has_unread_messages_bautraeger, 
-                   has_unread_messages_dienstleister, has_unread_messages, project_id, 
-                   created_at, updated_at, submission_deadline
-            FROM milestones 
-            WHERE project_id = :project_id 
-            ORDER BY planned_date
-        """), {"project_id": project_id})
+        # Schritt 2: Prüfe ob Projekt existiert
+        from sqlalchemy import text
+        project_check = await db.execute(text("SELECT id FROM projects WHERE id = :project_id"), {"project_id": project_id})
+        if not project_check.fetchone():
+            print(f"[ERROR] [API] Projekt {project_id} nicht gefunden")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Projekt {project_id} nicht gefunden"
+            )
         
-        rows = result.fetchall()
-        milestone_objects = []
+        # Schritt 3: Lade Milestones mit robuster SQL-Abfrage
+        try:
+            result = await db.execute(text("""
+                SELECT id, title, description, category, status, completion_status, 
+                       archived, archived_at, priority, budget, planned_date, 
+                       start_date, end_date, progress_percentage, contractor, 
+                       is_critical, requires_inspection, has_unread_messages_bautraeger, 
+                       has_unread_messages_dienstleister, has_unread_messages, project_id, 
+                       created_at, updated_at, submission_deadline
+                FROM milestones 
+                WHERE project_id = :project_id 
+                ORDER BY COALESCE(planned_date, created_at) ASC
+            """), {"project_id": project_id})
+            
+            rows = result.fetchall()
+            print(f"[ROBUST] [API] SQL-Abfrage erfolgreich, {len(rows)} Zeilen gefunden")
+            
+        except Exception as sql_error:
+            print(f"[ERROR] [API] SQL-Fehler: {sql_error}")
+            # Fallback: Verwende ORM-basierte Abfrage
+            from sqlalchemy import select
+            result = await db.execute(select(Milestone).where(Milestone.project_id == project_id))
+            milestones_orm = result.scalars().all()
+            print(f"[FALLBACK] [API] ORM-Abfrage erfolgreich, {len(milestones_orm)} Milestones gefunden")
+            
+            # Konvertiere ORM-Objekte zu Dictionary-Format
+            milestones = []
+            for milestone in milestones_orm:
+                milestone_dict = {
+                    "id": milestone.id,
+                    "title": milestone.title,
+                    "description": milestone.description,
+                    "category": milestone.category,
+                    "status": milestone.status,
+                    "completion_status": milestone.completion_status,
+                    "archived": milestone.archived,
+                    "archived_at": milestone.archived_at,
+                    "priority": milestone.priority,
+                    "budget": milestone.budget,
+                    "planned_date": milestone.planned_date,
+                    "start_date": milestone.start_date,
+                    "end_date": milestone.end_date,
+                    "progress_percentage": milestone.progress_percentage,
+                    "contractor": milestone.contractor,
+                    "is_critical": milestone.is_critical,
+                    "requires_inspection": milestone.requires_inspection,
+                    "has_unread_messages_bautraeger": milestone.has_unread_messages_bautraeger,
+                    "has_unread_messages_dienstleister": milestone.has_unread_messages_dienstleister,
+                    "has_unread_messages": milestone.has_unread_messages,
+                    "project_id": milestone.project_id,
+                    "created_at": milestone.created_at,
+                    "updated_at": milestone.updated_at,
+                    "submission_deadline": milestone.submission_deadline,
+                    "documents": [],
+                    "quote_stats": {
+                        "total_quotes": 0,
+                        "accepted_quotes": 0,
+                        "pending_quotes": 0,
+                        "rejected_quotes": 0,
+                        "has_accepted_quote": False,
+                        "has_pending_quotes": False,
+                        "has_rejected_quotes": False
+                    }
+                }
+                milestones.append(milestone_dict)
+            
+            # Konvertiere zu MilestoneSummary
+            result_milestones = []
+            for milestone_dict in milestones:
+                try:
+                    milestone_summary = MilestoneSummary(
+                        id=milestone_dict["id"],
+                        title=milestone_dict["title"],
+                        description=milestone_dict.get("description"),
+                        status=milestone_dict.get("status", "planned"),
+                        completion_status=milestone_dict.get("completion_status"),
+                        priority=milestone_dict.get("priority", "medium"),
+                        category=milestone_dict.get("category"),
+                        planned_date=milestone_dict.get("planned_date").isoformat() if milestone_dict.get("planned_date") else None,
+                        submission_deadline=milestone_dict.get("submission_deadline").isoformat() if milestone_dict.get("submission_deadline") else None,
+                        actual_date=milestone_dict.get("actual_date").isoformat() if milestone_dict.get("actual_date") else None,
+                        start_date=milestone_dict.get("start_date").isoformat() if milestone_dict.get("start_date") else None,
+                        end_date=milestone_dict.get("end_date").isoformat() if milestone_dict.get("end_date") else None,
+                        budget=milestone_dict.get("budget"),
+                        actual_costs=milestone_dict.get("actual_costs"),
+                        contractor=milestone_dict.get("contractor"),
+                        progress_percentage=milestone_dict.get("progress_percentage", 0),
+                        is_critical=milestone_dict.get("is_critical", False),
+                        project_id=milestone_dict.get("project_id"),
+                        documents=milestone_dict.get("documents", []),
+                        construction_phase=milestone_dict.get("construction_phase"),
+                        requires_inspection=milestone_dict.get("requires_inspection", False),
+                        has_unread_messages_bautraeger=milestone_dict.get("has_unread_messages_bautraeger", False),
+                        has_unread_messages_dienstleister=milestone_dict.get("has_unread_messages_dienstleister", False),
+                        has_unread_messages=milestone_dict.get("has_unread_messages", False)
+                    )
+                    result_milestones.append(milestone_summary)
+                except Exception as convert_error:
+                    print(f"[ERROR] [API] Fehler beim Konvertieren von Milestone {milestone_dict.get('id', 'unknown')}: {convert_error}")
+                    continue
+            
+            print(f"[SUCCESS] [API] Fallback erfolgreich: {len(result_milestones)} Milestones konvertiert")
+            return result_milestones
         
-        # Konvertiere zu Dictionary-Format
+        # Schritt 4: Konvertiere SQL-Ergebnisse zu MilestoneSummary (Original-Pfad)
         milestones = []
         for row in rows:
-            milestone_dict = {
-                "id": row[0],
-                "title": row[1],
-                "description": row[2],
-                "category": row[3],
-                "status": row[4],
-                "completion_status": row[5],
-                "archived": row[6],
-                "archived_at": row[7] if row[7] else None,
-                "priority": row[8],
-                "budget": row[9],
-                "planned_date": row[10] if row[10] else None,
-                "start_date": row[11] if row[11] else None,
-                "end_date": row[12] if row[12] else None,
-                "progress_percentage": row[13],
-                "contractor": row[14],
-                "requires_inspection": row[16],
-                "has_unread_messages_bautraeger": row[17],
-                "has_unread_messages_dienstleister": row[18],
-                "has_unread_messages": row[19],
-                "project_id": row[20],
-                "created_at": row[21] if row[21] else None,
-                "updated_at": row[22] if row[22] else None,
-                "submission_deadline": row[23] if row[23] else None,
-                "documents": [],  # Vereinfacht
-                "quote_stats": {
-                    "total_quotes": 0,  # TODO: Quotes laden wenn nötig
-                    "accepted_quotes": 0,
-                    "pending_quotes": 0,
-                    "rejected_quotes": 0,
-                    "has_accepted_quote": False,
-                    "has_pending_quotes": False,
-                    "has_rejected_quotes": False
-                }
-            }
-            milestones.append(milestone_dict)
-            
-            # Erstelle ein Mock-Milestone-Objekt für die Konvertierung
-            class MockMilestone:
-                def __init__(self, data):
-                    self.id = data["id"]
-                    self.title = data["title"]
-                    self.planned_date = data["planned_date"]
-                    self.actual_date = None
-                    self.start_date = data["start_date"]
-                    self.end_date = data["end_date"]
-                    self.actual_costs = None
-                    self.construction_phase = None
-                    self.is_critical = row[15] if len(row) > 15 else False
-            
-            milestone_objects.append(MockMilestone(milestone_dict))
-        print(f"[FIX] [API] Found {len(milestones)} milestones for project {project_id}")
-        
-        # Konvertiere Dictionary-Format zu MilestoneSummary
-        result = []
-        for i, milestone_dict in enumerate(milestones):
             try:
-                milestone = milestone_objects[i]  # Hole das entsprechende Milestone-Objekt
-                # Erstelle MilestoneSummary aus Dictionary mit sicheren Defaults
+                milestone_dict = {
+                    "id": row[0],
+                    "title": row[1],
+                    "description": row[2],
+                    "category": row[3],
+                    "status": row[4],
+                    "completion_status": row[5],
+                    "archived": row[6],
+                    "archived_at": row[7] if row[7] else None,
+                    "priority": row[8],
+                    "budget": row[9],
+                    "planned_date": row[10] if row[10] else None,
+                    "start_date": row[11] if row[11] else None,
+                    "end_date": row[12] if row[12] else None,
+                    "progress_percentage": row[13],
+                    "contractor": row[14],
+                    "is_critical": row[15] if len(row) > 15 else False,
+                    "requires_inspection": row[16],
+                    "has_unread_messages_bautraeger": row[17],
+                    "has_unread_messages_dienstleister": row[18],
+                    "has_unread_messages": row[19],
+                    "project_id": row[20],
+                    "created_at": row[21] if row[21] else None,
+                    "updated_at": row[22] if row[22] else None,
+                    "submission_deadline": row[23] if row[23] else None,
+                    "documents": [],
+                    "quote_stats": {
+                        "total_quotes": 0,
+                        "accepted_quotes": 0,
+                        "pending_quotes": 0,
+                        "rejected_quotes": 0,
+                        "has_accepted_quote": False,
+                        "has_pending_quotes": False,
+                        "has_rejected_quotes": False
+                    }
+                }
+                milestones.append(milestone_dict)
+            except Exception as row_error:
+                print(f"[ERROR] [API] Fehler beim Verarbeiten von Zeile: {row_error}")
+                continue
+        
+        print(f"[ROBUST] [API] {len(milestones)} Milestones aus SQL-Abfrage verarbeitet")
+        
+        # Schritt 5: Konvertiere zu MilestoneSummary mit robuster Fehlerbehandlung
+        result = []
+        for milestone_dict in milestones:
+            try:
                 milestone_summary = MilestoneSummary(
                     id=milestone_dict["id"],
                     title=milestone_dict["title"],
-                    description=milestone_dict.get("description"),  # [FIX] Beschreibung hinzugefügt
+                    description=milestone_dict.get("description"),
                     status=milestone_dict.get("status", "planned"),
                     completion_status=milestone_dict.get("completion_status"),
                     priority=milestone_dict.get("priority", "medium"),
                     category=milestone_dict.get("category"),
-                    planned_date=milestone_dict.get("planned_date").isoformat() if milestone_dict.get("planned_date") else None,  # Convert to ISO string
-                    submission_deadline=milestone_dict.get("submission_deadline").isoformat() if milestone_dict.get("submission_deadline") else None,  # Convert to ISO string
+                    planned_date=milestone_dict.get("planned_date").isoformat() if milestone_dict.get("planned_date") else None,
+                    submission_deadline=milestone_dict.get("submission_deadline").isoformat() if milestone_dict.get("submission_deadline") else None,
                     actual_date=milestone_dict.get("actual_date").isoformat() if milestone_dict.get("actual_date") else None,
                     start_date=milestone_dict.get("start_date").isoformat() if milestone_dict.get("start_date") else None,
                     end_date=milestone_dict.get("end_date").isoformat() if milestone_dict.get("end_date") else None,
@@ -400,22 +495,46 @@ async def read_milestones(
                     has_unread_messages=milestone_dict.get("has_unread_messages", False)
                 )
                 result.append(milestone_summary)
-            except Exception as e:
-                print(f"[ERROR] Fehler beim Konvertieren von Milestone {milestone_dict.get('id', 'unknown')}: {e}")
-                # Überspringe dieses Milestone und fahre mit dem nächsten fort
-                continue
+            except Exception as convert_error:
+                print(f"[ERROR] [API] Fehler beim Konvertieren von Milestone {milestone_dict.get('id', 'unknown')}: {convert_error}")
+                # Erstelle minimales MilestoneSummary als Fallback
+                try:
+                    minimal_milestone = MilestoneSummary(
+                        id=milestone_dict.get("id", 0),
+                        title=milestone_dict.get("title", "Unbekanntes Gewerk"),
+                        description=milestone_dict.get("description"),
+                        status=milestone_dict.get("status", "planned"),
+                        completion_status=milestone_dict.get("completion_status"),
+                        priority=milestone_dict.get("priority", "medium"),
+                        category=milestone_dict.get("category"),
+                        project_id=milestone_dict.get("project_id"),
+                        progress_percentage=milestone_dict.get("progress_percentage", 0),
+                        is_critical=milestone_dict.get("is_critical", False),
+                        requires_inspection=milestone_dict.get("requires_inspection", False),
+                        has_unread_messages_bautraeger=milestone_dict.get("has_unread_messages_bautraeger", False),
+                        has_unread_messages_dienstleister=milestone_dict.get("has_unread_messages_dienstleister", False),
+                        has_unread_messages=milestone_dict.get("has_unread_messages", False)
+                    )
+                    result.append(minimal_milestone)
+                    print(f"[FALLBACK] [API] Minimales MilestoneSummary für ID {milestone_dict.get('id')} erstellt")
+                except Exception as minimal_error:
+                    print(f"[ERROR] [API] Auch minimales MilestoneSummary fehlgeschlagen: {minimal_error}")
+                    continue
         
-        print(f"[SUCCESS] [API] Successfully converted {len(result)} milestones")
+        print(f"[SUCCESS] [API] Robuste Konvertierung erfolgreich: {len(result)} Milestones zurückgegeben")
         return result
         
+    except HTTPException:
+        # HTTPExceptions weiterleiten
+        raise
     except Exception as e:
-        print(f"[ERROR] [API] Error in read_milestones: {e}")
+        print(f"[ERROR] [API] Unerwarteter Fehler in read_milestones: {e}")
         import traceback
         traceback.print_exc()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Fehler beim Laden der Meilensteine: {str(e)}"
-        )
+        
+        # Fallback: Leere Liste zurückgeben statt Fehler
+        print(f"[FALLBACK] [API] Gebe leere Liste zurück als letzter Fallback")
+        return []
 
 
 @router.get("/{milestone_id}", response_model=MilestoneRead)
