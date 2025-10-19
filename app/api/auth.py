@@ -546,18 +546,23 @@ async def select_role(
 ):
     """Speichert die gewählte Rolle des Benutzers"""
     
+    print(f"[DEBUG] select_role aufgerufen für User {current_user.id} mit Rolle: {request.role}")
+    
     from datetime import datetime, timedelta
     
     # Prüfe ob User "neu" ist (innerhalb der ersten 24 Stunden nach Registrierung)
     if current_user.created_at is None:
         # Fallback für User ohne created_at
         is_new_user = True
+        print(f"[DEBUG] User {current_user.id} hat kein created_at - behandle als neuen User")
     else:
         user_age = datetime.utcnow() - current_user.created_at
         is_new_user = user_age.total_seconds() < 24 * 60 * 60  # 24 Stunden
+        print(f"[DEBUG] User {current_user.id} Alter: {user_age.total_seconds()} Sekunden, ist neu: {is_new_user}")
     
     # Erlaube Rollenänderung nur für neue User oder wenn noch keine Rolle gesetzt
     if current_user.role_selected and current_user.user_role and not is_new_user:
+        print(f"[ERROR] User {current_user.id} hat bereits eine Rolle ausgewählt und ist nicht neu")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Rolle wurde bereits ausgewählt. Kontaktieren Sie einen Administrator für Änderungen."
@@ -565,17 +570,21 @@ async def select_role(
     
     # Validiere die Rolle
     if request.role not in ["bautraeger", "dienstleister"]:
+        print(f"[ERROR] Ungültige Rolle: {request.role}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Ungültige Rolle. Wählen Sie 'bautraeger' oder 'dienstleister'."
         )
     
     try:
+        print(f"[DEBUG] Beginne Datenbank-Update für User {current_user.id}")
+        
         # Setze die Rolle
         from datetime import datetime
         from sqlalchemy import update
         
         role_enum = UserRole.BAUTRAEGER if request.role == "bautraeger" else UserRole.DIENSTLEISTER
+        print(f"[DEBUG] Rolle-Enum: {role_enum}")
         
         await db.execute(
             update(User)
@@ -588,19 +597,19 @@ async def select_role(
             )
         )
         await db.commit()
+        print(f"[SUCCESS] Datenbank-Update erfolgreich für User {current_user.id}")
         
         # Credit-Initialisierung für Bauträger
         if request.role == "bautraeger":
             try:
+                print(f"[DEBUG] Initialisiere Credits für Bauträger {current_user.id}")
                 from ..services.credit_service import CreditService
                 
                 # Initialisiere Credits für neuen Bauträger
                 ip_address = req.client.host if req else None
-                credits_initialized = await CreditService.initialize_credits_for_new_user(
+                credits_initialized = await CreditService.get_or_create_user_credits(
                     db=db,
-                    user_id=current_user.id,
-                    user_role=role_enum,
-                    ip_address=ip_address
+                    user_id=current_user.id
                 )
                 
                 if credits_initialized:
@@ -610,6 +619,8 @@ async def select_role(
                     
             except Exception as e:
                 print(f"[ERROR] Fehler bei Credit-Initialisierung: {e}")
+                import traceback
+                print(f"[ERROR] Traceback: {traceback.format_exc()}")
                 # Fehler bei Credit-Initialisierung sollte nicht die Rollenauswahl blockieren
         
         # Audit-Log
@@ -621,6 +632,8 @@ async def select_role(
             ip_address=SecurityService.anonymize_ip_address(ip_address) if ip_address else None
         )
         
+        print(f"[SUCCESS] select_role erfolgreich abgeschlossen für User {current_user.id}")
+        
         return {
             "message": "Rolle erfolgreich ausgewählt",
             "role": request.role,
@@ -629,6 +642,8 @@ async def select_role(
         
     except Exception as e:
         print(f"[ERROR] Fehler beim Speichern der Rolle: {e}")
+        import traceback
+        print(f"[ERROR] Traceback: {traceback.format_exc()}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="Fehler beim Speichern der Rolle"
