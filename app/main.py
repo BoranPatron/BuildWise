@@ -15,9 +15,9 @@ from .core.database import engine
 from .models import Base
 
 app = FastAPI(
-        title="BuildWise API",
-        description="Digitaler Assistent für Immobilienprojekte - Vollständige Backend-API",
-        version="1.0.2",  # FORCE REDEPLOY - Critical authentication fixes
+        title="BuildWise API - AUTHENTICATION FIXED",
+        description="Digitaler Assistent für Immobilienprojekte - Vollständige Backend-API - ALL AUTH ISSUES RESOLVED",
+        version="1.0.3",  # FINAL REDEPLOY - All authentication issues fixed
         docs_url="/docs",
         redoc_url="/redoc",
         # WICHTIG: Keine automatischen Redirects bei trailing slashes
