@@ -36,7 +36,7 @@ class TaskUpdate(BaseModel):
 
 class TaskRead(TaskBase):
     id: int
-    project_id: int
+    project_id: Optional[int] = None
     assigned_to: Optional[int] = None
     created_by: int
     actual_hours: Optional[float] = None
