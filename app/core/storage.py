@@ -27,12 +27,18 @@ def get_storage_base_path() -> Path:
         persistent_disk = Path("/storage")
         
         # Check if persistent disk is available and writable
-        if persistent_disk.exists() and os.access(persistent_disk, os.W_OK):
-            base_path = persistent_disk
-        else:
+        # First try to create the directory if it doesn't exist
+        try:
+            persistent_disk.mkdir(parents=True, exist_ok=True)
+            if persistent_disk.exists() and os.access(persistent_disk, os.W_OK):
+                base_path = persistent_disk
+                print(f"[SUCCESS] Using Render persistent disk at: {persistent_disk}")
+            else:
+                raise PermissionError("Cannot write to persistent disk")
+        except (OSError, PermissionError) as e:
             # Fallback to temporary storage (ephemeral, lost on restart)
             base_path = Path("/tmp/storage")
-            print("[WARNING] Persistent disk not available - using temporary storage")
+            print(f"[WARNING] Persistent disk not available ({e}) - using temporary storage")
             print("[WARNING] Files will be LOST on service restart!")
     else:
         # Development: use local storage directory
