@@ -16,7 +16,7 @@ class TaskBase(BaseModel):
 
 
 class TaskCreate(TaskBase):
-    project_id: int
+    project_id: Optional[int] = None
     assigned_to: Optional[int] = None
 
 

@@ -9,7 +9,7 @@ from ..schemas.task import TaskCreate, TaskUpdate
 
 async def create_task(db: AsyncSession, task_in: TaskCreate, created_by: int) -> Task:
     task = Task(
-        project_id=task_in.project_id,
+        project_id=task_in.project_id,  # Kann None sein
         assigned_to=task_in.assigned_to,
         created_by=created_by,
         title=task_in.title,
