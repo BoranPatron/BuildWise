@@ -20,9 +20,17 @@ async def get_milestone_by_id(db: AsyncSession, milestone_id: int) -> Optional[M
 async def delete_milestone(db: AsyncSession, milestone_id: int) -> bool:
     """Delete milestone from database"""
     try:
-        result = await db.execute(delete(Milestone).where(Milestone.id == milestone_id))
+        # First check if milestone exists
+        milestone = await db.execute(select(Milestone).where(Milestone.id == milestone_id))
+        milestone_obj = milestone.scalar_one_or_none()
+        
+        if not milestone_obj:
+            return False
+            
+        # Delete the milestone
+        await db.delete(milestone_obj)
         await db.commit()
-        return result.rowcount > 0
+        return True
     except Exception as e:
         await db.rollback()
         print(f"[ERROR] Failed to delete milestone {milestone_id}: {e}")
