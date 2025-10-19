@@ -47,7 +47,7 @@ limit_request_fields = 100
 limit_request_field_size = 8190
 
 # Performance
-worker_tmp_dir = "/dev/shm"
+# worker_tmp_dir = "/dev/shm"  # DISABLED: May not be available on Render
 forwarded_allow_ips = "*"
 
 def when_ready(server):
