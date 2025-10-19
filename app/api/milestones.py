@@ -27,8 +27,8 @@ async def delete_milestone(db: AsyncSession, milestone_id: int) -> bool:
         if not milestone_obj:
             return False
             
-        # Delete the milestone
-        await db.delete(milestone_obj)
+        # Delete the milestone using execute with delete statement
+        await db.execute(delete(Milestone).where(Milestone.id == milestone_id))
         await db.commit()
         return True
     except Exception as e:
