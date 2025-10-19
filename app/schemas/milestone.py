@@ -252,11 +252,11 @@ class MilestoneSummary(BaseModel):
             'completion_status': obj.completion_status,  # [SUCCESS] KRITISCH: completion_status hinzufügen
             'priority': obj.priority,
             'category': obj.category,
-            'planned_date': obj.planned_date,
-            'submission_deadline': obj.submission_deadline,  # Angebotsfrist (optional)
-            'actual_date': obj.actual_date,
-            'start_date': obj.start_date,
-            'end_date': obj.end_date,
+            'planned_date': obj.planned_date.isoformat() if obj.planned_date else None,
+            'submission_deadline': obj.submission_deadline.isoformat() if obj.submission_deadline else None,  # Angebotsfrist (optional)
+            'actual_date': obj.actual_date.isoformat() if obj.actual_date else None,
+            'start_date': obj.start_date.isoformat() if obj.start_date else None,
+            'end_date': obj.end_date.isoformat() if obj.end_date else None,
             'budget': obj.budget,
             'actual_costs': obj.actual_costs,
             'contractor': obj.contractor,
