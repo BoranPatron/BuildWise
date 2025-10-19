@@ -15,15 +15,15 @@ from .core.database import engine
 from .models import Base
 
 app = FastAPI(
-    title="BuildWise API",
-    description="Digitaler Assistent für Immobilienprojekte - Vollständige Backend-API",
-    version="1.0.1",  # FORCE REDEPLOY - Authentication fixes
-    docs_url="/docs",
-    redoc_url="/redoc",
-    # WICHTIG: Keine automatischen Redirects bei trailing slashes
-    # iOS Safari verliert Authorization-Header bei 307-Redirects
-    redirect_slashes=False
-)
+        title="BuildWise API",
+        description="Digitaler Assistent für Immobilienprojekte - Vollständige Backend-API",
+        version="1.0.2",  # FORCE REDEPLOY - Critical authentication fixes
+        docs_url="/docs",
+        redoc_url="/redoc",
+        # WICHTIG: Keine automatischen Redirects bei trailing slashes
+        # iOS Safari verliert Authorization-Header bei 307-Redirects
+        redirect_slashes=False
+    )
 
 # CORS-Konfiguration für Production und Development
 def get_allowed_origins():
