@@ -15,11 +15,14 @@ def get_database_url():
     elif database_url.startswith("postgres://"):
         database_url = database_url.replace("postgres://", "postgresql+asyncpg://", 1)
     
-    # Add SSL mode for PostgreSQL connections if not already present
-    if database_url.startswith("postgresql") and "sslmode" not in database_url:
-        # Add sslmode=require for Render PostgreSQL
-        separator = "&" if "?" in database_url else "?"
-        database_url = f"{database_url}{separator}sslmode=require"
+    # Remove sslmode parameter if present (asyncpg doesn't support it)
+    if "sslmode=" in database_url:
+        import re
+        database_url = re.sub(r'[?&]sslmode=[^&]*', '', database_url)
+        # Clean up any double separators
+        database_url = database_url.replace('?&', '?').replace('&&', '&')
+        if database_url.endswith('?'):
+            database_url = database_url[:-1]
     
     return database_url
 
