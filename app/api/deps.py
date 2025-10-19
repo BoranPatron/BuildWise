@@ -45,6 +45,9 @@ async def get_current_user(
             print(f"[DEBUG] get_current_user: User gefunden via E-Mail: {user is not None}")
         except Exception as db_error:
             print(f"[ERROR] get_current_user: Datenbankfehler bei E-Mail-Suche: {db_error}")
+            print(f"[ERROR] get_current_user: Database error type: {type(db_error).__name__}")
+            import traceback
+            traceback.print_exc()
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Database error during user lookup"
@@ -61,6 +64,9 @@ async def get_current_user(
                 print(f"[DEBUG] get_current_user: User gefunden via ID: {user is not None}")
             except Exception as db_error:
                 print(f"[ERROR] get_current_user: Datenbankfehler bei ID-Suche: {db_error}")
+                print(f"[ERROR] get_current_user: Database error type: {type(db_error).__name__}")
+                import traceback
+                traceback.print_exc()
                 raise HTTPException(
                     status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                     detail="Database error during user lookup"

@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy import text
+from fastapi import HTTPException
 from .config import settings
 import os
 
@@ -93,11 +94,16 @@ async def get_db():
     """Yield an async database session with improved error handling and timeout management."""
     session = AsyncSessionLocal()
     try:
+        # Test connection before yielding
+        await session.execute(text("SELECT 1"))
         yield session
     except Exception as e:
         print(f"[ERROR] Datenbankfehler: {e}")
+        print(f"[ERROR] Database error type: {type(e).__name__}")
+        import traceback
+        traceback.print_exc()
         await session.rollback()
-        raise e
+        raise HTTPException(status_code=500, detail=f"Database connection error: {str(e)}")
     finally:
         await session.close()
 
