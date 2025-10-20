@@ -35,19 +35,19 @@ IS_SQLITE = DATABASE_URL.startswith("sqlite")
 
 # Configure engine based on database type
 if IS_POSTGRESQL:
-    # PostgreSQL Configuration for Production
+    # PostgreSQL Configuration for Production (Render-optimized)
     engine = create_async_engine(
         DATABASE_URL,
         echo=False,
         future=True,
-        # PostgreSQL connection pooling optimized for multi-user
+        # PostgreSQL connection pooling optimized for Render
         pool_pre_ping=True,  # Check connection health before using
-        pool_recycle=3600,   # Recycle connections after 1 hour
-        pool_size=10,        # Base connection pool size (adjust based on instance)
-        max_overflow=20,     # Additional connections under load
+        pool_recycle=1800,   # Recycle connections after 30 min (Render closes idle after 5min)
+        pool_size=5,         # Smaller pool size for Render starter plan
+        max_overflow=10,     # Additional connections under load
         pool_timeout=30,     # Wait max 30s for connection from pool
-        pool_reset_on_return='commit',  # Clean state on connection return
-        # PostgreSQL specific settings
+        pool_reset_on_return='rollback',  # Rollback on return to clean state
+        # PostgreSQL specific settings for Render
         connect_args={
             "server_settings": {
                 "application_name": "buildwise_app",
@@ -58,7 +58,8 @@ if IS_POSTGRESQL:
             "ssl": "require"  # Force SSL for Render PostgreSQL
         }
     )
-    print("[INFO] Database configured: PostgreSQL (Production Mode)")
+    print("[INFO] Database configured: PostgreSQL (Production Mode - Render Optimized)")
+    print(f"[INFO] Pool configuration: size=5, max_overflow=10, recycle=1800s")
 else:
     # SQLite Configuration for Development
     engine = create_async_engine(

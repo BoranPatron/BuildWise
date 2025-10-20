@@ -8,33 +8,15 @@ from ..api.deps import get_current_user
 from ..models import User, Milestone, Quote, CostPosition
 import os
 from ..schemas.milestone import MilestoneCreate, MilestoneRead, MilestoneUpdate, MilestoneSummary
-# Milestone service functions sind direkt in dieser Datei implementiert
-# from ..services.milestone_service import archive_milestone
-
-# Helper functions for milestone operations
-async def get_milestone_by_id(db: AsyncSession, milestone_id: int) -> Optional[Milestone]:
-    """Get milestone by ID from database"""
-    result = await db.execute(select(Milestone).where(Milestone.id == milestone_id))
-    return result.scalar_one_or_none()
-
-async def delete_milestone(db: AsyncSession, milestone_id: int) -> bool:
-    """Delete milestone from database"""
-    try:
-        # First check if milestone exists
-        milestone = await db.execute(select(Milestone).where(Milestone.id == milestone_id))
-        milestone_obj = milestone.scalar_one_or_none()
-        
-        if not milestone_obj:
-            return False
-            
-        # Delete the milestone using execute with delete statement
-        await db.execute(delete(Milestone).where(Milestone.id == milestone_id))
-        await db.commit()
-        return True
-    except Exception as e:
-        await db.rollback()
-        print(f"[ERROR] Failed to delete milestone {milestone_id}: {e}")
-        return False
+# Import milestone service functions
+from ..services.milestone_service import (
+    get_milestone_by_id,
+    get_milestone_statistics,
+    get_upcoming_milestones,
+    get_overdue_milestones,
+    search_milestones,
+    create_milestone
+)
 
 router = APIRouter(prefix="/milestones", tags=["milestones"])
 
@@ -48,21 +30,30 @@ async def create_new_milestone(
     """Erstellt ein neues Milestone ohne Dokumente"""
     try:
         user_id = getattr(current_user, 'id')
-        print(f"[FIX] [API] create_new_milestone called for user {user_id}")
-        print(f"[FIX] [API] Milestone data: {milestone_in.model_dump()}")
+        print(f"[API] create_new_milestone called for user {user_id}")
+        print(f"[API] Milestone data: {milestone_in.model_dump()}")
         
-        # milestone = await create_milestone(db, milestone_in, user_id)
-        # Temporär deaktiviert - Funktion nicht verfügbar
-        raise HTTPException(status_code=501, detail="create_milestone temporarily disabled")
-        print(f"[SUCCESS] [API] Milestone erfolgreich erstellt: ID={milestone.id}, Title='{milestone.title}', Project={milestone.project_id}")
+        # Create milestone using service function
+        milestone = await create_milestone(
+            db=db, 
+            milestone_in=milestone_in, 
+            created_by=user_id,
+            documents=None,
+            shared_document_ids=None,
+            document_ids=milestone_in.documents if milestone_in.documents else None
+        )
         
-        # [TARGET] KRITISCH: Explizite Schema-Konvertierung für konsistente Response
+        print(f"[SUCCESS] Milestone created: ID={milestone.id}, Title='{milestone.title}', Project={milestone.project_id}")
+        
+        # Convert to response schema
         milestone_read = MilestoneRead.from_orm(milestone)
-        print(f"[FIX] [API] Schema-Konvertierung abgeschlossen, documents type: {type(milestone_read.documents)}")
+        print(f"[SUCCESS] Schema conversion completed, documents type: {type(milestone_read.documents)}")
         return milestone_read
         
     except Exception as e:
-        print(f"[ERROR] [API] Fehler beim Erstellen des Milestones: {str(e)}")
+        print(f"[ERROR] Failed to create milestone: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(status_code=500, detail=f"Fehler beim Erstellen des Gewerks: {str(e)}")
 
 
@@ -582,15 +573,33 @@ async def update_milestone_endpoint(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    milestone = await get_milestone_by_id(db, milestone_id)
-    if not milestone:
+    """Update a milestone"""
+    try:
+        print(f"[API] update_milestone_endpoint called for milestone {milestone_id}")
+        
+        # Check if milestone exists
+        milestone = await get_milestone_by_id(db, milestone_id)
+        if not milestone:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Meilenstein nicht gefunden"
+            )
+        
+        # Update milestone
+        updated_milestone = await update_milestone_internal(db, milestone_id, milestone_update)
+        print(f"[SUCCESS] Milestone {milestone_id} updated successfully")
+        return updated_milestone
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[ERROR] Failed to update milestone {milestone_id}: {str(e)}")
+        import traceback
+        traceback.print_exc()
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Meilenstein nicht gefunden"
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Aktualisieren des Gewerks: {str(e)}"
         )
-    
-    updated_milestone = await update_milestone(db, milestone_id, milestone_update)
-    return updated_milestone
 
 
 @router.delete("/{milestone_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -1165,121 +1174,71 @@ async def get_all_active_milestones(db: AsyncSession):
         )
 
 
-async def update_milestone(db: AsyncSession, milestone_id: int, milestone_update: MilestoneUpdate) -> MilestoneRead:
+# Helper function for updating milestones (used by endpoint)
+async def update_milestone_internal(db: AsyncSession, milestone_id: int, milestone_update: MilestoneUpdate) -> MilestoneRead:
     """
-    Aktualisiert ein bestehendes Milestone/Gewerk
+    Internal helper function to update a milestone
     """
     try:
-        from sqlalchemy import select, update
+        from sqlalchemy import update
         from datetime import datetime
         
-        print(f"[FIX] [DEBUG] Starting update for milestone {milestone_id}")
+        print(f"[DEBUG] Starting update for milestone {milestone_id}")
         
-        # Hole das bestehende Milestone
-        result = await db.execute(
-            select(Milestone).where(Milestone.id == milestone_id)
-        )
-        milestone = result.scalar_one_or_none()
+        # Get existing milestone
+        milestone = await get_milestone_by_id(db, milestone_id)
         
         if not milestone:
-            print(f"[ERROR] Milestone {milestone_id} nicht gefunden")
+            print(f"[ERROR] Milestone {milestone_id} not found")
             raise HTTPException(
                 status_code=status.HTTP_404_NOT_FOUND,
                 detail="Meilenstein nicht gefunden"
             )
         
-        print(f"[SUCCESS] Milestone {milestone_id} gefunden: {milestone.title}")
+        print(f"[SUCCESS] Milestone {milestone_id} found: {milestone.title}")
         
-        # Aktualisiere nur die übergebenen Felder
+        # Update only provided fields
         try:
             update_data = milestone_update.model_dump(exclude_unset=True, exclude_none=True)
         except AttributeError:
-            # Fallback für ältere Pydantic-Versionen
             update_data = milestone_update.dict(exclude_unset=True, exclude_none=True)
         
-        # Entferne leere Strings und None-Werte
+        # Remove empty strings and None values
         update_data = {k: v for k, v in update_data.items() if v is not None and v != "" and v != "undefined"}
         update_data['updated_at'] = datetime.utcnow()
         
-        # Spezielle Behandlung für Boolean-Felder
+        # Special handling for Boolean fields
         if 'requires_inspection' in update_data:
             update_data['requires_inspection'] = bool(update_data['requires_inspection'])
         
-        print(f"[FIX] [DEBUG] Update data for milestone {milestone_id}: {update_data}")
+        print(f"[DEBUG] Update data for milestone {milestone_id}: {update_data}")
         
-        # Führe das Update durch
+        # Execute update
         stmt = update(Milestone).where(Milestone.id == milestone_id).values(**update_data)
         await db.execute(stmt)
         await db.commit()
         
-        print(f"[SUCCESS] Milestone {milestone_id} erfolgreich aktualisiert")
+        print(f"[SUCCESS] Milestone {milestone_id} updated successfully")
         
-        # Hole das aktualisierte Milestone
-        result = await db.execute(
-            select(Milestone).where(Milestone.id == milestone_id)
-        )
-        updated_milestone = result.scalar_one()
+        # Get updated milestone
+        updated_milestone = await get_milestone_by_id(db, milestone_id)
         
-        # Erstelle Response
+        # Return response
         try:
             return MilestoneRead.model_validate(updated_milestone)
         except AttributeError:
-            # Fallback für ältere Pydantic-Versionen
             return MilestoneRead.from_orm(updated_milestone)
         
     except HTTPException:
         raise
     except Exception as e:
         await db.rollback()
-        print(f"[ERROR] Fehler beim Aktualisieren des Milestones {milestone_id}: {str(e)}")
+        print(f"[ERROR] Failed to update milestone {milestone_id}: {str(e)}")
         import traceback
         traceback.print_exc()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Fehler beim Aktualisieren des Gewerks: {str(e)}"
-        )
-
-
-async def delete_milestone(db: AsyncSession, milestone_id: int) -> bool:
-    """
-    Löscht ein Milestone/Gewerk
-    """
-    try:
-        from sqlalchemy import select, delete
-        
-        # Prüfe ob das Milestone existiert
-        result = await db.execute(
-            select(Milestone).where(Milestone.id == milestone_id)
-        )
-        milestone = result.scalar_one_or_none()
-        
-        if not milestone:
-            return False
-        
-        # Prüfe ob bereits Angebote vorliegen
-        if milestone.quotes and len(milestone.quotes) > 0:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Gewerk kann nicht gelöscht werden, da bereits Angebote vorliegen"
-            )
-        
-        # Lösche das Milestone
-        await db.execute(
-            delete(Milestone).where(Milestone.id == milestone_id)
-        )
-        
-        await db.commit()
-        print(f"[SUCCESS] Milestone {milestone_id} erfolgreich gelöscht")
-        return True
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        await db.rollback()
-        print(f"[ERROR] Fehler beim Löschen des Milestones {milestone_id}: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Fehler beim Löschen des Gewerks: {str(e)}"
         )
 
 

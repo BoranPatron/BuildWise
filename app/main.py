@@ -114,6 +114,72 @@ async def global_exception_handler(request: Request, exc: Exception):
 # API Router einbinden
 app.include_router(api_router, prefix="/api/v1")
 
+# Log all registered routes at startup
+@app.on_event("startup")
+async def startup_tasks():
+    """Perform startup tasks: check database, log routes"""
+    
+    # Check database connection
+    from .core.database import check_database_connection
+    print("\n[STARTUP] Checking database connection...")
+    db_connected = await check_database_connection()
+    if not db_connected:
+        print("[ERROR] Failed to connect to database at startup!")
+    else:
+        print("[SUCCESS] Database connection verified")
+    
+    # Log all registered API routes for debugging
+    print("\n" + "="*80)
+    print("[STARTUP] REGISTERED API ROUTES:")
+    print("="*80)
+    
+    routes_by_prefix = {}
+    for route in app.routes:
+        if hasattr(route, 'path') and hasattr(route, 'methods'):
+            path = route.path
+            methods = ', '.join(sorted(route.methods))
+            
+            # Group by prefix
+            prefix = path.split('/')[1] if len(path.split('/')) > 1 else 'root'
+            if prefix not in routes_by_prefix:
+                routes_by_prefix[prefix] = []
+            routes_by_prefix[prefix].append(f"{methods:20s} {path}")
+    
+    # Print grouped routes
+    for prefix in sorted(routes_by_prefix.keys()):
+        print(f"\n[{prefix.upper()}]")
+        for route_info in sorted(routes_by_prefix[prefix]):
+            print(f"  {route_info}")
+    
+    print("\n" + "="*80)
+    print(f"[STARTUP] Total routes: {len(app.routes)}")
+    print("="*80 + "\n")
+
+# Request logging middleware
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log all incoming requests"""
+    start_time = time.time()
+    
+    # Log request
+    print(f"\n[REQUEST] {request.method} {request.url.path}")
+    if request.query_params:
+        print(f"[QUERY] {dict(request.query_params)}")
+    
+    # Process request
+    try:
+        response = await call_next(request)
+        
+        # Log response
+        process_time = time.time() - start_time
+        print(f"[RESPONSE] {response.status_code} | {process_time:.3f}s")
+        
+        return response
+    except Exception as e:
+        process_time = time.time() - start_time
+        print(f"[ERROR] Request failed: {type(e).__name__}: {str(e)} | {process_time:.3f}s")
+        raise
+
 # Static Files für Storage
 from fastapi.staticfiles import StaticFiles
 import os
