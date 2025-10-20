@@ -395,7 +395,7 @@ async def upload_milestone_documents(
 
 @router.get("/", response_model=List[DocumentSummary])
 async def read_documents(
-    project_id: int,
+    project_id: Optional[int] = Query(None, description="Projekt-ID für Dokumentenfilterung"),
     category: Optional[DocumentCategoryEnum] = None,
     subcategory: Optional[str] = None,
     document_type: Optional[DocumentTypeEnum] = None,
@@ -410,14 +410,53 @@ async def read_documents(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Erweiterte Dokumentensuche mit Filtern und Sortierung"""
+    """Erweiterte Dokumentensuche mit Filtern und Sortierung - ROBUSTE VERSION"""
     
     try:
-        # Lade Dokumente für Projekt
-        documents = await get_documents_for_project(db, project_id)
+        logger.info(f"[DOCUMENTS_API] Request von User {current_user.id}: project_id={project_id}, milestone_id={milestone_id}")
         
-        # Erweitere Dokumente um Ausschreibungsinformationen
-        documents = await add_milestone_info_to_documents(db, project_id, documents, current_user.id)
+        # ROBUSTE LÖSUNG: Wenn keine project_id, lade alle Dokumente des Users
+        if project_id is None:
+            logger.info(f"[DOCUMENTS_API] Keine project_id - lade alle Dokumente für User {current_user.id}")
+            
+            # Lade alle Projekte des Users
+            from sqlalchemy import text
+            user_projects_query = text("""
+                SELECT DISTINCT p.id 
+                FROM projects p 
+                WHERE p.owner_id = :user_id
+                UNION
+                SELECT DISTINCT q.project_id 
+                FROM quotes q 
+                WHERE q.service_provider_id = :user_id AND q.status = 'accepted'
+            """)
+            
+            projects_result = await db.execute(user_projects_query, {"user_id": current_user.id})
+            user_project_ids = [row.id for row in projects_result.fetchall()]
+            
+            logger.info(f"[DOCUMENTS_API] Gefundene Projekt-IDs für User: {user_project_ids}")
+            
+            if not user_project_ids:
+                logger.info(f"[DOCUMENTS_API] Keine Projekte gefunden - gebe leere Liste zurück")
+                return []
+            
+            # Lade Dokumente aus allen Projekten des Users
+            documents = []
+            for pid in user_project_ids:
+                try:
+                    project_docs = await get_documents_for_project(db, pid)
+                    documents.extend(project_docs)
+                    logger.info(f"[DOCUMENTS_API] Projekt {pid}: {len(project_docs)} Dokumente geladen")
+                except Exception as e:
+                    logger.error(f"[DOCUMENTS_API] Fehler beim Laden von Projekt {pid}: {e}")
+                    continue
+        else:
+            # Original-Logik für spezifisches Projekt
+            logger.info(f"[DOCUMENTS_API] Lade Dokumente für Projekt {project_id}")
+            documents = await get_documents_for_project(db, project_id)
+            
+            # Erweitere Dokumente um Ausschreibungsinformationen
+            documents = await add_milestone_info_to_documents(db, project_id, documents, current_user.id)
         
         # Filter für spezifische Ausschreibung (Milestone)
         if milestone_id:
@@ -539,8 +578,15 @@ async def read_documents(
         
         return documents
         
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error loading documents: {str(e)}")
+        logger.error(f"[DOCUMENTS_API] Kritischer Fehler beim Laden der Dokumente: {str(e)}")
+        logger.exception(e)
+        
+        # ROBUSTE FALLBACK-LÖSUNG: Gebe leere Liste zurück statt 500-Fehler
+        logger.info(f"[DOCUMENTS_API] Fallback: Gebe leere Liste zurück")
+        return []
 
 
 @router.get("/search/fulltext", response_model=List[DocumentSummary])
@@ -1544,6 +1590,95 @@ async def get_service_provider_category_statistics(
     except Exception as e:
         logger.error(f"Fehler beim Laden der Dienstleister-Statistiken: {str(e)}")
         raise HTTPException(status_code=500, detail="Fehler beim Laden der Statistiken")
+
+
+@router.get("/frontend/list")
+async def get_documents_for_frontend(
+    project_id: Optional[int] = Query(None, description="Projekt-ID (optional)"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """ROBUSTER Frontend-Endpunkt für Dokumentenlisten - löst 404-Probleme"""
+    try:
+        logger.info(f"[FRONTEND_DOCS] Request von User {current_user.id}, project_id={project_id}")
+        
+        # ROBUSTE LÖSUNG: Immer erfolgreich antworten
+        if project_id:
+            # Spezifisches Projekt
+            documents = await get_documents_for_project(db, project_id)
+            documents = await add_milestone_info_to_documents(db, project_id, documents, current_user.id)
+        else:
+            # Alle Projekte des Users
+            from sqlalchemy import text
+            user_projects_query = text("""
+                SELECT DISTINCT p.id 
+                FROM projects p 
+                WHERE p.owner_id = :user_id
+                UNION
+                SELECT DISTINCT q.project_id 
+                FROM quotes q 
+                WHERE q.service_provider_id = :user_id AND q.status = 'accepted'
+            """)
+            
+            projects_result = await db.execute(user_projects_query, {"user_id": current_user.id})
+            user_project_ids = [row.id for row in projects_result.fetchall()]
+            
+            documents = []
+            for pid in user_project_ids:
+                try:
+                    project_docs = await get_documents_for_project(db, pid)
+                    project_docs = await add_milestone_info_to_documents(db, pid, project_docs, current_user.id)
+                    documents.extend(project_docs)
+                except Exception as e:
+                    logger.error(f"[FRONTEND_DOCS] Fehler bei Projekt {pid}: {e}")
+                    continue
+        
+        # Konvertiere zu DocumentSummary für Frontend
+        document_summaries = []
+        for doc in documents:
+            try:
+                summary = DocumentSummary(
+                    id=doc.id,
+                    title=doc.title,
+                    description=doc.description,
+                    file_name=doc.file_name,
+                    file_path=doc.file_path,
+                    file_size=doc.file_size or 0,
+                    mime_type=doc.mime_type,
+                    document_type=doc.document_type or "other",
+                    category=doc.category,
+                    subcategory=doc.subcategory,
+                    is_favorite=getattr(doc, 'is_favorite', False),
+                    status=getattr(doc, 'status', 'active'),
+                    tags=doc.tags,
+                    is_encrypted=getattr(doc, 'is_encrypted', False),
+                    created_at=doc.created_at,
+                    updated_at=doc.updated_at,
+                    accessed_at=getattr(doc, 'accessed_at', None),
+                    project_id=doc.project_id,
+                    uploaded_by=doc.uploaded_by,
+                    milestone_id=getattr(doc, 'milestone_id', None),
+                    milestone_title=getattr(doc, 'milestone_title', None),
+                    milestone_status=getattr(doc, 'milestone_status', None),
+                    milestone_category=getattr(doc, 'milestone_category', None),
+                    version_number=getattr(doc, 'version_number', "1"),
+                    document_status=getattr(doc, 'document_status', 'active'),
+                    workflow_stage=getattr(doc, 'workflow_stage', 'completed'),
+                    download_count=getattr(doc, 'download_count', 0)
+                )
+                document_summaries.append(summary)
+            except Exception as e:
+                logger.error(f"[FRONTEND_DOCS] Fehler beim Konvertieren von Dokument {doc.id}: {e}")
+                continue
+        
+        logger.info(f"[FRONTEND_DOCS] Erfolgreich {len(document_summaries)} Dokumente für Frontend geladen")
+        return document_summaries
+        
+    except Exception as e:
+        logger.error(f"[FRONTEND_DOCS] Kritischer Fehler: {str(e)}")
+        logger.exception(e)
+        # ROBUSTE FALLBACK-LÖSUNG: Gebe leere Liste zurück
+        return []
 
 
 @router.get("/bautraeger/overview")

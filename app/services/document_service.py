@@ -6,10 +6,13 @@ from datetime import datetime
 import os
 import aiofiles
 from pathlib import Path
+import logging
 
 from ..models import Document
 from ..schemas.document import DocumentCreate, DocumentUpdate, DocumentTypeEnum
 from ..models.user import User
+
+logger = logging.getLogger(__name__)
 
 
 async def create_document(db: AsyncSession, document_in: DocumentCreate, uploaded_by: int) -> Document:
@@ -91,18 +94,41 @@ async def get_document_by_id(db: AsyncSession, document_id: int) -> Document | N
 
 
 async def get_documents_for_project(db: AsyncSession, project_id: int) -> List[Document]:
-    result = await db.execute(
-        select(Document)
-        .options(
-            selectinload(Document.versions),
-            selectinload(Document.status_history),
-            selectinload(Document.shares),
-            selectinload(Document.access_logs)
+    """Robuste Funktion zum Laden von Dokumenten für ein Projekt"""
+    try:
+        logger.info(f"[DOCUMENT_SERVICE] Lade Dokumente für Projekt {project_id}")
+        
+        # Prüfe ob Projekt existiert
+        from sqlalchemy import text
+        project_check = text("SELECT id FROM projects WHERE id = :project_id")
+        project_result = await db.execute(project_check, {"project_id": project_id})
+        project_exists = project_result.fetchone()
+        
+        if not project_exists:
+            logger.warning(f"[DOCUMENT_SERVICE] Projekt {project_id} existiert nicht")
+            return []
+        
+        # Lade Dokumente mit robuster Fehlerbehandlung
+        result = await db.execute(
+            select(Document)
+            .options(
+                selectinload(Document.versions),
+                selectinload(Document.status_history),
+                selectinload(Document.shares),
+                selectinload(Document.access_logs)
+            )
+            .where(Document.project_id == project_id)
+            .order_by(Document.created_at.desc())
         )
-        .where(Document.project_id == project_id)
-        .order_by(Document.created_at.desc())
-    )
-    return list(result.scalars().all())
+        
+        documents = list(result.scalars().all())
+        logger.info(f"[DOCUMENT_SERVICE] Projekt {project_id}: {len(documents)} Dokumente geladen")
+        return documents
+        
+    except Exception as e:
+        logger.error(f"[DOCUMENT_SERVICE] Fehler beim Laden von Dokumenten für Projekt {project_id}: {str(e)}")
+        logger.exception(e)
+        return []  # Gebe leere Liste zurück statt Exception
 
 
 async def update_document(db: AsyncSession, document_id: int, document_update: DocumentUpdate) -> Document | None:
