@@ -23,6 +23,10 @@ async def fix_complete_schema():
         conn = await asyncpg.connect(database_url)
         print("✅ Connected to database successfully!")
         
+        # Start transaction for safety
+        await conn.execute('BEGIN;')
+        print("🔄 Started transaction for safe schema changes...")
+        
         # Alle fehlenden Spalten für OAuth hinzufügen
         print("\n📝 Adding OAuth-related columns to users table...")
         
@@ -121,6 +125,8 @@ async def fix_complete_schema():
                 print(f"  ✅ {column_name} added successfully")
             except Exception as e:
                 print(f"  ⚠️  {column_name}: {e}")
+                # Continue with next column even if one fails
+                continue
         
         # projects.owner_id Spalte hinzufügen
         print("\n📝 Adding owner_id column to projects table...")
@@ -137,9 +143,29 @@ async def fix_complete_schema():
         result = await conn.fetch('SELECT column_name FROM information_schema.columns WHERE table_name = $1 ORDER BY ordinal_position', 'users')
         print(f"✅ users table now has {len(result)} columns")
         
+        # Prüfe wichtige OAuth-Spalten
+        critical_columns = ['auth_provider', 'google_sub', 'microsoft_sub', 'apple_sub', 'first_name', 'last_name']
+        for col in critical_columns:
+            exists = await conn.fetchval('SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name = $1 AND column_name = $2)', 'users', col)
+            if exists:
+                print(f"  ✅ {col} exists")
+            else:
+                print(f"  ❌ {col} missing")
+        
         # Prüfe projects table
         result = await conn.fetch('SELECT column_name FROM information_schema.columns WHERE table_name = $1 ORDER BY ordinal_position', 'projects')
         print(f"✅ projects table now has {len(result)} columns")
+        
+        # Prüfe projects.owner_id
+        owner_id_exists = await conn.fetchval('SELECT EXISTS(SELECT 1 FROM information_schema.columns WHERE table_name = $1 AND column_name = $2)', 'projects', 'owner_id')
+        if owner_id_exists:
+            print(f"  ✅ projects.owner_id exists")
+        else:
+            print(f"  ❌ projects.owner_id missing")
+        
+        # Commit transaction
+        await conn.execute('COMMIT;')
+        print("✅ Transaction committed successfully!")
         
         await conn.close()
         print("\n🎉 Complete schema repair successful!")
@@ -151,6 +177,14 @@ async def fix_complete_schema():
         
     except Exception as e:
         print(f"❌ Error during schema repair: {e}")
+        # Try to rollback if connection is still open
+        try:
+            if 'conn' in locals():
+                await conn.execute('ROLLBACK;')
+                print("🔄 Transaction rolled back due to error")
+                await conn.close()
+        except:
+            pass
         return False
 
 if __name__ == "__main__":
