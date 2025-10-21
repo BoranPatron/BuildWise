@@ -1184,15 +1184,187 @@ async def get_project_milestones_for_filter(
         )
 
 
-@router.get("/project/{project_id}/statistics")
-async def get_project_document_statistics(
-    project_id: int,
+@router.get("/bautraeger/overview")
+async def get_bautraeger_documents_overview(
+    project_id: int = Query(..., description="Project ID"),
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Holt Statistiken für Dokumente eines Projekts"""
-    stats = await get_document_statistics(db, project_id)
-    return stats
+    """
+    Get documents overview for Bauträger with role-based access.
+    Bauträger can see all documents in their projects.
+    """
+    try:
+        from sqlalchemy import text, and_
+        from app.models import Document, Milestone
+        
+        # Verify user has access to this project
+        project_query = text("SELECT id, owner_id FROM projects WHERE id = :project_id")
+        project_result = await db.execute(project_query, {"project_id": project_id})
+        project = project_result.fetchone()
+        
+        if not project:
+            raise HTTPException(status_code=404, detail="Project not found")
+        
+        # Check if user is Bauträger (project owner)
+        if current_user.user_type != "bautraeger":
+            raise HTTPException(status_code=403, detail="Access denied: Bauträger only")
+        
+        # Get all documents for this project
+        query = select(Document).where(
+            Document.project_id == project_id
+        ).order_by(Document.created_at.desc())
+        
+        result = await db.execute(query)
+        documents = result.scalars().all()
+        
+        # Enrich documents with milestone information
+        documents_enriched = await add_milestone_info_to_documents(
+            db, project_id, documents, current_user.id
+        )
+        
+        # Format response
+        document_list = []
+        for doc in documents_enriched:
+            doc_dict = {
+                "id": doc.id,
+                "title": doc.title,
+                "filename": doc.filename,
+                "file_path": doc.file_path,
+                "file_url": doc.file_url,
+                "category": doc.category,
+                "subcategory": doc.subcategory,
+                "created_at": doc.created_at.isoformat() if doc.created_at else None,
+                "file_size": doc.file_size,
+                "file_type": doc.file_type,
+                "project_id": doc.project_id,
+                "milestone_id": getattr(doc, 'milestone_id', None),
+                "milestone_title": getattr(doc, 'milestone_title', None),
+                "ausschreibung_title": getattr(doc, 'milestone_title', None),
+            }
+            document_list.append(doc_dict)
+        
+        return {
+            "documents": document_list,
+            "total": len(document_list),
+            "project_id": project_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error loading bautraeger documents: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error loading documents: {str(e)}"
+        )
+
+
+@router.get("/dienstleister/overview")
+async def get_dienstleister_documents_overview(
+    project_id: int = Query(..., description="Project ID"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Get documents overview for Dienstleister with role-based access.
+    Dienstleister can only see documents they are authorized to access
+    (documents shared with them via accepted quotes/milestones).
+    """
+    try:
+        from sqlalchemy import text
+        import json
+        
+        # Check if user is Dienstleister
+        if current_user.user_type != "service_provider":
+            raise HTTPException(status_code=403, detail="Access denied: Dienstleister only")
+        
+        # Get milestones where user has accepted quotes
+        milestone_query = text("""
+            SELECT DISTINCT m.id, m.title, m.shared_document_ids, m.documents
+            FROM milestones m
+            INNER JOIN quotes q ON q.milestone_id = m.id
+            WHERE m.project_id = :project_id
+            AND q.service_provider_id = :user_id
+            AND q.status = 'accepted'
+        """)
+        
+        result = await db.execute(milestone_query, {
+            "project_id": project_id,
+            "user_id": current_user.id
+        })
+        milestones = result.fetchall()
+        
+        # Collect authorized document IDs
+        authorized_doc_ids = set()
+        for milestone in milestones:
+            # Parse shared_document_ids
+            if milestone.shared_document_ids:
+                try:
+                    doc_ids = json.loads(milestone.shared_document_ids)
+                    if isinstance(doc_ids, list):
+                        authorized_doc_ids.update(map(str, doc_ids))
+                except:
+                    pass
+            
+            # Parse documents field
+            if milestone.documents:
+                try:
+                    docs = json.loads(milestone.documents)
+                    if isinstance(docs, list):
+                        authorized_doc_ids.update(map(str, docs))
+                except:
+                    pass
+        
+        # Get documents user is authorized to see
+        if not authorized_doc_ids:
+            return {"documents": [], "total": 0, "project_id": project_id}
+        
+        doc_query = text("""
+            SELECT id, title, filename, file_path, file_url, category, 
+                   subcategory, created_at, file_size, file_type, project_id
+            FROM documents
+            WHERE id IN :doc_ids
+            ORDER BY created_at DESC
+        """)
+        
+        result = await db.execute(doc_query, {"doc_ids": tuple(map(int, authorized_doc_ids))})
+        documents = result.fetchall()
+        
+        # Format response
+        document_list = []
+        for doc in documents:
+            doc_dict = {
+                "id": doc[0],
+                "title": doc[1],
+                "filename": doc[2],
+                "file_path": doc[3],
+                "file_url": doc[4],
+                "category": doc[5],
+                "subcategory": doc[6],
+                "created_at": doc[7].isoformat() if doc[7] else None,
+                "file_size": doc[8],
+                "file_type": doc[9],
+                "project_id": doc[10],
+            }
+            document_list.append(doc_dict)
+        
+        return {
+            "documents": document_list,
+            "total": len(document_list),
+            "project_id": project_id
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error loading dienstleister documents: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error loading documents: {str(e)}"
+        )
+
+
 
 
 @router.get("/search", response_model=List[DocumentSummary])
