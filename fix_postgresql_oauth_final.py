@@ -34,6 +34,14 @@ async def fix_postgresql_oauth_schema():
         except Exception as e:
             print(f"⚠️  languages column: {e}")
         
+        # Fix name column to allow NULL values
+        print("\n📝 Fixing name column constraint...")
+        try:
+            await conn.execute('ALTER TABLE users ALTER COLUMN name DROP NOT NULL;')
+            print("✅ name column constraint removed successfully")
+        except Exception as e:
+            print(f"⚠️  name column: {e}")
+        
         # Add missing OAuth columns (only if they don't exist)
         print("\n📝 Adding missing OAuth columns...")
         
@@ -146,6 +154,12 @@ async def fix_postgresql_oauth_schema():
             print("✅ projects.project_type added successfully")
         except Exception as e:
             print(f"⚠️  projects.project_type: {e}")
+        
+        try:
+            await conn.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS status VARCHAR NULL;')
+            print("✅ projects.status added successfully")
+        except Exception as e:
+            print(f"⚠️  projects.status: {e}")
         
         # Schema-Verifikation
         print("\n🔍 Verifying schema...")
