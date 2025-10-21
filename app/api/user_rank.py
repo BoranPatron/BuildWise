@@ -14,7 +14,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/user", tags=["user"])
+router = APIRouter(prefix="/user", tags=["user"])
 
 
 @router.get("/my-rank", response_model=UserRankResponse)
