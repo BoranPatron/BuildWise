@@ -1278,64 +1278,6 @@ async def delete_comment(
         await db.rollback()
         raise HTTPException(status_code=500, detail="Fehler beim Löschen des Kommentars")
 
-@router.get("/{document_id}/content")
-async def get_document_content(
-    document_id: int,
-    token: Optional[str] = Query(None, description="Authentication token"),
-    db: AsyncSession = Depends(get_db),
-    current_user: Optional[User] = Depends(get_current_user_optional)
-):
-    """Lade Dokument-Inhalt für Inline-Anzeige mit Token-Unterstützung"""
-    try:
-        # Prüfe Authentifizierung (Token oder Header)
-        if token:
-            # Validiere Token über Query-Parameter
-            from ..core.security import decode_access_token
-            payload = decode_access_token(token)
-            if not payload or "sub" not in payload:
-                raise HTTPException(status_code=401, detail="Ungültiger Token")
-            email = payload["sub"]
-            user = await get_user_by_email(db, email=email)
-            if not user:
-                raise HTTPException(status_code=401, detail="Benutzer nicht gefunden")
-        elif not current_user:
-            raise HTTPException(status_code=401, detail="Authentifizierung erforderlich")
-        else:
-            user = current_user
-        
-        # Prüfe ob Dokument existiert und User Zugriff hat
-        document = await get_document_by_id(db, document_id)
-        if not document:
-            raise HTTPException(status_code=404, detail="Dokument nicht gefunden")
-        
-        # Lade Datei-Inhalt
-        file_path = Path(document.file_path)
-        if not file_path.exists():
-            raise HTTPException(status_code=404, detail="Datei nicht gefunden")
-        
-        # Bestimme MIME-Type
-        mime_type = mimetypes.guess_type(str(file_path))[0] or 'application/octet-stream'
-        
-        # Lade und return Datei-Inhalt
-        with open(file_path, 'rb') as file:
-            content = file.read()
-        
-        return Response(
-            content=content,
-            media_type=mime_type,
-            headers={
-                "Content-Disposition": f"inline; filename={document.file_name}",
-                "Cache-Control": "private, max-age=3600"
-            }
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Fehler beim Laden des Dokument-Inhalts {document_id}: {str(e)}")
-        raise HTTPException(status_code=500, detail="Fehler beim Laden des Dokument-Inhalts")
-
-
 # Dienstleister-spezifische Endpunkte
 # WICHTIG: Diese Endpunkte MÜSSEN vor den allgemeinen GET-Endpunkten definiert werden!
 @router.get("/sp/documents", response_model=List[DocumentSummary])
