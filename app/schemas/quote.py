@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from ..models.quote import QuoteStatus
 
 
@@ -52,6 +52,13 @@ class QuoteBase(BaseModel):
     revised_after_inspection: Optional[bool] = False
     revision_count: Optional[int] = 0
     is_revised_quote: Optional[bool] = False
+    
+    @field_validator('status', mode='before')
+    @classmethod
+    def normalize_status(cls, v):
+        if isinstance(v, str):
+            return v.upper()
+        return v
 
 
 class QuoteCreate(QuoteBase):
@@ -107,6 +114,13 @@ class QuoteUpdate(BaseModel):
     revised_after_inspection: Optional[bool] = None
     revision_count: Optional[int] = None
     is_revised_quote: Optional[bool] = None
+    
+    @field_validator('status', mode='before')
+    @classmethod
+    def normalize_status(cls, v):
+        if isinstance(v, str):
+            return v.upper()
+        return v
 
 
 class QuoteRead(QuoteBase):

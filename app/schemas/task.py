@@ -1,6 +1,6 @@
 from datetime import date, datetime
 from typing import Optional
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 from ..models.task import TaskStatus, TaskPriority
 
 
@@ -13,6 +13,20 @@ class TaskBase(BaseModel):
     estimated_hours: Optional[float] = None
     is_milestone: bool = False
     milestone_id: Optional[int] = None
+    
+    @field_validator('status', mode='before')
+    @classmethod
+    def normalize_status(cls, v):
+        if isinstance(v, str):
+            return v.upper()
+        return v
+    
+    @field_validator('priority', mode='before')
+    @classmethod
+    def normalize_priority(cls, v):
+        if isinstance(v, str):
+            return v.upper()
+        return v
 
 
 class TaskCreate(TaskBase):
@@ -32,6 +46,20 @@ class TaskUpdate(BaseModel):
     progress_percentage: Optional[int] = None
     is_milestone: Optional[bool] = None
     milestone_id: Optional[int] = None
+    
+    @field_validator('status', mode='before')
+    @classmethod
+    def normalize_status(cls, v):
+        if isinstance(v, str):
+            return v.upper()
+        return v
+    
+    @field_validator('priority', mode='before')
+    @classmethod
+    def normalize_priority(cls, v):
+        if isinstance(v, str):
+            return v.upper()
+        return v
 
 
 class TaskRead(TaskBase):

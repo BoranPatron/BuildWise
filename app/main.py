@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
 import asyncio
 import time
 import os
@@ -84,6 +85,30 @@ async def add_process_time_header(request: Request, call_next):
     response = await call_next(request)
     process_time = time.time() - start_time
     response.headers["X-Process-Time"] = str(process_time)
+    return response
+
+# Exception Handler für Validation Errors (400 statt 500)
+@app.exception_handler(RequestValidationError)
+async def validation_exception_handler(request: Request, exc: RequestValidationError):
+    print(f"[VALIDATION ERROR] URL: {request.url}")
+    print(f"[VALIDATION ERROR] Method: {request.method}")
+    print(f"[VALIDATION ERROR] Errors: {exc.errors()}")
+    
+    # CORS-Header auch bei Fehlern senden
+    response = JSONResponse(
+        status_code=400,  # Bad Request statt 500
+        content={
+            "detail": exc.errors(),
+            "body": str(exc.body) if hasattr(exc, 'body') else None,
+            "message": "Validierungsfehler in der Anfrage"
+        }
+    )
+    
+    # CORS-Header manuell hinzufügen
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "*"
+    
     return response
 
 # Exception Handler für bessere CORS-Unterstützung
