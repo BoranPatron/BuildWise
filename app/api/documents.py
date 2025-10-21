@@ -1336,6 +1336,198 @@ async def delete_comment(
         await db.rollback()
         raise HTTPException(status_code=500, detail="Fehler beim Löschen des Kommentars")
 
+# Bauträger-spezifische Endpunkte
+# WICHTIG: Diese Endpunkte MÜSSEN vor den allgemeinen GET-Endpunkten definiert werden!
+@router.get("/bautraeger/overview")
+async def get_bautraeger_documents_overview(
+    project_id: int = Query(..., description="ID des Projekts für das die Dokumente geladen werden sollen"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """
+    Liefert eine übersichtliche Liste aller Dokumente für Bauträger,
+    gruppiert nach Ausschreibungen mit allen relevanten Metadaten.
+    """
+    try:
+        # Prüfe ob User ein Bauträger ist
+        # user_role ist ein Enum, daher müssen wir sowohl Enum als auch String-Wert prüfen
+        from app.models.user import UserRole
+        
+        is_bautraeger = False
+        
+        # Prüfe user_role (Enum oder String)
+        if current_user.user_role:
+            if hasattr(current_user.user_role, 'value'):
+                # Enum-Objekt
+                is_bautraeger = current_user.user_role.value in ["BAUTRAEGER", "bautraeger", "developer", "DEVELOPER"]
+            else:
+                # String
+                is_bautraeger = str(current_user.user_role).upper() in ["BAUTRAEGER", "DEVELOPER"]
+        
+        # Zusätzlich user_type prüfen (für Kompatibilität)
+        if not is_bautraeger and current_user.user_type:
+            if hasattr(current_user.user_type, 'value'):
+                is_bautraeger = current_user.user_type.value in ["project_owner", "bautraeger", "developer"]
+            else:
+                is_bautraeger = str(current_user.user_type).lower() in ["project_owner", "bautraeger", "developer"]
+        
+        logger.info(f"[BAUTRAEGER_CHECK] User {current_user.id} - user_role: {current_user.user_role}, user_type: {current_user.user_type}, is_bautraeger: {is_bautraeger}")
+        
+        if not is_bautraeger:
+            raise HTTPException(
+                status_code=403,
+                detail="Nur Bauträger können diese Übersicht einsehen"
+            )
+        
+        # Prüfe ob das Projekt dem Bauträger gehört
+        project_query = text("""
+            SELECT id, name 
+            FROM projects 
+            WHERE id = :project_id AND owner_id = :user_id
+        """)
+        project_result = await db.execute(project_query, {"project_id": project_id, "user_id": current_user.id})
+        project = project_result.fetchone()
+        
+        if not project:
+            raise HTTPException(
+                status_code=404,
+                detail="Projekt nicht gefunden oder Sie haben keine Berechtigung"
+            )
+        
+        project_ids = [project.id]
+        project_map = {project.id: project.name}
+        
+        # Lade alle Milestones (Ausschreibungen) für diese Projekte
+        # Erstelle Platzhalter für IN-Clause
+        project_ids_placeholders = ', '.join([f':pid_{i}' for i in range(len(project_ids))])
+        milestones_query = text(f"""
+            SELECT id, project_id, title, description, status, category, 
+                   shared_document_ids, documents
+            FROM milestones 
+            WHERE project_id IN ({project_ids_placeholders})
+            AND created_by = :user_id
+        """)
+        
+        # Erstelle Parameter-Dictionary
+        milestone_params = {f'pid_{i}': pid for i, pid in enumerate(project_ids)}
+        milestone_params['user_id'] = current_user.id
+        
+        milestones_result = await db.execute(milestones_query, milestone_params)
+        milestones = milestones_result.fetchall()
+        
+        # Erstelle Mapping: Document-ID -> Milestone-Info
+        doc_to_milestone = {}
+        for milestone in milestones:
+            milestone_info = {
+                'milestone_id': milestone.id,
+                'milestone_title': milestone.title,
+                'milestone_status': milestone.status,
+                'milestone_category': milestone.category,
+                'project_id': milestone.project_id,
+                'project_title': project_map.get(milestone.project_id, 'Unbekanntes Projekt')
+            }
+            
+            # Verarbeite shared_document_ids
+            if milestone.shared_document_ids:
+                try:
+                    doc_ids = json.loads(milestone.shared_document_ids)
+                    if isinstance(doc_ids, list):
+                        for doc_id in doc_ids:
+                            doc_to_milestone[str(doc_id)] = milestone_info
+                except (json.JSONDecodeError, TypeError):
+                    pass
+            
+            # Verarbeite documents Feld
+            if milestone.documents:
+                try:
+                    docs_raw = milestone.documents
+                    if isinstance(docs_raw, str) and docs_raw.startswith('"') and docs_raw.endswith('"'):
+                        docs_raw = docs_raw[1:-1]
+                    
+                    docs = json.loads(docs_raw)
+                    if isinstance(docs, list):
+                        for doc_id in docs:
+                            doc_to_milestone[str(doc_id)] = milestone_info
+                except (json.JSONDecodeError, TypeError):
+                    pass
+        
+        # Lade alle Dokumente für die Projekte
+        docs_placeholders = ', '.join([f':did_{i}' for i in range(len(project_ids))])
+        documents_query = text(f"""
+            SELECT 
+                d.id,
+                d.title,
+                d.file_name,
+                d.file_path,
+                d.category,
+                d.subcategory,
+                d.mime_type,
+                d.file_size,
+                d.created_at,
+                d.project_id
+            FROM documents d
+            WHERE d.project_id IN ({docs_placeholders})
+            ORDER BY d.created_at DESC
+        """)
+        
+        # Erstelle Parameter-Dictionary
+        docs_params = {f'did_{i}': pid for i, pid in enumerate(project_ids)}
+        
+        docs_result = await db.execute(documents_query, docs_params)
+        documents = docs_result.fetchall()
+        
+        # Formatiere Dokumente mit allen Metadaten
+        formatted_documents = []
+        for doc in documents:
+            doc_id_str = str(doc.id)
+            milestone_info = doc_to_milestone.get(doc_id_str, {})
+            
+            # created_at behandeln (kann DateTime-Objekt oder String sein)
+            created_at_value = doc.created_at
+            if created_at_value:
+                if hasattr(created_at_value, 'isoformat'):
+                    created_at_value = created_at_value.isoformat()
+                else:
+                    created_at_value = str(created_at_value)
+            
+            formatted_doc = {
+                "id": doc.id,
+                "title": doc.title,
+                "filename": doc.file_name or "Unbenannt",
+                "file_path": doc.file_path,
+                "file_url": None,  # file_url existiert nicht in der DB
+                "category": doc.category,
+                "subcategory": doc.subcategory,
+                "file_type": doc.mime_type,
+                "file_size": doc.file_size,
+                "created_at": created_at_value,
+                "project_id": doc.project_id,
+                "project_title": project_map.get(doc.project_id, 'Unbekanntes Projekt'),
+                "milestone_id": milestone_info.get('milestone_id'),  # Nur aus Mapping
+                "milestone_title": milestone_info.get('milestone_title'),
+                "milestone_status": milestone_info.get('milestone_status'),
+                "milestone_category": milestone_info.get('milestone_category'),
+                "ausschreibung_title": milestone_info.get('milestone_title')
+            }
+            
+            formatted_documents.append(formatted_doc)
+        
+        return {
+            "documents": formatted_documents,
+            "total_count": len(formatted_documents),
+            "project_name": project.name,
+            "project_id": project.id,
+            "milestones_count": len(milestones)
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Fehler beim Laden der Bauträger-Dokumenten-Übersicht: {str(e)}")
+        logger.exception(e)
+        raise HTTPException(status_code=500, detail="Fehler beim Laden der Dokumenten-Übersicht")
+
+
 # Dienstleister-spezifische Endpunkte
 # WICHTIG: Diese Endpunkte MÜSSEN vor den allgemeinen GET-Endpunkten definiert werden!
 @router.get("/sp/documents", response_model=List[DocumentSummary])
@@ -1750,196 +1942,6 @@ async def get_documents_for_frontend(
         logger.exception(e)
         # ROBUSTE FALLBACK-LÖSUNG: Gebe leere Liste zurück
         return []
-
-
-@router.get("/bautraeger/overview")
-async def get_bautraeger_documents_overview(
-    project_id: int = Query(..., description="ID des Projekts für das die Dokumente geladen werden sollen"),
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Liefert eine übersichtliche Liste aller Dokumente für Bauträger,
-    gruppiert nach Ausschreibungen mit allen relevanten Metadaten.
-    """
-    try:
-        # Prüfe ob User ein Bauträger ist
-        # user_role ist ein Enum, daher müssen wir sowohl Enum als auch String-Wert prüfen
-        from app.models.user import UserRole
-        
-        is_bautraeger = False
-        
-        # Prüfe user_role (Enum oder String)
-        if current_user.user_role:
-            if hasattr(current_user.user_role, 'value'):
-                # Enum-Objekt
-                is_bautraeger = current_user.user_role.value in ["BAUTRAEGER", "bautraeger", "developer", "DEVELOPER"]
-            else:
-                # String
-                is_bautraeger = str(current_user.user_role).upper() in ["BAUTRAEGER", "DEVELOPER"]
-        
-        # Zusätzlich user_type prüfen (für Kompatibilität)
-        if not is_bautraeger and current_user.user_type:
-            if hasattr(current_user.user_type, 'value'):
-                is_bautraeger = current_user.user_type.value in ["project_owner", "bautraeger", "developer"]
-            else:
-                is_bautraeger = str(current_user.user_type).lower() in ["project_owner", "bautraeger", "developer"]
-        
-        logger.info(f"[BAUTRAEGER_CHECK] User {current_user.id} - user_role: {current_user.user_role}, user_type: {current_user.user_type}, is_bautraeger: {is_bautraeger}")
-        
-        if not is_bautraeger:
-            raise HTTPException(
-                status_code=403,
-                detail="Nur Bauträger können diese Übersicht einsehen"
-            )
-        
-        # Prüfe ob das Projekt dem Bauträger gehört
-        project_query = text("""
-            SELECT id, name 
-            FROM projects 
-            WHERE id = :project_id AND owner_id = :user_id
-        """)
-        project_result = await db.execute(project_query, {"project_id": project_id, "user_id": current_user.id})
-        project = project_result.fetchone()
-        
-        if not project:
-            raise HTTPException(
-                status_code=404,
-                detail="Projekt nicht gefunden oder Sie haben keine Berechtigung"
-            )
-        
-        project_ids = [project.id]
-        project_map = {project.id: project.name}
-        
-        # Lade alle Milestones (Ausschreibungen) für diese Projekte
-        # Erstelle Platzhalter für IN-Clause
-        project_ids_placeholders = ', '.join([f':pid_{i}' for i in range(len(project_ids))])
-        milestones_query = text(f"""
-            SELECT id, project_id, title, description, status, category, 
-                   shared_document_ids, documents
-            FROM milestones 
-            WHERE project_id IN ({project_ids_placeholders})
-            AND created_by = :user_id
-        """)
-        
-        # Erstelle Parameter-Dictionary
-        milestone_params = {f'pid_{i}': pid for i, pid in enumerate(project_ids)}
-        milestone_params['user_id'] = current_user.id
-        
-        milestones_result = await db.execute(milestones_query, milestone_params)
-        milestones = milestones_result.fetchall()
-        
-        # Erstelle Mapping: Document-ID -> Milestone-Info
-        doc_to_milestone = {}
-        for milestone in milestones:
-            milestone_info = {
-                'milestone_id': milestone.id,
-                'milestone_title': milestone.title,
-                'milestone_status': milestone.status,
-                'milestone_category': milestone.category,
-                'project_id': milestone.project_id,
-                'project_title': project_map.get(milestone.project_id, 'Unbekanntes Projekt')
-            }
-            
-            # Verarbeite shared_document_ids
-            if milestone.shared_document_ids:
-                try:
-                    doc_ids = json.loads(milestone.shared_document_ids)
-                    if isinstance(doc_ids, list):
-                        for doc_id in doc_ids:
-                            doc_to_milestone[str(doc_id)] = milestone_info
-                except (json.JSONDecodeError, TypeError):
-                    pass
-            
-            # Verarbeite documents Feld
-            if milestone.documents:
-                try:
-                    docs_raw = milestone.documents
-                    if isinstance(docs_raw, str) and docs_raw.startswith('"') and docs_raw.endswith('"'):
-                        docs_raw = docs_raw[1:-1]
-                    
-                    docs = json.loads(docs_raw)
-                    if isinstance(docs, list):
-                        for doc_id in docs:
-                            doc_to_milestone[str(doc_id)] = milestone_info
-                except (json.JSONDecodeError, TypeError):
-                    pass
-        
-        # Lade alle Dokumente für die Projekte
-        docs_placeholders = ', '.join([f':did_{i}' for i in range(len(project_ids))])
-        documents_query = text(f"""
-            SELECT 
-                d.id,
-                d.title,
-                d.file_name,
-                d.file_path,
-                d.category,
-                d.subcategory,
-                d.mime_type,
-                d.file_size,
-                d.created_at,
-                d.project_id
-            FROM documents d
-            WHERE d.project_id IN ({docs_placeholders})
-            ORDER BY d.created_at DESC
-        """)
-        
-        # Erstelle Parameter-Dictionary
-        docs_params = {f'did_{i}': pid for i, pid in enumerate(project_ids)}
-        
-        docs_result = await db.execute(documents_query, docs_params)
-        documents = docs_result.fetchall()
-        
-        # Formatiere Dokumente mit allen Metadaten
-        formatted_documents = []
-        for doc in documents:
-            doc_id_str = str(doc.id)
-            milestone_info = doc_to_milestone.get(doc_id_str, {})
-            
-            # created_at behandeln (kann DateTime-Objekt oder String sein)
-            created_at_value = doc.created_at
-            if created_at_value:
-                if hasattr(created_at_value, 'isoformat'):
-                    created_at_value = created_at_value.isoformat()
-                else:
-                    created_at_value = str(created_at_value)
-            
-            formatted_doc = {
-                "id": doc.id,
-                "title": doc.title,
-                "filename": doc.file_name or "Unbenannt",
-                "file_path": doc.file_path,
-                "file_url": None,  # file_url existiert nicht in der DB
-                "category": doc.category,
-                "subcategory": doc.subcategory,
-                "file_type": doc.mime_type,
-                "file_size": doc.file_size,
-                "created_at": created_at_value,
-                "project_id": doc.project_id,
-                "project_title": project_map.get(doc.project_id, 'Unbekanntes Projekt'),
-                "milestone_id": milestone_info.get('milestone_id'),  # Nur aus Mapping
-                "milestone_title": milestone_info.get('milestone_title'),
-                "milestone_status": milestone_info.get('milestone_status'),
-                "milestone_category": milestone_info.get('milestone_category'),
-                "ausschreibung_title": milestone_info.get('milestone_title')
-            }
-            
-            formatted_documents.append(formatted_doc)
-        
-        return {
-            "documents": formatted_documents,
-            "total_count": len(formatted_documents),
-            "project_name": project.name,
-            "project_id": project.id,
-            "milestones_count": len(milestones)
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Fehler beim Laden der Bauträger-Dokumenten-Übersicht: {str(e)}")
-        logger.exception(e)
-        raise HTTPException(status_code=500, detail="Fehler beim Laden der Dokumenten-Übersicht")
 
 
 @router.delete("/sp/documents/{document_id}")
