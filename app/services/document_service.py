@@ -154,11 +154,21 @@ async def delete_document(db: AsyncSession, document_id: int) -> bool:
     if not document:
         return False
     
-    # Lösche physische Datei
+    # Lösche physische Datei (S3 oder lokal)
     try:
-        if os.path.exists(document.file_path):
+        from ..core.storage import is_s3_path
+        from ..services.s3_service import S3Service
+        
+        if is_s3_path(document.file_path):
+            # Lösche aus S3
+            await S3Service.delete_file(document.file_path)
+            print(f"[SUCCESS] Deleted file from S3: {document.file_path}")
+        elif os.path.exists(document.file_path):
+            # Lösche lokal
             os.remove(document.file_path)
-    except Exception:
+            print(f"[SUCCESS] Deleted local file: {document.file_path}")
+    except Exception as e:
+        print(f"[WARNING] Failed to delete file {document.file_path}: {e}")
         pass  # Ignoriere Fehler beim Löschen der Datei
     
     # Lösche abhängige Einträge manuell (da nicht alle Cascades definiert sind)
@@ -309,21 +319,44 @@ async def get_document_statistics(db: AsyncSession, project_id: int) -> dict:
     }
 
 
-async def save_uploaded_file(file_content: bytes, filename: str, project_id: int) -> tuple[str, int]:
-    """Speichert eine hochgeladene Datei und gibt den Pfad und die Größe zurück"""
-    from ..core.storage import get_project_upload_path, get_relative_path
+async def save_uploaded_file(file_content: bytes, filename: str, project_id: int, mime_type: str = "application/octet-stream") -> tuple[str, int]:
+    """
+    Speichert eine hochgeladene Datei in S3 oder lokal und gibt den Pfad/Key und die Größe zurück
     
-    # Get project upload directory (works in dev and production)
+    Args:
+        file_content: File content as bytes
+        filename: Original filename
+        project_id: Project ID
+        mime_type: MIME type of the file
+        
+    Returns:
+        tuple[str, int]: (file_path or s3_key, file_size)
+    """
+    from ..core.storage import should_use_s3, get_project_upload_path, get_relative_path
+    from ..services.s3_service import S3Service
+    
+    # Check if S3 should be used
+    if should_use_s3("upload"):
+        # S3 Upload
+        try:
+            s3_key = f"project_{project_id}/uploads/{filename}"
+            s3_url = await S3Service.upload_file(file_content, s3_key, mime_type)
+            print(f"[SUCCESS] File uploaded to S3: {s3_key}")
+            return s3_key, len(file_content)  # Return S3 key instead of local path
+        except Exception as e:
+            print(f"[ERROR] S3 upload failed, falling back to local storage: {e}")
+            # Fallback to local storage if S3 fails
+    
+    # Local Upload (original logic or fallback)
     upload_dir = get_project_upload_path(project_id)
-    
-    # Generate file path
     file_path = upload_dir / filename
     
-    # Save file
+    # Save file locally
     async with aiofiles.open(file_path, 'wb') as f:
         await f.write(file_content)
     
     # Return relative path for database storage
     relative_path = get_relative_path(file_path)
+    print(f"[SUCCESS] File saved locally: {relative_path}")
     
     return relative_path, len(file_content) 

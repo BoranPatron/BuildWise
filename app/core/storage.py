@@ -1,6 +1,7 @@
 """
 Storage Path Management for BuildWise
 Handles dynamic storage paths for local development and production (Render persistent disk)
+Supports hybrid mode with AWS S3 for uploads and local storage for generated files
 """
 import os
 from pathlib import Path
@@ -10,6 +11,59 @@ from typing import Optional
 def is_production() -> bool:
     """Check if running in production environment (Render)"""
     return os.getenv("RENDER") == "true" or os.getenv("ENVIRONMENT") == "production"
+
+
+def is_s3_enabled() -> bool:
+    """
+    Check if S3 is enabled and properly configured.
+    
+    Returns:
+        bool: True if all required S3 environment variables are set
+    """
+    required_vars = [
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "S3_BUCKET_NAME"
+    ]
+    return all(os.getenv(var) for var in required_vars)
+
+
+def should_use_s3(file_type: str) -> bool:
+    """
+    Determine whether to use S3 or local storage for a given file type.
+    
+    Args:
+        file_type: Type of file ("upload", "pdf", "temp", "cache", etc.)
+        
+    Returns:
+        bool: True if S3 should be used, False for local storage
+    """
+    if not is_s3_enabled():
+        return False
+    
+    # Uploads go to S3 if enabled
+    if file_type in ["upload", "document", "image"]:
+        return True
+    
+    # Generated PDFs, temp files, and cache stay local
+    if file_type in ["pdf", "invoice", "temp", "cache"]:
+        return False
+    
+    # Default: use local storage
+    return False
+
+
+def is_s3_path(path: str) -> bool:
+    """
+    Check if a path is an S3 key (starts with project_).
+    
+    Args:
+        path: File path or S3 key
+        
+    Returns:
+        bool: True if path is an S3 key, False if local path
+    """
+    return isinstance(path, str) and path.startswith("project_")
 
 
 def get_storage_base_path() -> Path:
@@ -205,6 +259,9 @@ def get_file_url(file_path: str, token: Optional[str] = None) -> str:
 # Export all functions
 __all__ = [
     "is_production",
+    "is_s3_enabled",
+    "should_use_s3",
+    "is_s3_path",
     "get_storage_base_path",
     "get_uploads_path",
     "get_project_upload_path",

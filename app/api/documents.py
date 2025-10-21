@@ -246,7 +246,8 @@ async def upload_document(
         # Speichere Datei
         file_content = await file.read()
         filename = file.filename or "unnamed_file"
-        file_path, file_size = await save_uploaded_file(file_content, filename, project_id)
+        mime_type = file.content_type or "application/octet-stream"
+        file_path, file_size = await save_uploaded_file(file_content, filename, project_id, mime_type)
         
         # Erstelle Dokument-Eintrag - Validierung erfolgt im Schema
         logger.info("[DEBUG] Erstelle DocumentCreate Schema...")
@@ -351,18 +352,13 @@ async def upload_milestone_documents(
                 detail=f"Datei {file.filename} ist zu groß (max. 50MB)"
             )
         
-        # Erstelle Speicherpfad
-        upload_dir = f"storage/uploads/project_{project.id}"
-        os.makedirs(upload_dir, exist_ok=True)
-        
         # Generiere sicheren Dateinamen
         file_extension = os.path.splitext(file.filename)[1]
         safe_filename = f"milestone_{milestone_id}_{uuid.uuid4()}{file_extension}"
-        file_path = os.path.join(upload_dir, safe_filename)
         
-        # Speichere Datei
-        with open(file_path, "wb") as buffer:
-            buffer.write(content)
+        # Speichere Datei mit save_uploaded_file (unterstützt S3 und lokal)
+        mime_type = file.content_type or "application/octet-stream"
+        file_path, file_size = await save_uploaded_file(content, safe_filename, project.id, mime_type)
         
         # Erstelle Dokument-Metadaten
         document_data = {
@@ -370,7 +366,7 @@ async def upload_milestone_documents(
             "name": file.filename,
             "url": f"/{file_path}",
             "type": file.content_type,
-            "size": len(content),
+            "size": file_size,
             "uploaded_at": datetime.now().isoformat()
         }
         
@@ -814,6 +810,7 @@ async def get_document_content(
     """
     Returns document content/file for viewing (inline display)
     This endpoint is CRITICAL for frontend document preview
+    Supports both S3 and local file storage
     """
     try:
         logger.info(f"[API] get_document_content called for document_id={document_id}")
@@ -831,24 +828,48 @@ async def get_document_content(
         document.accessed_at = datetime.utcnow()
         await db.commit()
         
-        # Check if file exists on disk
         file_path = str(document.file_path)
-        if not os.path.exists(file_path):
-            logger.error(f"[API] File not found on disk: {file_path}")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Datei nicht auf Server gefunden"
+        
+        # Check if file is in S3 or local storage
+        from ..core.storage import is_s3_path
+        from ..services.s3_service import S3Service
+        
+        if is_s3_path(file_path):
+            # S3 file - download and return as Response
+            try:
+                logger.info(f"[API] Downloading from S3: {file_path}")
+                file_content = await S3Service.download_file(file_path)
+                logger.info(f"[SUCCESS] Downloaded {len(file_content)} bytes from S3")
+                
+                return Response(
+                    content=file_content,
+                    media_type=str(document.mime_type),
+                    headers={"Content-Disposition": f"inline; filename=\"{document.file_name}\""}
+                )
+            except Exception as e:
+                logger.error(f"[ERROR] Failed to download from S3: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Datei nicht in S3 gefunden"
+                )
+        else:
+            # Local file - use FileResponse
+            if not os.path.exists(file_path):
+                logger.error(f"[API] File not found on disk: {file_path}")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Datei nicht auf Server gefunden"
+                )
+            
+            logger.info(f"[SUCCESS] Returning document content for {document_id}: {file_path}")
+            
+            # Return file with inline content-disposition for browser preview
+            return FileResponse(
+                path=file_path,
+                filename=str(document.file_name),
+                media_type=str(document.mime_type),
+                headers={"Content-Disposition": f"inline; filename=\"{document.file_name}\""}
             )
-        
-        logger.info(f"[SUCCESS] Returning document content for {document_id}: {file_path}")
-        
-        # Return file with inline content-disposition for browser preview
-        return FileResponse(
-            path=file_path,
-            filename=str(document.file_name),
-            media_type=str(document.mime_type),
-            headers={"Content-Disposition": f"inline; filename=\"{document.file_name}\""}
-        )
         
     except HTTPException:
         raise
@@ -862,13 +883,16 @@ async def get_document_content(
         )
 
 
-@router.get("/{document_id}/download", response_class=FileResponse)
+@router.get("/{document_id}/download")
 async def download_document(
     document_id: int,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Lädt ein Dokument herunter und trackt den Zugriff"""
+    """
+    Lädt ein Dokument herunter und trackt den Zugriff
+    Supports both S3 and local file storage
+    """
     try:
         logger.info(f"[API] download_document called for document_id={document_id}")
         
@@ -883,21 +907,45 @@ async def download_document(
         document.accessed_at = datetime.utcnow()
         await db.commit()
         
-        # Prüfe ob die Datei existiert
         file_path = str(document.file_path)
-        if not os.path.exists(file_path):
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Datei nicht gefunden"
+        
+        # Check if file is in S3 or local storage
+        from ..core.storage import is_s3_path
+        from ..services.s3_service import S3Service
+        
+        if is_s3_path(file_path):
+            # S3 file - download and return as Response
+            try:
+                logger.info(f"[API] Downloading from S3: {file_path}")
+                file_content = await S3Service.download_file(file_path)
+                logger.info(f"[SUCCESS] Downloaded {len(file_content)} bytes from S3")
+                
+                return Response(
+                    content=file_content,
+                    media_type=str(document.mime_type),
+                    headers={"Content-Disposition": f"attachment; filename=\"{document.file_name}\""}
+                )
+            except Exception as e:
+                logger.error(f"[ERROR] Failed to download from S3: {e}")
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Datei nicht in S3 gefunden"
+                )
+        else:
+            # Local file - use FileResponse
+            if not os.path.exists(file_path):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Datei nicht gefunden"
+                )
+            
+            logger.info(f"[SUCCESS] Returning download for {document_id}: {file_path}")
+            
+            return FileResponse(
+                path=file_path,
+                filename=str(document.file_name),
+                media_type=str(document.mime_type)
             )
-        
-        logger.info(f"[SUCCESS] Returning download for {document_id}: {file_path}")
-        
-        return FileResponse(
-            path=file_path,
-            filename=str(document.file_name),
-            media_type=str(document.mime_type)
-        )
         
     except HTTPException:
         raise
@@ -915,7 +963,10 @@ async def view_document(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Zeigt ein Dokument an (für Browser-Vorschau)"""
+    """
+    Zeigt ein Dokument an (für Browser-Vorschau)
+    Supports both S3 and local file storage
+    """
     document = await get_document_by_id(db, document_id)
     if not document:
         raise HTTPException(
@@ -923,18 +974,25 @@ async def view_document(
             detail="Dokument nicht gefunden"
         )
     
-    # Prüfe ob die Datei existiert
     file_path = str(document.file_path)
-    if not os.path.exists(file_path):
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Datei nicht gefunden"
-        )
     
     try:
-        # Lade den Dateiinhalt
-        with open(file_path, 'rb') as f:
-            content = f.read()
+        # Check if file is in S3 or local storage
+        from ..core.storage import is_s3_path
+        from ..services.s3_service import S3Service
+        
+        if is_s3_path(file_path):
+            # Download from S3
+            content = await S3Service.download_file(file_path)
+        else:
+            # Load from local storage
+            if not os.path.exists(file_path):
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail="Datei nicht gefunden"
+                )
+            with open(file_path, 'rb') as f:
+                content = f.read()
         
         mime_type = str(document.mime_type)
         
