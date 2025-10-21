@@ -42,6 +42,14 @@ async def fix_postgresql_oauth_schema():
         except Exception as e:
             print(f"⚠️  name column: {e}")
         
+        # Fix user_role column to allow NULL values
+        print("\n📝 Fixing user_role column constraint...")
+        try:
+            await conn.execute('ALTER TABLE users ALTER COLUMN user_role DROP NOT NULL;')
+            print("✅ user_role column constraint removed successfully")
+        except Exception as e:
+            print(f"⚠️  user_role column: {e}")
+        
         # Add missing OAuth columns (only if they don't exist)
         print("\n📝 Adding missing OAuth columns...")
         
