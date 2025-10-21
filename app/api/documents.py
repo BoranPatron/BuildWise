@@ -805,63 +805,6 @@ async def get_recent_documents(
         return []
 
 
-@router.get("/{document_id}/content")
-async def get_document_content(
-    document_id: int,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-):
-    """
-    Returns document content/file for viewing (inline display)
-    This endpoint is CRITICAL for frontend document preview
-    """
-    try:
-        logger.info(f"[API] get_document_content called for document_id={document_id}")
-        
-        # Get document from database
-        document = await get_document_by_id(db, document_id)
-        if not document:
-            logger.error(f"[API] Document {document_id} not found in database")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Dokument nicht gefunden"
-            )
-        
-        # Track access
-        document.accessed_at = datetime.utcnow()
-        await db.commit()
-        
-        # Check if file exists on disk
-        file_path = str(document.file_path)
-        if not os.path.exists(file_path):
-            logger.error(f"[API] File not found on disk: {file_path}")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="Datei nicht auf Server gefunden"
-            )
-        
-        logger.info(f"[SUCCESS] Returning document content for {document_id}: {file_path}")
-        
-        # Return file with inline content-disposition for browser preview
-        return FileResponse(
-            path=file_path,
-            filename=str(document.file_name),
-            media_type=str(document.mime_type),
-            headers={"Content-Disposition": f"inline; filename=\"{document.file_name}\""}
-        )
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"[ERROR] Failed to get document content for {document_id}: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Fehler beim Laden des Dokument-Inhalts"
-        )
-
-
 @router.get("/{document_id}/download", response_class=FileResponse)
 async def download_document(
     document_id: int,
