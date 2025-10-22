@@ -381,7 +381,7 @@ async def create_resource(
     return enriched_resource
 
 
-@router.get("/", response_model=List[ResourceResponse])
+@router.get("", response_model=List[ResourceResponse])
 async def list_resources(
     category: Optional[str] = None,
     subcategory: Optional[str] = None,

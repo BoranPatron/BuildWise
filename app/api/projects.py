@@ -27,7 +27,7 @@ async def create_new_project(
     return project
 
 
-@router.get("/", response_model=List[ProjectSummary])
+@router.get("", response_model=List[ProjectSummary])
 async def read_projects(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
