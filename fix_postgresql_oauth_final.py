@@ -169,6 +169,12 @@ async def fix_postgresql_oauth_schema():
         except Exception as e:
             print(f"⚠️  projects.status: {e}")
         
+        try:
+            await conn.execute('ALTER TABLE projects ADD COLUMN IF NOT EXISTS address VARCHAR NULL;')
+            print("✅ projects.address added successfully")
+        except Exception as e:
+            print(f"⚠️  projects.address: {e}")
+        
         # Schema-Verifikation
         print("\n🔍 Verifying schema...")
         

@@ -21,9 +21,6 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"  # Alias für Kompatibilität
     access_token_expire_minutes: int = 30
     
-    # CORS
-    cors_origins: list = ["http://localhost:5173", "http://localhost:3000"]
-    
     # Google OAuth
     google_client_id: str = "1039127200110-vav094cta93qmtleivdj63un5dne17eb.apps.googleusercontent.com"
     google_client_secret: str = "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"

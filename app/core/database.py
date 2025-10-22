@@ -42,10 +42,10 @@ if IS_POSTGRESQL:
         future=True,
         # PostgreSQL connection pooling optimized for Render
         pool_pre_ping=True,  # Check connection health before using
-        pool_recycle=1800,   # Recycle connections after 30 min (Render closes idle after 5min)
-        pool_size=5,         # Smaller pool size for Render starter plan
-        max_overflow=10,     # Additional connections under load
-        pool_timeout=30,     # Wait max 30s for connection from pool
+        pool_recycle=int(os.getenv("DATABASE_POOL_RECYCLE", "1800")),   # Recycle connections after 30 min (Render closes idle after 5min)
+        pool_size=int(os.getenv("DATABASE_POOL_SIZE", "5")),         # Smaller pool size for Render starter plan
+        max_overflow=int(os.getenv("DATABASE_MAX_OVERFLOW", "10")),     # Additional connections under load
+        pool_timeout=int(os.getenv("DATABASE_POOL_TIMEOUT", "30")),     # Wait max 30s for connection from pool
         pool_reset_on_return='rollback',  # Rollback on return to clean state
         # PostgreSQL specific settings for Render
         connect_args={
