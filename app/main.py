@@ -474,22 +474,29 @@ async def debug_request_simple(request: Request):
 @app.get("/project_{project_id}/uploads/{filename}")
 async def serve_s3_file(project_id: int, filename: str):
     """Serve S3 files directly for company logos and other uploads"""
+    print(f"[DEBUG] S3 Endpoint called: project_{project_id}/uploads/{filename}")
     try:
         from ..core.storage import is_s3_path
         from ..services.s3_service import S3Service
         
         s3_key = f"project_{project_id}/uploads/{filename}"
+        print(f"[DEBUG] S3 Key: {s3_key}")
+        print(f"[DEBUG] is_s3_path result: {is_s3_path(s3_key)}")
         
         # Check if file exists in S3
         if is_s3_path(s3_key):
+            print(f"[DEBUG] Attempting to download from S3: {s3_key}")
             # Download from S3
             file_content = await S3Service.download_file(s3_key)
+            print(f"[DEBUG] Successfully downloaded {len(file_content)} bytes from S3")
             
             # Determine content type based on file extension
             import mimetypes
             content_type, _ = mimetypes.guess_type(filename)
             if not content_type:
                 content_type = "application/octet-stream"
+            
+            print(f"[DEBUG] Content type: {content_type}")
             
             # Return file as response
             from fastapi.responses import Response
@@ -502,6 +509,7 @@ async def serve_s3_file(project_id: int, filename: str):
                 }
             )
         else:
+            print(f"[DEBUG] File not recognized as S3 path: {s3_key}")
             # File not found in S3
             from fastapi import HTTPException
             raise HTTPException(status_code=404, detail="File not found")
