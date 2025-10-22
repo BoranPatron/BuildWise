@@ -470,6 +470,47 @@ async def debug_request_simple(request: Request):
     
     return {"status": "received", "method": request.method, "body_length": len(body), "content_type": content_type}
 
+# S3 File serving endpoint for direct access to uploaded files
+@app.get("/project_{project_id}/uploads/{filename}")
+async def serve_s3_file(project_id: int, filename: str):
+    """Serve S3 files directly for company logos and other uploads"""
+    try:
+        from ..core.storage import is_s3_path
+        from ..services.s3_service import S3Service
+        
+        s3_key = f"project_{project_id}/uploads/{filename}"
+        
+        # Check if file exists in S3
+        if is_s3_path(s3_key):
+            # Download from S3
+            file_content = await S3Service.download_file(s3_key)
+            
+            # Determine content type based on file extension
+            import mimetypes
+            content_type, _ = mimetypes.guess_type(filename)
+            if not content_type:
+                content_type = "application/octet-stream"
+            
+            # Return file as response
+            from fastapi.responses import Response
+            return Response(
+                content=file_content,
+                media_type=content_type,
+                headers={
+                    "Content-Disposition": f"inline; filename={filename}",
+                    "Cache-Control": "public, max-age=3600"  # Cache for 1 hour
+                }
+            )
+        else:
+            # File not found in S3
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="File not found")
+            
+    except Exception as e:
+        print(f"[ERROR] Failed to serve S3 file {s3_key}: {e}")
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail="Failed to serve file")
+
 # Root Endpoint
 @app.get("/")
 async def read_root():
