@@ -17,6 +17,12 @@ from ..services.project_service import (
 router = APIRouter(prefix="/projects", tags=["projects"])
 
 
+@router.get("/health")
+async def projects_health_check():
+    """Health check endpoint for projects API"""
+    return {"status": "ok", "message": "Projects API is working"}
+
+
 @router.post("/", response_model=ProjectRead, status_code=status.HTTP_201_CREATED)
 async def create_new_project(
     project_in: ProjectCreate,
@@ -27,7 +33,7 @@ async def create_new_project(
     return project
 
 
-@router.get("", response_model=List[ProjectSummary])
+@router.get("/", response_model=List[ProjectSummary])
 async def read_projects(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
