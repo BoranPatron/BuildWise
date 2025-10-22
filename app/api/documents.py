@@ -37,7 +37,7 @@ logger = logging.getLogger(__name__)
 def is_bautraeger_user(user_role) -> bool:
     """
     Robust check if user is Bauträger, handling both enum and string values.
-    Supports various role formats and variations.
+    Supports various role formats and variations including PostgreSQL enums.
     """
     if user_role is None:
         return False
@@ -52,12 +52,16 @@ def is_bautraeger_user(user_role) -> bool:
         'ba'  # Short form
     ]
     
+    # Also check if it's a PostgreSQL enum that contains 'bautraeger'
+    if 'bautraeger' in role_str or 'bauträger' in role_str:
+        return True
+    
     return role_str in bautraeger_values
 
 def is_dienstleister_user(user_role) -> bool:
     """
     Robust check if user is Dienstleister, handling both enum and string values.
-    Supports various role formats and variations.
+    Supports various role formats and variations including PostgreSQL enums.
     """
     if user_role is None:
         return False
@@ -71,6 +75,10 @@ def is_dienstleister_user(user_role) -> bool:
         'contractor', 'provider',  # English alternatives
         'dl'  # Short form
     ]
+    
+    # Also check if it's a PostgreSQL enum that contains 'dienstleister'
+    if 'dienstleister' in role_str or 'service_provider' in role_str:
+        return True
     
     return role_str in dienstleister_values
 
@@ -1260,6 +1268,11 @@ async def get_bautraeger_documents_overview(
         
         # Debug logging and robust role checking
         log_user_role_info(current_user, "Bauträger endpoint")
+        
+        # Additional debug info for PostgreSQL enum handling
+        print(f"[DEBUG] Bauträger endpoint - Raw user_role: {repr(current_user.user_role)}")
+        print(f"[DEBUG] Bauträger endpoint - user_role as string: {str(current_user.user_role)}")
+        print(f"[DEBUG] Bauträger endpoint - user_role type: {type(current_user.user_role)}")
         
         is_bautraeger = is_bautraeger_user(current_user.user_role)
         print(f"[DEBUG] Bauträger endpoint - Is Bauträger check result: {is_bautraeger}")
