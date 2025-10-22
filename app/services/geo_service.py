@@ -58,7 +58,7 @@ class GeoService:
                     "format": "json",
                     "limit": 1,
                     "addressdetails": 1,
-                    "countrycodes": "de"
+                    "countrycodes": "de,ch,at"  # Erweitert um Schweiz und Österreich
                 }
                 
                 async with session.get(self.geocoding_api_url, params=params) as response:

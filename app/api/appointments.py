@@ -438,27 +438,6 @@ async def get_project_appointments(
 
 # AB HIER: Parametrisierte Routes (müssen am Ende stehen!)
 
-@router.post("/", response_model=AppointmentResponse)
-async def create_appointment(
-    appointment_data: AppointmentCreate,
-    db: AsyncSession = Depends(get_db),
-    current_user: User = Depends(get_current_user)
-):
-    """Erstelle einen neuen Besichtigungstermin"""
-    try:
-        appointment = await AppointmentService.create_appointment(
-            db=db,
-            appointment_data=appointment_data,
-            created_by=current_user.id
-        )
-        return appointment
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Fehler beim Erstellen des Termins: {str(e)}"
-        )
-
-
 @router.get("/{appointment_id}", response_model=AppointmentResponse)
 async def get_appointment(
     appointment_id: int,
