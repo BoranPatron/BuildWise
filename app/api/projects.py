@@ -1,6 +1,7 @@
 from typing import List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status, Query
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select
 
 from ..core.database import get_db
 from ..api.deps import get_current_user
@@ -112,6 +113,24 @@ async def delete_project_endpoint(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Keine Berechtigung für dieses Projekt"
+        )
+    
+    # Check if project has accepted or submitted quotes
+    from ..models import Quote, QuoteStatus
+    
+    quotes_result = await db.execute(
+        select(Quote)
+        .where(
+            Quote.project_id == project_id,
+            Quote.status.in_([QuoteStatus.ACCEPTED, QuoteStatus.SUBMITTED])
+        )
+    )
+    quotes = quotes_result.scalars().all()
+    
+    if quotes:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Projekt kann nicht gelöscht werden: Es gibt bereits angenommene oder eingereichte Angebote"
         )
     
     success = await delete_project(db, project_id)
