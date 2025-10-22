@@ -43,8 +43,14 @@ class GeoService:
             Dict mit latitude, longitude oder None bei Fehler
         """
         try:
+            # Validate input parameters
+            if not street or not city:
+                logger.warning("Geocoding: Street and city are required")
+                return None
+            
             # Erstelle vollständige Adresse
             full_address = f"{street}, {zip_code} {city}, {country}"
+            logger.info(f"Geocoding address: {full_address}")
             
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.session_timeout)) as session:
                 params = {
@@ -61,6 +67,7 @@ class GeoService:
                         
                         if data and len(data) > 0:
                             result = data[0]
+                            logger.info(f"Geocoding successful for: {full_address}")
                             return {
                                 "latitude": float(result["lat"]),
                                 "longitude": float(result["lon"]),
@@ -68,10 +75,20 @@ class GeoService:
                                 "address": result.get("address", {}),
                                 "confidence": float(result.get("importance", 0))
                             }
+                        else:
+                            logger.warning(f"No results found for address: {full_address}")
+                    else:
+                        logger.warning(f"Geocoding API returned status {response.status} for: {full_address}")
                     
             logger.warning(f"Geocoding fehlgeschlagen für Adresse: {full_address}")
             return None
             
+        except aiohttp.ClientTimeout:
+            logger.error(f"Geocoding timeout for address: {full_address}")
+            return None
+        except aiohttp.ClientError as e:
+            logger.error(f"Geocoding network error: {str(e)}")
+            return None
         except Exception as e:
             logger.error(f"Fehler beim Geocoding: {str(e)}")
             return None
@@ -87,6 +104,11 @@ class GeoService:
             Dictionary mit latitude, longitude und display_name oder None
         """
         try:
+            # Validate input
+            if not address_string or not address_string.strip():
+                logger.warning("Geocoding: Empty address string provided")
+                return None
+                
             logger.info(f"Geocoding Adresse aus String: {address_string}")
             
             async with aiohttp.ClientSession(timeout=aiohttp.ClientTimeout(total=self.session_timeout)) as session:
@@ -104,6 +126,7 @@ class GeoService:
                         
                         if data and len(data) > 0:
                             result = data[0]
+                            logger.info(f"Geocoding successful for string: {address_string}")
                             return {
                                 "latitude": float(result["lat"]),
                                 "longitude": float(result["lon"]),
@@ -114,9 +137,15 @@ class GeoService:
                             logger.warning(f"Geocoding fehlgeschlagen für Adresse: {address_string}")
                             return None
                     else:
-                        logger.warning(f"Geocoding API-Fehler: {response.status}")
+                        logger.warning(f"Geocoding API-Fehler: {response.status} for: {address_string}")
                         return None
                         
+        except aiohttp.ClientTimeout:
+            logger.error(f"Geocoding timeout for address string: {address_string}")
+            return None
+        except aiohttp.ClientError as e:
+            logger.error(f"Geocoding network error for string: {str(e)}")
+            return None
         except Exception as e:
             logger.error(f"Fehler beim Geocoding: {str(e)}")
             return None

@@ -154,6 +154,13 @@ async def geocode_address(
         Geocoding-Ergebnis mit Koordinaten
     """
     try:
+        # Validate input data
+        if not address.street or not address.city:
+            raise HTTPException(
+                status_code=400,
+                detail="Straße und Stadt sind erforderlich für Geocoding"
+            )
+        
         result = await geo_service.geocode_address(
             address.street,
             address.zip_code,
@@ -174,7 +181,15 @@ async def geocode_address(
                 detail="Adresse konnte nicht geocodiert werden"
             )
             
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
+        # Log the error for debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.error(f"Geocoding error for address {address.street}, {address.city}: {str(e)}")
+        
         raise HTTPException(
             status_code=500,
             detail=f"Fehler beim Geocoding: {str(e)}"
