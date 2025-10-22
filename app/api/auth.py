@@ -829,21 +829,21 @@ async def upload_company_logo(
         )
     
     try:
-        # Erstelle Upload-Verzeichnis im Storage (konsistent mit anderen Dokumenten)
-        upload_dir = Path("storage/company_logos")
-        upload_dir.mkdir(parents=True, exist_ok=True)
-        
         # Generiere eindeutigen Dateinamen
         timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
         filename = f"{current_user.id}_{timestamp}{file_ext}"
-        file_path = upload_dir / filename
         
-        # Speichere Datei
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
+        # Lese Dateiinhalt
+        file_content = await file.read()
         
-        # Relativer Pfad für Datenbank (mit /storage Prefix für konsistente URL-Generierung)
-        relative_path = f"storage/company_logos/{filename}"
+        # Verwende save_uploaded_file für S3/lokale Speicherung (konsistent mit anderen Uploads)
+        from ..services.document_service import save_uploaded_file
+        relative_path, file_size = await save_uploaded_file(
+            file_content=file_content,
+            filename=filename,
+            project_id=current_user.id,  # Verwende User-ID als "Projekt-ID" für Logos
+            mime_type=file.content_type or "application/octet-stream"
+        )
         
         # Audit-Log
         ip_address = req.client.host if req else None
