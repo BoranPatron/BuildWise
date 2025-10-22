@@ -30,6 +30,8 @@ class UserUpdate(BaseModel):
     company_uid: Optional[str] = None
     company_phone: Optional[str] = None
     company_website: Optional[str] = None
+    company_logo: Optional[str] = None
+    company_logo_advertising_consent: Optional[bool] = None
     business_license: Optional[str] = None
     bio: Optional[str] = None
     profile_image: Optional[str] = None
@@ -47,6 +49,8 @@ class UserRead(UserBase):
     company_uid: Optional[str] = None
     company_phone: Optional[str] = None
     company_website: Optional[str] = None
+    company_logo: Optional[str] = None
+    company_logo_advertising_consent: Optional[bool] = None
     business_license: Optional[str] = None
     bio: Optional[str] = None
     profile_image: Optional[str] = None
