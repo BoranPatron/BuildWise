@@ -1207,7 +1207,7 @@ async def get_bautraeger_documents_overview(
             raise HTTPException(status_code=404, detail="Project not found")
         
         # Check if user is Bauträger (project owner)
-        if current_user.user_type != "bautraeger":
+        if current_user.user_role != "bautraeger":
             raise HTTPException(status_code=403, detail="Access denied: Bauträger only")
         
         # Get all documents for this project
@@ -1276,7 +1276,7 @@ async def get_dienstleister_documents_overview(
         import json
         
         # Check if user is Dienstleister
-        if current_user.user_type != "service_provider":
+        if current_user.user_role != "dienstleister":
             raise HTTPException(status_code=403, detail="Access denied: Dienstleister only")
         
         # Get milestones where user has accepted quotes
