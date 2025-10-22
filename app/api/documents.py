@@ -33,6 +33,58 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Utility functions for robust role checking
+def is_bautraeger_user(user_role) -> bool:
+    """
+    Robust check if user is Bauträger, handling both enum and string values.
+    Supports various role formats and variations.
+    """
+    if user_role is None:
+        return False
+    
+    # Convert to string for comparison
+    role_str = str(user_role).lower()
+    
+    # Check for all possible Bauträger values
+    bautraeger_values = [
+        'bautraeger', 'bauträger', 'bauteager',  # Common variations
+        'developer', 'dev',  # Developer role (also has Bauträger access)
+        'ba'  # Short form
+    ]
+    
+    return role_str in bautraeger_values
+
+def is_dienstleister_user(user_role) -> bool:
+    """
+    Robust check if user is Dienstleister, handling both enum and string values.
+    Supports various role formats and variations.
+    """
+    if user_role is None:
+        return False
+    
+    # Convert to string for comparison
+    role_str = str(user_role).lower()
+    
+    # Check for all possible Dienstleister values
+    dienstleister_values = [
+        'dienstleister', 'service_provider', 'serviceprovider',  # Common variations
+        'contractor', 'provider',  # English alternatives
+        'dl'  # Short form
+    ]
+    
+    return role_str in dienstleister_values
+
+def log_user_role_info(user: User, endpoint_name: str):
+    """
+    Log comprehensive user role information for debugging.
+    """
+    print(f"[DEBUG] {endpoint_name} - User ID: {user.id}")
+    print(f"[DEBUG] {endpoint_name} - User email: {user.email}")
+    print(f"[DEBUG] {endpoint_name} - User role: {user.user_role}")
+    print(f"[DEBUG] {endpoint_name} - User role type: {type(user.user_role)}")
+    print(f"[DEBUG] {endpoint_name} - User type: {user.user_type}")
+    print(f"[DEBUG] {endpoint_name} - Role selected: {user.role_selected}")
+
 router = APIRouter(prefix="/documents", tags=["documents"])
 
 
@@ -1206,16 +1258,14 @@ async def get_bautraeger_documents_overview(
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
         
-        # Debug logging to understand user role issue
-        print(f"[DEBUG] Bauträger endpoint - User ID: {current_user.id}")
-        print(f"[DEBUG] Bauträger endpoint - User email: {current_user.email}")
-        print(f"[DEBUG] Bauträger endpoint - User role: {current_user.user_role}")
-        print(f"[DEBUG] Bauträger endpoint - User type: {current_user.user_type}")
-        print(f"[DEBUG] Bauträger endpoint - Role selected: {current_user.role_selected}")
+        # Debug logging and robust role checking
+        log_user_role_info(current_user, "Bauträger endpoint")
         
-        # Check if user is Bauträger (project owner)
-        if current_user.user_role != "bautraeger":
-            print(f"[ERROR] Bauträger endpoint - Access denied. User role: {current_user.user_role}, Expected: bautraeger")
+        is_bautraeger = is_bautraeger_user(current_user.user_role)
+        print(f"[DEBUG] Bauträger endpoint - Is Bauträger check result: {is_bautraeger}")
+        
+        if not is_bautraeger:
+            print(f"[ERROR] Bauträger endpoint - Access denied. User role: {current_user.user_role}, Type: {type(current_user.user_role)}")
             raise HTTPException(status_code=403, detail="Access denied: Bauträger only")
         
         # Get all documents for this project
@@ -1283,8 +1333,14 @@ async def get_dienstleister_documents_overview(
         from sqlalchemy import text
         import json
         
-        # Check if user is Dienstleister
-        if current_user.user_role != "dienstleister":
+        # Debug logging and robust role checking
+        log_user_role_info(current_user, "Dienstleister endpoint")
+        
+        is_dienstleister = is_dienstleister_user(current_user.user_role)
+        print(f"[DEBUG] Dienstleister endpoint - Is Dienstleister check result: {is_dienstleister}")
+        
+        if not is_dienstleister:
+            print(f"[ERROR] Dienstleister endpoint - Access denied. User role: {current_user.user_role}, Type: {type(current_user.user_role)}")
             raise HTTPException(status_code=403, detail="Access denied: Dienstleister only")
         
         # Get milestones where user has accepted quotes
