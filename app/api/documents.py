@@ -1206,8 +1206,16 @@ async def get_bautraeger_documents_overview(
         if not project:
             raise HTTPException(status_code=404, detail="Project not found")
         
+        # Debug logging to understand user role issue
+        print(f"[DEBUG] Bauträger endpoint - User ID: {current_user.id}")
+        print(f"[DEBUG] Bauträger endpoint - User email: {current_user.email}")
+        print(f"[DEBUG] Bauträger endpoint - User role: {current_user.user_role}")
+        print(f"[DEBUG] Bauträger endpoint - User type: {current_user.user_type}")
+        print(f"[DEBUG] Bauträger endpoint - Role selected: {current_user.role_selected}")
+        
         # Check if user is Bauträger (project owner)
         if current_user.user_role != "bautraeger":
+            print(f"[ERROR] Bauträger endpoint - Access denied. User role: {current_user.user_role}, Expected: bautraeger")
             raise HTTPException(status_code=403, detail="Access denied: Bauträger only")
         
         # Get all documents for this project
