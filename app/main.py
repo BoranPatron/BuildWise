@@ -476,8 +476,8 @@ async def serve_file(project_id: int, filename: str):
     """Serve files from S3 or local storage for company logos and other uploads"""
     print(f"[DEBUG] File Endpoint called: project_{project_id}/uploads/{filename}")
     try:
-        from ..core.storage import is_s3_path, resolve_storage_path
-        from ..services.s3_service import S3Service
+        from app.core.storage import is_s3_path, resolve_storage_path
+        from app.services.s3_service import S3Service
         
         s3_key = f"project_{project_id}/uploads/{filename}"
         print(f"[DEBUG] S3 Key: {s3_key}")
