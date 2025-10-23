@@ -550,7 +550,7 @@ async def serve_file(project_id: int, filename: str):
             raise HTTPException(status_code=500, detail="Failed to serve local file")
             
     except Exception as e:
-        print(f"[ERROR] Failed to serve file {s3_key}: {e}")
+        print(f"[ERROR] Failed to serve file: {e}")
         from fastapi import HTTPException
         raise HTTPException(status_code=500, detail="Failed to serve file")
 
