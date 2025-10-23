@@ -142,6 +142,34 @@ const InspectionSchedulingModal: React.FC<InspectionSchedulingModalProps> = ({
       return date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
     };
 
+    // Erstelle strukturierte Beschreibung für ICS
+    const description = [
+      `Vor-Ort-Besichtigung für Ausschreibung – ${tradeTitle}`,
+      '',
+      `PROJEKT: ${projectName || 'Unbekanntes Projekt'}`,
+      `Projektadresse: ${formData.location_address || 'Adresse nicht verfügbar'}`,
+      '',
+      `GEWERK: Ausschreibung – ${tradeTitle}`,
+      `Kategorie: ${tradeTitle}`,
+      '',
+      `ORT: ${formData.location_address}`,
+      'KONTAKT:',
+      `Ansprechpartner: ${formData.contact_person}`,
+      `Telefon: ${formData.contact_phone}`,
+      `E-Mail: ${formData.contact_email}`,
+      formData.alternative_contact_person ? `Alternativer Kontakt: ${formData.alternative_contact_person}${formData.alternative_contact_phone ? ` (${formData.alternative_contact_phone})` : ''}` : '',
+      '',
+      'VORBEREITUNGSHINWEISE:',
+      formData.preparation_notes || 'Keine besonderen Hinweise',
+      formData.special_requirements ? `Besondere Anforderungen: ${formData.special_requirements}` : '',
+      '',
+      'ZUSÄTZLICHE ORTSANGABEN:',
+      formData.location_notes ? `Ortshinweise: ${formData.location_notes}` : '',
+      formData.additional_location_info ? `Zusätzliche Ortsangaben: ${formData.additional_location_info}` : '',
+      formData.parking_info ? `Parkmöglichkeiten: ${formData.parking_info}` : '',
+      formData.access_instructions ? `Zugangshinweise: ${formData.access_instructions}` : ''
+    ].filter(line => line !== '').join('\\n');
+
     const icsContent = `BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//BuildWise//Inspection Scheduler//DE
@@ -151,7 +179,7 @@ DTSTAMP:${formatDate(new Date())}
 DTSTART:${formatDate(startDate)}
 DTEND:${formatDate(endDate)}
 SUMMARY:${formData.title}
-DESCRIPTION:${formData.description}\\n\\nOrt: ${formData.location_address}\\n${formData.location_notes ? `Ortshinweise: ${formData.location_notes}\\n` : ''}${formData.additional_location_info ? `Zusätzliche Ortsangaben: ${formData.additional_location_info}\\n` : ''}${formData.parking_info ? `Parken: ${formData.parking_info}\\n` : ''}${formData.access_instructions ? `Zugang: ${formData.access_instructions}\\n` : ''}\\nAnsprechpartner: ${formData.contact_person}\\nTelefon: ${formData.contact_phone}\\nE-Mail: ${formData.contact_email}${formData.alternative_contact_person ? `\\nAlternativer Kontakt: ${formData.alternative_contact_person} (${formData.alternative_contact_phone})` : ''}${formData.preparation_notes ? `\\nVorbereitungshinweise: ${formData.preparation_notes}` : ''}${formData.special_requirements ? `\\nBesondere Anforderungen: ${formData.special_requirements}` : ''}
+DESCRIPTION:${description}
 LOCATION:${formData.location_address}${formData.location_notes ? `, ${formData.location_notes}` : ''}
 END:VEVENT
 END:VCALENDAR`;

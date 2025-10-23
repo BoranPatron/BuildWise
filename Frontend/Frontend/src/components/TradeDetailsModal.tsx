@@ -1638,6 +1638,34 @@ END:VCALENDAR`;
                     return date.toISOString().replace(/[-:]/g, '').split('.')[0] + 'Z';
                   };
 
+                  // Erstelle strukturierte Beschreibung für ICS
+                  const description = [
+                    `Vor-Ort-Besichtigung für Ausschreibung – ${trade.title}`,
+                    '',
+                    `PROJEKT: ${project?.name || 'Unbekanntes Projekt'}`,
+                    `Projektadresse: ${project?.address || 'Adresse nicht verfügbar'}`,
+                    '',
+                    `GEWERK: Ausschreibung – ${trade.title}`,
+                    `Kategorie: ${trade.category}`,
+                    '',
+                    `ORT: ${appointment.location_address || appointment.location || 'Wird noch bekannt gegeben'}`,
+                    'KONTAKT:',
+                    appointment.contact_person ? `Ansprechpartner: ${appointment.contact_person}` : '',
+                    appointment.contact_phone ? `Telefon: ${appointment.contact_phone}` : '',
+                    appointment.contact_email ? `E-Mail: ${appointment.contact_email}` : '',
+                    appointment.alternative_contact_person ? `Alternativer Kontakt: ${appointment.alternative_contact_person}${appointment.alternative_contact_phone ? ` (${appointment.alternative_contact_phone})` : ''}` : '',
+                    '',
+                    'VORBEREITUNGSHINWEISE:',
+                    appointment.preparation_notes || 'Keine besonderen Hinweise',
+                    appointment.special_requirements ? `Besondere Anforderungen: ${appointment.special_requirements}` : '',
+                    '',
+                    'ZUSÄTZLICHE ORTSANGABEN:',
+                    appointment.location_notes ? `Ortshinweise: ${appointment.location_notes}` : '',
+                    appointment.additional_location_info ? `Zusätzliche Ortsangaben: ${appointment.additional_location_info}` : '',
+                    appointment.parking_info ? `Parkmöglichkeiten: ${appointment.parking_info}` : '',
+                    appointment.access_instructions ? `Zugangshinweise: ${appointment.access_instructions}` : ''
+                  ].filter(line => line !== '').join('\\n');
+
                   const icsContent = `BEGIN:VCALENDAR
 VERSION:2.0
 PRODID:-//BuildWise//Inspection Scheduler//DE
@@ -1647,7 +1675,7 @@ DTSTAMP:${formatDate(new Date())}
 DTSTART:${formatDate(startDate)}
 DTEND:${formatDate(endDate)}
 SUMMARY:${appointment.title || 'Besichtigungstermin'}
-DESCRIPTION:${appointment.description || ''}\\n\\nOrt: ${appointment.location_address || appointment.location || 'Wird noch bekannt gegeben'}${appointment.location_notes ? `\\nOrtshinweise: ${appointment.location_notes}` : ''}${appointment.additional_location_info ? `\\nZusätzliche Ortsangaben: ${appointment.additional_location_info}` : ''}${appointment.parking_info ? `\\nParkmöglichkeiten: ${appointment.parking_info}` : ''}${appointment.access_instructions ? `\\nZugangshinweise: ${appointment.access_instructions}` : ''}${appointment.contact_person ? `\\nAnsprechpartner: ${appointment.contact_person}` : ''}${appointment.contact_phone ? `\\nTelefon: ${appointment.contact_phone}` : ''}${appointment.contact_email ? `\\nE-Mail: ${appointment.contact_email}` : ''}${appointment.alternative_contact_person ? `\\nAlternativer Kontakt: ${appointment.alternative_contact_person}${appointment.alternative_contact_phone ? ` (${appointment.alternative_contact_phone})` : ''}` : ''}${appointment.preparation_notes ? `\\nVorbereitungshinweise: ${appointment.preparation_notes}` : ''}${appointment.special_requirements ? `\\nBesondere Anforderungen: ${appointment.special_requirements}` : ''}
+DESCRIPTION:${description}
 LOCATION:${appointment.location_address || appointment.location || ''}${appointment.location_notes ? `, ${appointment.location_notes}` : ''}
 END:VEVENT
 END:VCALENDAR`;
