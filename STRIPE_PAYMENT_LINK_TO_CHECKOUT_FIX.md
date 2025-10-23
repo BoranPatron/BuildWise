@@ -123,3 +123,4 @@ Nach dem Klick auf "Jetzt bezahlen" solltest du sehen:
 
 **Jetzt sollte ALLES funktionieren! 🚀**
 
+

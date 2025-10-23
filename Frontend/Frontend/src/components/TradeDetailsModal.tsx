@@ -3856,7 +3856,8 @@ END:VCALENDAR`;
                   <button
                     onClick={() => {
                       onCreateQuote(trade);
-                      onClose(); // Schließe das Modal nach dem Klick
+                      // Modal nicht sofort schließen, damit das CostEstimateForm geöffnet werden kann
+                      // Das Modal wird automatisch geschlossen, wenn das CostEstimateForm geöffnet wird
                     }}
                     className="w-full bg-gradient-to-r from-[#ffbd59] to-[#ffa726] text-[#1a1a2e] font-semibold py-3 px-6 rounded-lg hover:shadow-lg transition-all duration-200 flex items-center justify-center gap-2"
                   >

@@ -248,3 +248,4 @@ Bei Fragen oder Problemen:
 **Version**: 1.0
 **Datum**: 2025-10-02
 
+

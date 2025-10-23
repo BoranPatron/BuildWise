@@ -470,52 +470,89 @@ async def debug_request_simple(request: Request):
     
     return {"status": "received", "method": request.method, "body_length": len(body), "content_type": content_type}
 
-# S3 File serving endpoint for direct access to uploaded files
+# File serving endpoint for S3 and local files
 @app.get("/project_{project_id}/uploads/{filename}")
-async def serve_s3_file(project_id: int, filename: str):
-    """Serve S3 files directly - uses same logic as document downloads"""
-    from fastapi.responses import Response
-    from fastapi import HTTPException, status
-    from ..core.storage import is_s3_path
-    from ..services.s3_service import S3Service
-    import logging
-    
-    logger = logging.getLogger(__name__)
-    s3_key = f"project_{project_id}/uploads/{filename}"
-    
+async def serve_file(project_id: int, filename: str):
+    """Serve files from S3 or local storage for company logos and other uploads"""
+    print(f"[DEBUG] File Endpoint called: project_{project_id}/uploads/{filename}")
     try:
-        # Use EXACT same logic as documents.py (lines 897-914)
+        from ..core.storage import is_s3_path, resolve_storage_path
+        from ..services.s3_service import S3Service
+        
+        s3_key = f"project_{project_id}/uploads/{filename}"
+        print(f"[DEBUG] S3 Key: {s3_key}")
+        print(f"[DEBUG] is_s3_path result: {is_s3_path(s3_key)}")
+        
+        # Try S3 first if it's an S3 path
         if is_s3_path(s3_key):
-            logger.info(f"[API] Downloading logo from S3: {s3_key}")
-            file_content = await S3Service.download_file(s3_key)
-            logger.info(f"[SUCCESS] Downloaded {len(file_content)} bytes from S3")
+            try:
+                print(f"[DEBUG] Attempting to download from S3: {s3_key}")
+                file_content = await S3Service.download_file(s3_key)
+                print(f"[DEBUG] Successfully downloaded {len(file_content)} bytes from S3")
+                
+                # Determine content type based on file extension
+                import mimetypes
+                content_type, _ = mimetypes.guess_type(filename)
+                if not content_type:
+                    content_type = "application/octet-stream"
+                
+                print(f"[DEBUG] Content type: {content_type}")
+                
+                # Return file as response
+                from fastapi.responses import Response
+                return Response(
+                    content=file_content,
+                    media_type=content_type,
+                    headers={
+                        "Content-Disposition": f"inline; filename={filename}",
+                        "Cache-Control": "public, max-age=3600"  # Cache for 1 hour
+                    }
+                )
+            except Exception as s3_error:
+                print(f"[WARNING] S3 download failed: {s3_error}, trying local fallback")
+                # Fall through to local file serving
+        
+        # Try local file serving
+        try:
+            local_path = resolve_storage_path(f"uploads/project_{project_id}/{filename}")
+            print(f"[DEBUG] Trying local path: {local_path}")
             
-            # Determine content type
-            import mimetypes
-            content_type, _ = mimetypes.guess_type(filename)
-            if not content_type:
-                content_type = "image/png"  # Default for logos
+            if local_path.exists():
+                file_content = local_path.read_bytes()
+                print(f"[DEBUG] Successfully read {len(file_content)} bytes from local storage")
+                
+                # Determine content type based on file extension
+                import mimetypes
+                content_type, _ = mimetypes.guess_type(filename)
+                if not content_type:
+                    content_type = "application/octet-stream"
+                
+                print(f"[DEBUG] Content type: {content_type}")
+                
+                # Return file as response
+                from fastapi.responses import Response
+                return Response(
+                    content=file_content,
+                    media_type=content_type,
+                    headers={
+                        "Content-Disposition": f"inline; filename={filename}",
+                        "Cache-Control": "public, max-age=3600"  # Cache for 1 hour
+                    }
+                )
+            else:
+                print(f"[DEBUG] Local file not found: {local_path}")
+                from fastapi import HTTPException
+                raise HTTPException(status_code=404, detail="File not found")
+                
+        except Exception as local_error:
+            print(f"[ERROR] Local file serving failed: {local_error}")
+            from fastapi import HTTPException
+            raise HTTPException(status_code=500, detail="Failed to serve local file")
             
-            return Response(
-                content=file_content,
-                media_type=content_type,
-                headers={
-                    "Content-Disposition": f"inline; filename=\"{filename}\"",
-                    "Cache-Control": "public, max-age=3600"
-                }
-            )
-        else:
-            logger.error(f"[API] Not recognized as S3 path: {s3_key}")
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND,
-                detail="File not found"
-            )
     except Exception as e:
-        logger.error(f"[ERROR] Failed to serve S3 file {s3_key}: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to serve file"
-        )
+        print(f"[ERROR] Failed to serve file {s3_key}: {e}")
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail="Failed to serve file")
 
 # Root Endpoint
 @app.get("/")

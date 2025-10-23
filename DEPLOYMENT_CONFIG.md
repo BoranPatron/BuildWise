@@ -201,3 +201,4 @@ MICROSOFT_REDIRECT_URI=https://buildwise.yourdomain.com/auth/microsoft/callback
 
 **Fertig! Mit dieser Konfiguration funktioniert alles automatisch auf jeder Domain! 🚀**
 
+
