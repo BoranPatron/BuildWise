@@ -1167,3 +1167,371 @@ class NotificationService:
             print(f"[ERROR] Fehler beim Erstellen der Payment-Received-Benachrichtigung: {e}")
             await db.rollback()
             return None
+
+    @staticmethod
+    async def acknowledge_notification(
+        db: AsyncSession,
+        notification_id: int,
+        user_id: int
+    ) -> Optional[Notification]:
+        """
+        Quittiert eine Benachrichtigung (markiert sie als bestätigt)
+        
+        Args:
+            db: Datenbank-Session
+            notification_id: ID der Benachrichtigung
+            user_id: ID des Benutzers, der die Benachrichtigung quittiert
+            
+        Returns:
+            Notification: Die quittierte Benachrichtigung oder None wenn nicht gefunden
+        """
+        try:
+            # Lade die Benachrichtigung
+            result = await db.execute(
+                select(Notification).where(
+                    and_(
+                        Notification.id == notification_id,
+                        Notification.recipient_id == user_id
+                    )
+                )
+            )
+            notification = result.scalar_one_or_none()
+            
+            if not notification:
+                print(f"[WARNING] Benachrichtigung {notification_id} nicht gefunden für Benutzer {user_id}")
+                return None
+            
+            # Markiere als quittiert
+            notification.is_acknowledged = True
+            notification.acknowledged_at = datetime.utcnow()
+            
+            await db.commit()
+            await db.refresh(notification)
+            
+            print(f"[SUCCESS] Benachrichtigung {notification_id} wurde von Benutzer {user_id} quittiert")
+            return notification
+            
+        except Exception as e:
+            print(f"[ERROR] Fehler beim Quittieren der Benachrichtigung {notification_id}: {e}")
+            await db.rollback()
+            return None
+
+    @staticmethod
+    async def mark_notification_as_read(
+        db: AsyncSession,
+        notification_id: int,
+        user_id: int
+    ) -> Optional[Notification]:
+        """
+        Markiert eine Benachrichtigung als gelesen
+        
+        Args:
+            db: Datenbank-Session
+            notification_id: ID der Benachrichtigung
+            user_id: ID des Benutzers, der die Benachrichtigung liest
+            
+        Returns:
+            Notification: Die gelesene Benachrichtigung oder None wenn nicht gefunden
+        """
+        try:
+            # Lade die Benachrichtigung
+            result = await db.execute(
+                select(Notification).where(
+                    and_(
+                        Notification.id == notification_id,
+                        Notification.recipient_id == user_id
+                    )
+                )
+            )
+            notification = result.scalar_one_or_none()
+            
+            if not notification:
+                print(f"[WARNING] Benachrichtigung {notification_id} nicht gefunden für Benutzer {user_id}")
+                return None
+            
+            # Markiere als gelesen
+            notification.is_read = True
+            notification.read_at = datetime.utcnow()
+            
+            await db.commit()
+            await db.refresh(notification)
+            
+            print(f"[SUCCESS] Benachrichtigung {notification_id} wurde von Benutzer {user_id} als gelesen markiert")
+            return notification
+            
+        except Exception as e:
+            print(f"[ERROR] Fehler beim Markieren der Benachrichtigung {notification_id} als gelesen: {e}")
+            await db.rollback()
+            return None
+
+    @staticmethod
+    async def get_user_notifications(
+        db: AsyncSession,
+        user_id: int,
+        limit: int = 50,
+        offset: int = 0,
+        unread_only: bool = False,
+        unacknowledged_only: bool = False
+    ) -> List[Notification]:
+        """
+        Holt Benachrichtigungen für einen Benutzer
+        
+        Args:
+            db: Datenbank-Session
+            user_id: ID des Benutzers
+            limit: Maximale Anzahl der Benachrichtigungen
+            offset: Offset für Pagination
+            unread_only: Nur ungelesene Benachrichtigungen
+            unacknowledged_only: Nur nicht quittierte Benachrichtigungen
+            
+        Returns:
+            List[Notification]: Liste der Benachrichtigungen
+        """
+        try:
+            query = select(Notification).where(Notification.recipient_id == user_id)
+            
+            if unread_only:
+                query = query.where(Notification.is_read == False)
+            
+            if unacknowledged_only:
+                query = query.where(Notification.is_acknowledged == False)
+            
+            query = query.order_by(desc(Notification.created_at)).offset(offset).limit(limit)
+            
+            result = await db.execute(query)
+            notifications = result.scalars().all()
+            
+            print(f"[SUCCESS] {len(notifications)} Benachrichtigungen für Benutzer {user_id} geladen")
+            return list(notifications)
+            
+        except Exception as e:
+            print(f"[ERROR] Fehler beim Laden der Benachrichtigungen für Benutzer {user_id}: {e}")
+            return []
+
+    @staticmethod
+    async def get_notification_stats(
+        db: AsyncSession,
+        user_id: int
+    ) -> Dict[str, Any]:
+        """
+        Holt Statistiken über Benachrichtigungen eines Benutzers
+        
+        Args:
+            db: Datenbank-Session
+            user_id: ID des Benutzers
+            
+        Returns:
+            Dict[str, Any]: Statistiken über Benachrichtigungen
+        """
+        try:
+            # Gesamtanzahl
+            total_result = await db.execute(
+                select(func.count(Notification.id)).where(Notification.recipient_id == user_id)
+            )
+            total_count = total_result.scalar() or 0
+            
+            # Ungelesene
+            unread_result = await db.execute(
+                select(func.count(Notification.id)).where(
+                    and_(
+                        Notification.recipient_id == user_id,
+                        Notification.is_read == False
+                    )
+                )
+            )
+            unread_count = unread_result.scalar() or 0
+            
+            # Nicht quittierte
+            unacknowledged_result = await db.execute(
+                select(func.count(Notification.id)).where(
+                    and_(
+                        Notification.recipient_id == user_id,
+                        Notification.is_acknowledged == False
+                    )
+                )
+            )
+            unacknowledged_count = unacknowledged_result.scalar() or 0
+            
+            stats = {
+                "total_count": total_count,
+                "unread_count": unread_count,
+                "unacknowledged_count": unacknowledged_count,
+                "read_count": total_count - unread_count,
+                "acknowledged_count": total_count - unacknowledged_count
+            }
+            
+            print(f"[SUCCESS] Statistiken für Benutzer {user_id}: {stats}")
+            return stats
+            
+        except Exception as e:
+            print(f"[ERROR] Fehler beim Laden der Benachrichtigungsstatistiken für Benutzer {user_id}: {e}")
+            return {
+                "total_count": 0,
+                "unread_count": 0,
+                "unacknowledged_count": 0,
+                "read_count": 0,
+                "acknowledged_count": 0
+            }
+
+    @staticmethod
+    async def delete_notification(
+        db: AsyncSession,
+        notification_id: int,
+        user_id: int
+    ) -> bool:
+        """
+        Löscht eine spezifische Benachrichtigung
+        
+        Args:
+            db: Datenbank-Session
+            notification_id: ID der Benachrichtigung
+            user_id: ID des Benutzers
+            
+        Returns:
+            bool: True wenn erfolgreich gelöscht, False wenn nicht gefunden
+        """
+        try:
+            result = await db.execute(
+                select(Notification).where(
+                    and_(
+                        Notification.id == notification_id,
+                        Notification.recipient_id == user_id
+                    )
+                )
+            )
+            notification = result.scalar_one_or_none()
+            
+            if not notification:
+                print(f"[WARNING] Benachrichtigung {notification_id} nicht gefunden für Benutzer {user_id}")
+                return False
+            
+            await db.delete(notification)
+            await db.commit()
+            
+            print(f"[SUCCESS] Benachrichtigung {notification_id} wurde von Benutzer {user_id} gelöscht")
+            return True
+            
+        except Exception as e:
+            print(f"[ERROR] Fehler beim Löschen der Benachrichtigung {notification_id}: {e}")
+            await db.rollback()
+            return False
+
+    @staticmethod
+    async def delete_all_notifications(
+        db: AsyncSession,
+        user_id: int
+    ) -> int:
+        """
+        Löscht alle Benachrichtigungen eines Benutzers
+        
+        Args:
+            db: Datenbank-Session
+            user_id: ID des Benutzers
+            
+        Returns:
+            int: Anzahl der gelöschten Benachrichtigungen
+        """
+        try:
+            result = await db.execute(
+                select(Notification).where(Notification.recipient_id == user_id)
+            )
+            notifications = result.scalars().all()
+            
+            count = len(notifications)
+            
+            for notification in notifications:
+                await db.delete(notification)
+            
+            await db.commit()
+            
+            print(f"[SUCCESS] {count} Benachrichtigungen wurden für Benutzer {user_id} gelöscht")
+            return count
+            
+        except Exception as e:
+            print(f"[ERROR] Fehler beim Löschen aller Benachrichtigungen für Benutzer {user_id}: {e}")
+            await db.rollback()
+            return 0
+
+    @staticmethod
+    async def mark_all_as_read(
+        db: AsyncSession,
+        user_id: int
+    ) -> int:
+        """
+        Markiert alle Benachrichtigungen eines Benutzers als gelesen
+        
+        Args:
+            db: Datenbank-Session
+            user_id: ID des Benutzers
+            
+        Returns:
+            int: Anzahl der markierten Benachrichtigungen
+        """
+        try:
+            result = await db.execute(
+                select(Notification).where(
+                    and_(
+                        Notification.recipient_id == user_id,
+                        Notification.is_read == False
+                    )
+                )
+            )
+            notifications = result.scalars().all()
+            
+            count = len(notifications)
+            
+            for notification in notifications:
+                notification.is_read = True
+                notification.read_at = datetime.utcnow()
+            
+            await db.commit()
+            
+            print(f"[SUCCESS] {count} Benachrichtigungen wurden für Benutzer {user_id} als gelesen markiert")
+            return count
+            
+        except Exception as e:
+            print(f"[ERROR] Fehler beim Markieren aller Benachrichtigungen als gelesen für Benutzer {user_id}: {e}")
+            await db.rollback()
+            return 0
+
+    @staticmethod
+    async def acknowledge_all(
+        db: AsyncSession,
+        user_id: int
+    ) -> int:
+        """
+        Quittiert alle Benachrichtigungen eines Benutzers
+        
+        Args:
+            db: Datenbank-Session
+            user_id: ID des Benutzers
+            
+        Returns:
+            int: Anzahl der quittierten Benachrichtigungen
+        """
+        try:
+            result = await db.execute(
+                select(Notification).where(
+                    and_(
+                        Notification.recipient_id == user_id,
+                        Notification.is_acknowledged == False
+                    )
+                )
+            )
+            notifications = result.scalars().all()
+            
+            count = len(notifications)
+            
+            for notification in notifications:
+                notification.is_acknowledged = True
+                notification.acknowledged_at = datetime.utcnow()
+            
+            await db.commit()
+            
+            print(f"[SUCCESS] {count} Benachrichtigungen wurden für Benutzer {user_id} quittiert")
+            return count
+            
+        except Exception as e:
+            print(f"[ERROR] Fehler beim Quittieren aller Benachrichtigungen für Benutzer {user_id}: {e}")
+            await db.rollback()
+            return 0
