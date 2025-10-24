@@ -18,14 +18,14 @@ class TaskBase(BaseModel):
     @classmethod
     def normalize_status(cls, v):
         if isinstance(v, str):
-            return v.upper()
+            return v.lower()
         return v
     
     @field_validator('priority', mode='before')
     @classmethod
     def normalize_priority(cls, v):
         if isinstance(v, str):
-            return v.upper()
+            return v.lower()
         return v
 
 
@@ -51,14 +51,14 @@ class TaskUpdate(BaseModel):
     @classmethod
     def normalize_status(cls, v):
         if isinstance(v, str):
-            return v.upper()
+            return v.lower()
         return v
     
     @field_validator('priority', mode='before')
     @classmethod
     def normalize_priority(cls, v):
         if isinstance(v, str):
-            return v.upper()
+            return v.lower()
         return v
 
 

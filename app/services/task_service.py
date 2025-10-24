@@ -3,28 +3,65 @@ from sqlalchemy import select, update, func, or_, and_
 from typing import List, Optional
 from datetime import datetime, timedelta
 
-from ..models import Task, TaskStatus, TaskPriority
+from ..models import Task, TaskStatus, TaskPriority, User, Project, Milestone
 from ..schemas.task import TaskCreate, TaskUpdate
 
 
 async def create_task(db: AsyncSession, task_in: TaskCreate, created_by: int) -> Task:
-    task = Task(
-        project_id=task_in.project_id,  # Kann None sein
-        assigned_to=task_in.assigned_to,
-        created_by=created_by,
-        title=task_in.title,
-        description=task_in.description,
-        status=task_in.status,
-        priority=task_in.priority,
-        due_date=task_in.due_date,
-        estimated_hours=task_in.estimated_hours,
-        is_milestone=task_in.is_milestone,
-        milestone_id=task_in.milestone_id
-    )
-    db.add(task)
-    await db.commit()
-    await db.refresh(task)
-    return task
+    try:
+        print(f"[DEBUG] [TASK-SERVICE] Creating task with data: {task_in}")
+        print(f"[DEBUG] [TASK-SERVICE] Status: {task_in.status} (Type: {type(task_in.status)})")
+        print(f"[DEBUG] [TASK-SERVICE] Priority: {task_in.priority} (Type: {type(task_in.priority)})")
+        
+        # Validate foreign key references
+        from ..models import User, Project, Milestone
+        
+        # Validate assigned_to user if provided
+        if task_in.assigned_to:
+            user_result = await db.execute(select(User).where(User.id == task_in.assigned_to))
+            if not user_result.scalar_one_or_none():
+                raise ValueError(f"User with ID {task_in.assigned_to} not found")
+        
+        # Validate project_id if provided
+        if task_in.project_id:
+            project_result = await db.execute(select(Project).where(Project.id == task_in.project_id))
+            if not project_result.scalar_one_or_none():
+                raise ValueError(f"Project with ID {task_in.project_id} not found")
+        
+        # Validate milestone_id if provided
+        if task_in.milestone_id:
+            milestone_result = await db.execute(select(Milestone).where(Milestone.id == task_in.milestone_id))
+            if not milestone_result.scalar_one_or_none():
+                raise ValueError(f"Milestone with ID {task_in.milestone_id} not found")
+        
+        task = Task(
+            project_id=task_in.project_id,  # Kann None sein
+            assigned_to=task_in.assigned_to,
+            created_by=created_by,
+            title=task_in.title,
+            description=task_in.description,
+            status=task_in.status,
+            priority=task_in.priority,
+            due_date=task_in.due_date,
+            estimated_hours=task_in.estimated_hours,
+            is_milestone=task_in.is_milestone,
+            milestone_id=task_in.milestone_id
+        )
+        db.add(task)
+        await db.commit()
+        await db.refresh(task)
+        print(f"[SUCCESS] [TASK-SERVICE] Task created successfully with ID: {task.id}")
+        return task
+        
+    except Exception as e:
+        print(f"[ERROR] [TASK-SERVICE] Error creating task: {str(e)}")
+        print(f"[ERROR] [TASK-SERVICE] Exception type: {type(e).__name__}")
+        import traceback
+        print(f"[ERROR] [TASK-SERVICE] Traceback: {traceback.format_exc()}")
+        
+        # Rollback the transaction
+        await db.rollback()
+        raise
 
 
 async def get_task_by_id(db: AsyncSession, task_id: int) -> Task | None:

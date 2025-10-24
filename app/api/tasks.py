@@ -34,16 +34,43 @@ async def create_new_task(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    print(f"[DEBUG] Backend: Empfange Task-Daten: {task_in}")
-    print(f"[DEBUG] Backend: Task-Priorität: {task_in.priority} (Type: {type(task_in.priority)})")
-    print(f"[DEBUG] Backend: Task-Beschreibung: {task_in.description}")
-    print(f"[DEBUG] Backend: Task-Fälligkeitsdatum: {task_in.due_date}")
-    print(f"[DEBUG] Backend: Task-Geschätzte Stunden: {task_in.estimated_hours}")
-    print(f"[DEBUG] Backend: Task-Milestone ID: {task_in.milestone_id}")
-    
-    task = await create_task(db, task_in, current_user.id)
-    print(f"[SUCCESS] Backend: Task erstellt mit ID: {task.id}")
-    return task
+    try:
+        print(f"[DEBUG] Backend: Empfange Task-Daten: {task_in}")
+        print(f"[DEBUG] Backend: Task-Priorität: {task_in.priority} (Type: {type(task_in.priority)})")
+        print(f"[DEBUG] Backend: Task-Beschreibung: {task_in.description}")
+        print(f"[DEBUG] Backend: Task-Fälligkeitsdatum: {task_in.due_date}")
+        print(f"[DEBUG] Backend: Task-Geschätzte Stunden: {task_in.estimated_hours}")
+        print(f"[DEBUG] Backend: Task-Milestone ID: {task_in.milestone_id}")
+        
+        task = await create_task(db, task_in, current_user.id)
+        print(f"[SUCCESS] Backend: Task erstellt mit ID: {task.id}")
+        return task
+        
+    except Exception as e:
+        print(f"[ERROR] Backend: Fehler beim Erstellen der Task: {str(e)}")
+        print(f"[ERROR] Backend: Exception Type: {type(e).__name__}")
+        import traceback
+        print(f"[ERROR] Backend: Traceback: {traceback.format_exc()}")
+        
+        # Rollback database transaction
+        await db.rollback()
+        
+        # Return appropriate error response
+        if "foreign key constraint" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Ungültige Referenz: Benutzer, Projekt oder Meilenstein existiert nicht"
+            )
+        elif "not null constraint" in str(e).lower():
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Erforderliche Felder fehlen"
+            )
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=f"Fehler beim Erstellen der Aufgabe: {str(e)}"
+            )
 
 
 @router.get("/", response_model=List[TaskSummary])
