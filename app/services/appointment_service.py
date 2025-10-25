@@ -10,6 +10,7 @@ from ..schemas.appointment import (
     AppointmentCreate, AppointmentUpdate, ServiceProviderInvite, 
     InspectionDecisionRequest, CalendarEventData
 )
+from ..services.notification_service import NotificationService
 
 
 class AppointmentService:
@@ -85,6 +86,22 @@ class AppointmentService:
             await db.commit()
             await db.refresh(appointment)
             print(f"[SUCCESS] Appointment {appointment.id} erfolgreich erstellt")
+            
+            # Erstelle Benachrichtigungen für eingeladene Dienstleister (nur bei INSPECTION Terminen)
+            if (appointment_data.appointment_type == AppointmentType.INSPECTION and 
+                appointment_data.invited_service_provider_ids):
+                print(f"[NOTIFICATION] Erstelle Benachrichtigungen für {len(appointment_data.invited_service_provider_ids)} Dienstleister")
+                try:
+                    await AppointmentService._create_inspection_notifications(
+                        db=db,
+                        appointment=appointment,
+                        invited_service_provider_ids=appointment_data.invited_service_provider_ids,
+                        created_by=created_by
+                    )
+                    print(f"[SUCCESS] Benachrichtigungen für Besichtigungseinladungen erstellt")
+                except Exception as e:
+                    print(f"[WARNING] Fehler beim Erstellen der Benachrichtigungen: {e}")
+                    # Fahre trotz Fehler fort - Appointment wurde bereits erstellt
             
             # Führe zusätzliche Operationen asynchron aus, um Timeouts zu vermeiden
             if appointment_data.milestone_id:
@@ -584,4 +601,128 @@ class AppointmentService:
         
         if appointment:
             appointment.follow_up_sent = True
-            await db.commit() 
+            await db.commit()
+    
+    @staticmethod
+    async def _create_inspection_notifications(
+        db: AsyncSession,
+        appointment: Appointment,
+        invited_service_provider_ids: List[int],
+        created_by: int
+    ):
+        """
+        Erstellt Benachrichtigungen für eingeladene Dienstleister bei Besichtigungsterminen
+        
+        Args:
+            db: Datenbank-Session
+            appointment: Das erstellte Appointment
+            invited_service_provider_ids: Liste der eingeladenen Dienstleister-IDs
+            created_by: ID des Bauträgers, der die Besichtigung erstellt hat
+        """
+        try:
+            # Lade Bauträger-Informationen
+            bautraeger_result = await db.execute(
+                select(User).where(User.id == created_by)
+            )
+            bautraeger = bautraeger_result.scalar_one_or_none()
+            
+            # Erstelle Bauträger Name
+            bautraeger_name = "Unbekannter Bauträger"
+            if bautraeger:
+                if bautraeger.company_name:
+                    bautraeger_name = bautraeger.company_name
+                else:
+                    bautraeger_name = f"{bautraeger.first_name or ''} {bautraeger.last_name or ''}".strip()
+                    if not bautraeger_name:
+                        bautraeger_name = f"Bauträger #{bautraeger.id}"
+            
+            # Lade Projekt- und Milestone-Informationen
+            project_name = "Unbekanntes Projekt"
+            milestone_title = "Unbekanntes Gewerk"
+            
+            if appointment.project_id:
+                project_result = await db.execute(
+                    select(Project).where(Project.id == appointment.project_id)
+                )
+                project = project_result.scalar_one_or_none()
+                if project:
+                    project_name = project.name
+            
+            if appointment.milestone_id:
+                milestone_result = await db.execute(
+                    select(Milestone).where(Milestone.id == appointment.milestone_id)
+                )
+                milestone = milestone_result.scalar_one_or_none()
+                if milestone:
+                    milestone_title = milestone.title
+            
+            # Datum und Zeit formatieren
+            scheduled_date_str = appointment.scheduled_date.strftime('%d.%m.%Y') if appointment.scheduled_date else "Termin folgt"
+            time_info = ""
+            if appointment.scheduled_date:
+                # Extrahiere Zeit aus scheduled_date (falls es ein datetime ist)
+                if hasattr(appointment.scheduled_date, 'time'):
+                    time_str = appointment.scheduled_date.time().strftime('%H:%M')
+                    time_info = f" um {time_str}"
+            
+            # Ort-Informationen
+            location_info = ""
+            if appointment.location:
+                location_info = f" Ort: {appointment.location}"
+            
+            # Erstelle Benachrichtigungen für jeden eingeladenen Dienstleister
+            for service_provider_id in invited_service_provider_ids:
+                try:
+                    # Erstelle Benachrichtigungsdaten
+                    notification_data = {
+                        "appointment_id": appointment.id,
+                        "milestone_id": appointment.milestone_id,
+                        "milestone_title": milestone_title,
+                        "project_id": appointment.project_id,
+                        "project_name": project_name,
+                        "bautraeger_id": created_by,
+                        "bautraeger_name": bautraeger_name,
+                        "service_provider_id": service_provider_id,
+                        "scheduled_date": appointment.scheduled_date.isoformat() if appointment.scheduled_date else None,
+                        "location": appointment.location,
+                        "contact_person": appointment.contact_person,
+                        "contact_phone": appointment.contact_phone,
+                        "preparation_notes": appointment.preparation_notes,
+                        "direct_link": f"/project/{appointment.project_id}/milestone/{appointment.milestone_id}",
+                        "tradeId": appointment.milestone_id,  # Für Frontend-Kompatibilität
+                        "tradeTitle": milestone_title,  # Für Frontend-Kompatibilität
+                        "projectName": project_name  # Für Frontend-Kompatibilität
+                    }
+                    
+                    # Erstelle Benachrichtigung
+                    from ..models.notification import Notification, NotificationType, NotificationPriority
+                    
+                    notification = Notification(
+                        recipient_id=service_provider_id,
+                        type=NotificationType.INSPECTION_INVITATION,
+                        priority=NotificationPriority.HIGH,
+                        title=f"Einladung zur Besichtigung: {milestone_title}",
+                        message=f"{bautraeger_name} hat dich zur Besichtigung für '{milestone_title}' im Projekt '{project_name}' eingeladen. Termin: {scheduled_date_str}{time_info}{location_info}",
+                        data=json.dumps(notification_data),
+                        related_milestone_id=appointment.milestone_id,
+                        related_project_id=appointment.project_id,
+                        is_read=False,
+                        is_acknowledged=False,
+                        created_at=datetime.utcnow()
+                    )
+                    
+                    db.add(notification)
+                    print(f"[SUCCESS] Benachrichtigung für Service Provider {service_provider_id} erstellt")
+                    
+                except Exception as e:
+                    print(f"[WARNING] Fehler beim Erstellen der Benachrichtigung für Service Provider {service_provider_id}: {e}")
+                    continue
+            
+            # Commit alle Benachrichtigungen
+            await db.commit()
+            print(f"[SUCCESS] Alle Benachrichtigungen für Besichtigungseinladung erstellt")
+            
+        except Exception as e:
+            print(f"[ERROR] Fehler beim Erstellen der Besichtigungseinladungs-Benachrichtigungen: {e}")
+            await db.rollback()
+            raise e 
