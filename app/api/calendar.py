@@ -50,8 +50,8 @@ class CalendarEventRequest(BaseModel):
                 # Fallback: versuche verschiedene Formate
                 try:
                     # Einfacher Fallback ohne dateutil
-                    from datetime import datetime
-                    return datetime.strptime(v, '%Y-%m-%d')
+                    import datetime as dt
+                    return dt.datetime.strptime(v, '%Y-%m-%d')
                 except ValueError:
                     # Letzter Fallback
                     return datetime.fromisoformat(f"{v}T00:00:00")
@@ -81,8 +81,8 @@ class MeetingRequest(BaseModel):
                 # Fallback: versuche verschiedene Formate
                 try:
                     # Einfacher Fallback ohne dateutil
-                    from datetime import datetime
-                    return datetime.strptime(v, '%Y-%m-%d')
+                    import datetime as dt
+                    return dt.datetime.strptime(v, '%Y-%m-%d')
                 except ValueError:
                     # Letzter Fallback
                     return datetime.fromisoformat(f"{v}T00:00:00")
