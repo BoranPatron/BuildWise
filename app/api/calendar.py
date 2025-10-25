@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from typing import List, Dict, Any, Optional
 from datetime import datetime, timedelta
-from pydantic import BaseModel
+from pydantic import BaseModel, field_validator
 import logging
 
 from ..core.database import get_db
@@ -34,6 +34,28 @@ class CalendarEventRequest(BaseModel):
     location: Optional[str] = None
     attendees: List[str] = []
     timezone: str = "Europe/Zurich"
+    
+    @field_validator('start_time', 'end_time', mode='before')
+    @classmethod
+    def parse_date_strings(cls, v):
+        """Konvertiert Datum-Strings zu DateTime-Objekten"""
+        if isinstance(v, str):
+            # Wenn nur Datum ohne Zeit, füge 00:00:00 hinzu
+            if len(v) == 10 and v.count('-') == 2:  # Format: YYYY-MM-DD
+                return datetime.fromisoformat(f"{v}T00:00:00")
+            # Versuche direkt zu parsen
+            try:
+                return datetime.fromisoformat(v)
+            except ValueError:
+                # Fallback: versuche verschiedene Formate
+                try:
+                    # Einfacher Fallback ohne dateutil
+                    from datetime import datetime
+                    return datetime.strptime(v, '%Y-%m-%d')
+                except ValueError:
+                    # Letzter Fallback
+                    return datetime.fromisoformat(f"{v}T00:00:00")
+        return v
 
 class MeetingRequest(BaseModel):
     title: str
@@ -43,6 +65,28 @@ class MeetingRequest(BaseModel):
     end_time: datetime
     location: Optional[str] = "Online"
     attendees: List[str] = []
+    
+    @field_validator('start_time', 'end_time', mode='before')
+    @classmethod
+    def parse_date_strings(cls, v):
+        """Konvertiert Datum-Strings zu DateTime-Objekten"""
+        if isinstance(v, str):
+            # Wenn nur Datum ohne Zeit, füge 00:00:00 hinzu
+            if len(v) == 10 and v.count('-') == 2:  # Format: YYYY-MM-DD
+                return datetime.fromisoformat(f"{v}T00:00:00")
+            # Versuche direkt zu parsen
+            try:
+                return datetime.fromisoformat(v)
+            except ValueError:
+                # Fallback: versuche verschiedene Formate
+                try:
+                    # Einfacher Fallback ohne dateutil
+                    from datetime import datetime
+                    return datetime.strptime(v, '%Y-%m-%d')
+                except ValueError:
+                    # Letzter Fallback
+                    return datetime.fromisoformat(f"{v}T00:00:00")
+        return v
 
 class ProjectSyncRequest(BaseModel):
     project_id: int

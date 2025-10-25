@@ -37,6 +37,28 @@ class ServiceProviderResponse(BaseModel):
     status: str  # "accepted", "rejected", "rejected_with_suggestion"
     message: Optional[str] = None
     suggested_date: Optional[datetime] = None
+    
+    @field_validator('suggested_date', mode='before')
+    @classmethod
+    def parse_date_strings(cls, v):
+        """Konvertiert Datum-Strings zu DateTime-Objekten"""
+        if isinstance(v, str):
+            # Wenn nur Datum ohne Zeit, füge 00:00:00 hinzu
+            if len(v) == 10 and v.count('-') == 2:  # Format: YYYY-MM-DD
+                return datetime.fromisoformat(f"{v}T00:00:00")
+            # Versuche direkt zu parsen
+            try:
+                return datetime.fromisoformat(v)
+            except ValueError:
+                # Fallback: versuche verschiedene Formate
+                try:
+                    # Einfacher Fallback ohne dateutil
+                    from datetime import datetime
+                    return datetime.strptime(v, '%Y-%m-%d')
+                except ValueError:
+                    # Letzter Fallback
+                    return datetime.fromisoformat(f"{v}T00:00:00")
+        return v
 
 
 class AppointmentBase(BaseModel):
@@ -52,6 +74,28 @@ class AppointmentBase(BaseModel):
     contact_person: Optional[str] = None
     contact_phone: Optional[str] = None
     preparation_notes: Optional[str] = None
+    
+    @field_validator('scheduled_date', mode='before')
+    @classmethod
+    def parse_date_strings(cls, v):
+        """Konvertiert Datum-Strings zu DateTime-Objekten"""
+        if isinstance(v, str):
+            # Wenn nur Datum ohne Zeit, füge 00:00:00 hinzu
+            if len(v) == 10 and v.count('-') == 2:  # Format: YYYY-MM-DD
+                return datetime.fromisoformat(f"{v}T00:00:00")
+            # Versuche direkt zu parsen
+            try:
+                return datetime.fromisoformat(v)
+            except ValueError:
+                # Fallback: versuche verschiedene Formate
+                try:
+                    # Einfacher Fallback ohne dateutil
+                    from datetime import datetime
+                    return datetime.strptime(v, '%Y-%m-%d')
+                except ValueError:
+                    # Letzter Fallback
+                    return datetime.fromisoformat(f"{v}T00:00:00")
+        return v
 
 
 class AppointmentCreate(AppointmentBase):
@@ -73,6 +117,28 @@ class AppointmentUpdate(BaseModel):
     inspection_notes: Optional[str] = None
     requires_renegotiation: Optional[bool] = None
     renegotiation_details: Optional[str] = None
+    
+    @field_validator('scheduled_date', mode='before')
+    @classmethod
+    def parse_date_strings(cls, v):
+        """Konvertiert Datum-Strings zu DateTime-Objekten"""
+        if isinstance(v, str):
+            # Wenn nur Datum ohne Zeit, füge 00:00:00 hinzu
+            if len(v) == 10 and v.count('-') == 2:  # Format: YYYY-MM-DD
+                return datetime.fromisoformat(f"{v}T00:00:00")
+            # Versuche direkt zu parsen
+            try:
+                return datetime.fromisoformat(v)
+            except ValueError:
+                # Fallback: versuche verschiedene Formate
+                try:
+                    # Einfacher Fallback ohne dateutil
+                    from datetime import datetime
+                    return datetime.strptime(v, '%Y-%m-%d')
+                except ValueError:
+                    # Letzter Fallback
+                    return datetime.fromisoformat(f"{v}T00:00:00")
+        return v
 
 
 class AppointmentResponse(BaseModel):

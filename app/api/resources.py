@@ -51,6 +51,28 @@ class ResourceBase(BaseModel):
     builder_preferred_start_date: Optional[datetime] = None
     builder_preferred_end_date: Optional[datetime] = None
     builder_date_range_notes: Optional[str] = None
+    
+    @field_validator('start_date', 'end_date', 'builder_preferred_start_date', 'builder_preferred_end_date', mode='before')
+    @classmethod
+    def parse_date_strings(cls, v):
+        """Konvertiert Datum-Strings zu DateTime-Objekten"""
+        if isinstance(v, str):
+            # Wenn nur Datum ohne Zeit, füge 00:00:00 hinzu
+            if len(v) == 10 and v.count('-') == 2:  # Format: YYYY-MM-DD
+                return datetime.fromisoformat(f"{v}T00:00:00")
+            # Versuche direkt zu parsen
+            try:
+                return datetime.fromisoformat(v)
+            except ValueError:
+                # Fallback: versuche verschiedene Formate
+                try:
+                    # Einfacher Fallback ohne dateutil
+                    from datetime import datetime
+                    return datetime.strptime(v, '%Y-%m-%d')
+                except ValueError:
+                    # Letzter Fallback
+                    return datetime.fromisoformat(f"{v}T00:00:00")
+        return v
 
 
 class ResourceCreate(ResourceBase):
@@ -84,6 +106,28 @@ class ResourceUpdate(BaseModel):
     builder_preferred_start_date: Optional[datetime] = None
     builder_preferred_end_date: Optional[datetime] = None
     builder_date_range_notes: Optional[str] = None
+    
+    @field_validator('start_date', 'end_date', 'builder_preferred_start_date', 'builder_preferred_end_date', mode='before')
+    @classmethod
+    def parse_date_strings(cls, v):
+        """Konvertiert Datum-Strings zu DateTime-Objekten"""
+        if isinstance(v, str):
+            # Wenn nur Datum ohne Zeit, füge 00:00:00 hinzu
+            if len(v) == 10 and v.count('-') == 2:  # Format: YYYY-MM-DD
+                return datetime.fromisoformat(f"{v}T00:00:00")
+            # Versuche direkt zu parsen
+            try:
+                return datetime.fromisoformat(v)
+            except ValueError:
+                # Fallback: versuche verschiedene Formate
+                try:
+                    # Einfacher Fallback ohne dateutil
+                    from datetime import datetime
+                    return datetime.strptime(v, '%Y-%m-%d')
+                except ValueError:
+                    # Letzter Fallback
+                    return datetime.fromisoformat(f"{v}T00:00:00")
+        return v
 
 
 class ResourceResponse(ResourceBase):
@@ -168,6 +212,28 @@ class ResourceAllocationUpdate(BaseModel):
     notes: Optional[str] = None
     priority: Optional[int] = None
     rejection_reason: Optional[str] = None
+    
+    @field_validator('allocated_start_date', 'allocated_end_date', mode='before')
+    @classmethod
+    def parse_date_strings(cls, v):
+        """Konvertiert Datum-Strings zu DateTime-Objekten"""
+        if isinstance(v, str):
+            # Wenn nur Datum ohne Zeit, füge 00:00:00 hinzu
+            if len(v) == 10 and v.count('-') == 2:  # Format: YYYY-MM-DD
+                return datetime.fromisoformat(f"{v}T00:00:00")
+            # Versuche direkt zu parsen
+            try:
+                return datetime.fromisoformat(v)
+            except ValueError:
+                # Fallback: versuche verschiedene Formate
+                try:
+                    # Einfacher Fallback ohne dateutil
+                    from datetime import datetime
+                    return datetime.strptime(v, '%Y-%m-%d')
+                except ValueError:
+                    # Letzter Fallback
+                    return datetime.fromisoformat(f"{v}T00:00:00")
+        return v
 
 
 class ResourceAllocationResponse(ResourceAllocationBase):
@@ -201,6 +267,28 @@ class ResourceSearchParams(BaseModel):
     status: Optional[ResourceStatus] = None
     service_provider_id: Optional[int] = None
     project_id: Optional[int] = None
+    
+    @field_validator('start_date', 'end_date', mode='before')
+    @classmethod
+    def parse_date_strings(cls, v):
+        """Konvertiert Datum-Strings zu DateTime-Objekten"""
+        if isinstance(v, str):
+            # Wenn nur Datum ohne Zeit, füge 00:00:00 hinzu
+            if len(v) == 10 and v.count('-') == 2:  # Format: YYYY-MM-DD
+                return datetime.fromisoformat(f"{v}T00:00:00")
+            # Versuche direkt zu parsen
+            try:
+                return datetime.fromisoformat(v)
+            except ValueError:
+                # Fallback: versuche verschiedene Formate
+                try:
+                    # Einfacher Fallback ohne dateutil
+                    from datetime import datetime
+                    return datetime.strptime(v, '%Y-%m-%d')
+                except ValueError:
+                    # Letzter Fallback
+                    return datetime.fromisoformat(f"{v}T00:00:00")
+        return v
 
 
 class ResourceKPIsResponse(BaseModel):
