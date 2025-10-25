@@ -14,7 +14,7 @@ from ..models import (
     ResourceCalendarEntry, CalendarEntryStatus, ResourceKPIs,
     Milestone, Quote, QuoteStatus, ServiceProviderRatingAggregate
 )
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from decimal import Decimal
 
 
@@ -128,6 +128,23 @@ class ResourceAllocationBase(BaseModel):
     total_cost: Optional[float] = None
     notes: Optional[str] = None
     priority: Optional[int] = 5
+    
+    @field_validator('allocated_start_date', 'allocated_end_date', mode='before')
+    @classmethod
+    def parse_date_strings(cls, v):
+        """Konvertiert Datum-Strings zu DateTime-Objekten"""
+        if isinstance(v, str):
+            # Wenn nur Datum ohne Zeit, füge 00:00:00 hinzu
+            if len(v) == 10 and v.count('-') == 2:  # Format: YYYY-MM-DD
+                return datetime.fromisoformat(f"{v}T00:00:00")
+            # Versuche direkt zu parsen
+            try:
+                return datetime.fromisoformat(v)
+            except ValueError:
+                # Fallback: versuche verschiedene Formate
+                from dateutil import parser
+                return parser.parse(v)
+        return v
 
 
 class ResourceAllocationCreate(ResourceAllocationBase):
