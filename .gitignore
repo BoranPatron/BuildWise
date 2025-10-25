@@ -201,3 +201,4 @@ buildwise.db
 uploads/company_logos/*
 !uploads/company_logos/.gitkeep
 .cursor/rules/database-enum-consistency.mdc
+.cursor/rules/postgresql-direct-queries.mdc
