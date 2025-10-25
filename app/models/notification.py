@@ -23,6 +23,7 @@ class NotificationType(enum.Enum):
     SYSTEM_ANNOUNCEMENT = "system_announcement"  # Systemankündigung
     RESOURCE_ALLOCATED = "resource_allocated"  # Ressource einer Ausschreibung zugeordnet
     TENDER_INVITATION = "tender_invitation"  # Einladung zur Angebotsabgabe
+    INSPECTION_INVITATION = "inspection_invitation"  # Einladung zur Besichtigung
 
 class NotificationPriority(enum.Enum):
     """Prioritätsstufen für Benachrichtigungen"""

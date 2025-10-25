@@ -1052,6 +1052,130 @@ class NotificationService:
             return None
 
     @staticmethod
+    async def create_inspection_invitation_notification(
+        db: AsyncSession,
+        inspection_id: int,
+        service_provider_id: int,
+        invitation_id: int
+    ) -> Optional[Notification]:
+        """
+        Erstellt eine Benachrichtigung für eine Einladung zur Besichtigung
+        
+        Args:
+            db: Datenbank-Session
+            inspection_id: ID der Besichtigung
+            service_provider_id: ID des Dienstleisters (Empfänger)
+            invitation_id: ID der Einladung
+            
+        Returns:
+            Notification oder None bei Fehler
+        """
+        try:
+            # Lade Inspection mit allen relevanten Daten
+            from ..models.inspection import Inspection
+            from ..models.milestone import Milestone
+            from ..models.project import Project
+            from ..models.user import User
+            
+            result = await db.execute(
+                select(Inspection)
+                .options(
+                    selectinload(Inspection.milestone).selectinload(Milestone.project),
+                    selectinload(Inspection.project)
+                )
+                .where(Inspection.id == inspection_id)
+            )
+            inspection = result.scalar_one_or_none()
+            
+            if not inspection:
+                raise ValueError(f"Inspection mit ID {inspection_id} nicht gefunden")
+            
+            # Lade Bauträger-Informationen
+            bautraeger_id = inspection.created_by
+            bautraeger_result = await db.execute(
+                select(User).where(User.id == bautraeger_id)
+            )
+            bautraeger = bautraeger_result.scalar_one_or_none()
+            
+            # Erstelle Bauträger Name
+            bautraeger_name = "Unbekannter Bauträger"
+            if bautraeger:
+                if bautraeger.company_name:
+                    bautraeger_name = bautraeger.company_name
+                else:
+                    bautraeger_name = f"{bautraeger.first_name or ''} {bautraeger.last_name or ''}".strip()
+                    if not bautraeger_name:
+                        bautraeger_name = f"Bauträger #{bautraeger.id}"
+            
+            # Projekt- und Milestone-Informationen
+            project_name = inspection.project.name if inspection.project else "Unbekanntes Projekt"
+            milestone_title = inspection.milestone.title if inspection.milestone else "Unbekanntes Gewerk"
+            
+            # Datum und Zeit formatieren
+            scheduled_date_str = inspection.scheduled_date.strftime('%d.%m.%Y') if inspection.scheduled_date else "Termin folgt"
+            time_info = ""
+            if inspection.scheduled_time_start and inspection.scheduled_time_end:
+                time_info = f" von {inspection.scheduled_time_start} bis {inspection.scheduled_time_end}"
+            elif inspection.scheduled_time_start:
+                time_info = f" um {inspection.scheduled_time_start}"
+            
+            # Ort-Informationen
+            location_info = ""
+            if inspection.location_address:
+                location_info = f" Ort: {inspection.location_address}"
+            
+            # Erstelle Benachrichtigungsdaten
+            notification_data = {
+                "inspection_id": inspection_id,
+                "invitation_id": invitation_id,
+                "milestone_id": inspection.milestone_id,
+                "milestone_title": milestone_title,
+                "project_id": inspection.project_id,
+                "project_name": project_name,
+                "bautraeger_id": bautraeger_id,
+                "bautraeger_name": bautraeger_name,
+                "service_provider_id": service_provider_id,
+                "scheduled_date": inspection.scheduled_date.isoformat() if inspection.scheduled_date else None,
+                "scheduled_time_start": inspection.scheduled_time_start,
+                "scheduled_time_end": inspection.scheduled_time_end,
+                "location_address": inspection.location_address,
+                "contact_person": inspection.contact_person,
+                "contact_phone": inspection.contact_phone,
+                "preparation_notes": inspection.preparation_notes,
+                "direct_link": f"/project/{inspection.project_id}/milestone/{inspection.milestone_id}",
+                "tradeId": inspection.milestone_id,  # Für Frontend-Kompatibilität
+                "tradeTitle": milestone_title,  # Für Frontend-Kompatibilität
+                "projectName": project_name  # Für Frontend-Kompatibilität
+            }
+            
+            # Erstelle Benachrichtigung
+            notification = Notification(
+                recipient_id=service_provider_id,
+                type=NotificationType.INSPECTION_INVITATION,
+                priority=NotificationPriority.HIGH,
+                title=f"Einladung zur Besichtigung: {milestone_title}",
+                message=f"{bautraeger_name} hat dich zur Besichtigung für '{milestone_title}' im Projekt '{project_name}' eingeladen. Termin: {scheduled_date_str}{time_info}{location_info}",
+                data=json.dumps(notification_data),
+                related_milestone_id=inspection.milestone_id,
+                related_project_id=inspection.project_id,
+                is_read=False,
+                is_acknowledged=False,
+                created_at=datetime.utcnow()
+            )
+            
+            db.add(notification)
+            await db.commit()
+            await db.refresh(notification)
+            
+            print(f"[SUCCESS] Benachrichtigung für Besichtigungseinladung erstellt: Inspection {inspection_id}, Service Provider {service_provider_id}")
+            return notification
+            
+        except Exception as e:
+            print(f"[ERROR] Fehler beim Erstellen der Besichtigungseinladungs-Benachrichtigung: {e}")
+            await db.rollback()
+            return None
+
+    @staticmethod
     async def create_invoice_paid_notification(
         db: AsyncSession,
         invoice_id: int

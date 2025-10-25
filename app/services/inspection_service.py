@@ -15,6 +15,7 @@ from ..models.milestone import Milestone
 from ..models.quote import Quote
 from ..models.user import User
 from ..models.project import Project
+from ..services.notification_service import NotificationService
 
 logger = logging.getLogger(__name__)
 
@@ -170,6 +171,21 @@ class InspectionService:
                 )
                 
                 db.add(invitation)
+                await db.flush()  # Flush um die ID zu erhalten
+                
+                # Benachrichtigung für den Dienstleister erstellen
+                try:
+                    await NotificationService.create_inspection_invitation_notification(
+                        db=db,
+                        inspection_id=inspection_id,
+                        service_provider_id=quote.service_provider_id,
+                        invitation_id=invitation.id
+                    )
+                    logger.info(f"Benachrichtigung für Besichtigungseinladung erstellt: Service Provider {quote.service_provider_id}")
+                except Exception as e:
+                    logger.error(f"Fehler beim Erstellen der Benachrichtigung für Service Provider {quote.service_provider_id}: {str(e)}")
+                    # Fehler bei Benachrichtigung soll nicht den gesamten Prozess stoppen
+                
                 invitations.append(invitation)
             
             await db.commit()
