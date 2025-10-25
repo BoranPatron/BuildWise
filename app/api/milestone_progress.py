@@ -181,10 +181,27 @@ async def create_progress_update(
         
         # Normalisiere Enum-Werte zu lowercase vor Validierung
         normalized_data = data.copy()
-        if 'update_type' in normalized_data:
-            normalized_data['update_type'] = normalized_data['update_type'].lower()
+        
+        # Robuste Enum-Normalisierung mit Fallback
+        if 'update_type' in normalized_data and normalized_data['update_type']:
+            update_type = normalized_data['update_type'].lower()
+            # Validiere dass der Wert gültig ist
+            valid_update_types = ['comment', 'completion', 'revision', 'defect']
+            if update_type in valid_update_types:
+                normalized_data['update_type'] = update_type
+            else:
+                print(f"[WARNING] Invalid update_type: {normalized_data['update_type']}, using 'comment'")
+                normalized_data['update_type'] = 'comment'
+        
         if 'defect_severity' in normalized_data and normalized_data['defect_severity']:
-            normalized_data['defect_severity'] = normalized_data['defect_severity'].lower()
+            defect_severity = normalized_data['defect_severity'].lower()
+            # Validiere dass der Wert gültig ist
+            valid_severities = ['minor', 'major', 'critical']
+            if defect_severity in valid_severities:
+                normalized_data['defect_severity'] = defect_severity
+            else:
+                print(f"[WARNING] Invalid defect_severity: {normalized_data['defect_severity']}, using 'minor'")
+                normalized_data['defect_severity'] = 'minor'
         
         # Validiere und konvertiere die Daten zu MilestoneProgressCreate
         validated_data = MilestoneProgressCreate(**normalized_data)
@@ -198,6 +215,8 @@ async def create_progress_update(
         )
     except ValidationError as e:
         print(f"[ERROR] [PROGRESS] Validation Error: {e}")
+        print(f"[ERROR] [PROGRESS] Original data: {data}")
+        print(f"[ERROR] [PROGRESS] Normalized data: {normalized_data}")
         raise HTTPException(
             status_code=400,
             detail=f"Ungültige Daten: {e}"
