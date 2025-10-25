@@ -449,7 +449,7 @@ async def upload_milestone_documents(
     }
 
 
-@router.get("", response_model=List[DocumentSummary])
+@router.get("/", response_model=List[DocumentSummary])
 async def read_documents(
     project_id: Optional[int] = Query(None, description="Projekt-ID für Dokumentenfilterung"),
     category: Optional[DocumentCategoryEnum] = None,
