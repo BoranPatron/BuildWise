@@ -546,6 +546,51 @@ async def read_milestone(
                 detail="Meilenstein nicht gefunden"
             )
         
+        # Zugriffskontrolle hinzufügen
+        from ..models import UserType
+        user_role_value = getattr(current_user, 'user_role', None)
+        
+        # User ist Dienstleister wenn:
+        # 1. user_role explizit "DIENSTLEISTER" ist (hat Vorrang!)
+        # 2. ODER user_type "service_provider" ist
+        is_dienstleister = False
+        if user_role_value:
+            role_str = str(user_role_value)
+            is_dienstleister = "DIENSTLEISTER" in role_str.upper()
+        
+        if not is_dienstleister:
+            # Fallback auf user_type wenn user_role nicht gesetzt oder nicht DIENSTLEISTER
+            type_str = str(current_user.user_type).upper()
+            is_dienstleister = "SERVICE" in type_str
+        
+        is_bautraeger = not is_dienstleister
+        
+        print(f"[DEBUG] read_milestone: User {current_user.id} ({'Dienstleister' if is_dienstleister else 'Bauträger'}) versucht Milestone {milestone_id} zu laden")
+        
+        # Für Dienstleister: Prüfe ob sie Zugriff auf dieses Milestone haben
+        if is_dienstleister:
+            # Prüfe ob es ein akzeptiertes Angebot für dieses Milestone gibt
+            from sqlalchemy import select as sql_select, and_
+            accepted_quote_query = sql_select(Quote).where(
+                and_(Quote.milestone_id == milestone_id, Quote.status == 'accepted')
+            )
+            accepted_quote_result = await db.execute(accepted_quote_query)
+            accepted_quote = accepted_quote_result.scalar_one_or_none()
+            
+            if accepted_quote:
+                # Nur der gewählte Dienstleister hat Zugriff
+                if accepted_quote.service_provider_id != current_user.id:
+                    print(f"[DEBUG] read_milestone: Dienstleister {current_user.id} hat keinen Zugriff auf Milestone {milestone_id} (vergeben an {accepted_quote.service_provider_id})")
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="Zugriff verweigert: Dieses Gewerk wurde bereits an einen anderen Dienstleister vergeben"
+                    )
+                else:
+                    print(f"[DEBUG] read_milestone: Dienstleister {current_user.id} hat Zugriff auf Milestone {milestone_id} (ist der gewählte Dienstleister)")
+            else:
+                # Kein akzeptiertes Angebot - alle Dienstleister haben Zugriff
+                print(f"[DEBUG] read_milestone: Dienstleister {current_user.id} hat Zugriff auf Milestone {milestone_id} (noch nicht vergeben)")
+        
         # Konvertiere zu MilestoneRead Schema für korrekte JSON-Deserialisierung
         milestone_read = MilestoneRead.from_orm(milestone)
         print(f"[DEBUG] read_milestone: Milestone {milestone_id} geladen")
