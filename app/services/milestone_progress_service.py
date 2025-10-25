@@ -103,9 +103,9 @@ class MilestoneProgressService:
             
             # Zusätzliche Zugriffskontrolle: Prüfe ob es bereits ein akzeptiertes Angebot gibt
             from sqlalchemy import select as sql_select
-            # Robuste Behandlung: Akzeptiere sowohl lowercase als auch uppercase
+            # Verwende nur noch lowercase Enum-Werte (nach Migration)
             accepted_quote_query = sql_select(Quote).where(
-                and_(Quote.milestone_id == milestone_id, Quote.status.in_(['accepted', 'ACCEPTED']))
+                and_(Quote.milestone_id == milestone_id, Quote.status == 'accepted')
             )
             accepted_quote_result = await db.execute(accepted_quote_query)
             accepted_quote = accepted_quote_result.scalar_one_or_none()
@@ -301,10 +301,9 @@ class MilestoneProgressService:
         
         # Prüfe ob es bereits ein akzeptiertes Angebot gibt
         from sqlalchemy import select as sql_select
-        # Robuste Behandlung: Akzeptiere sowohl lowercase als auch uppercase
-        # TODO: Nach atomarer Migration nur noch lowercase verwenden
+        # Verwende nur noch lowercase Enum-Werte (nach Migration)
         accepted_quote_query = sql_select(Quote).where(
-            and_(Quote.milestone_id == milestone_id, Quote.status.in_(['accepted', 'ACCEPTED']))
+            and_(Quote.milestone_id == milestone_id, Quote.status == 'accepted')
         )
         accepted_quote_result = await db.execute(accepted_quote_query)
         accepted_quote = accepted_quote_result.scalar_one_or_none()
