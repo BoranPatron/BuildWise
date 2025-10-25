@@ -7,7 +7,7 @@ from datetime import datetime, date, timedelta
 import json
 
 from ..core.database import get_db
-from ..api.deps import get_current_user
+from ..api.deps import get_current_user, get_current_user_optional
 from ..models import (
     User, Resource, ResourceStatus, ResourceVisibility, 
     ResourceAllocation, AllocationStatus, ResourceRequest, RequestStatus,
@@ -397,7 +397,7 @@ async def list_resources(
     status: Optional[ResourceStatus] = None,
     service_provider_id: Optional[int] = None,
     project_id: Optional[int] = None,
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
     db: AsyncSession = Depends(get_db)
 ):
     """Liste alle Ressourcen mit optionalen Filtern"""
@@ -461,11 +461,14 @@ async def list_resources(
         ])
     
     # Sichtbarkeitsfilter
-    if current_user.user_role != "ADMIN":
+    if current_user and current_user.user_role != "ADMIN":
         conditions.append(or_(
             Resource.visibility == ResourceVisibility.PUBLIC,
             Resource.service_provider_id == current_user.id
         ))
+    else:
+        # Wenn kein User authentifiziert ist, nur öffentliche Ressourcen anzeigen
+        conditions.append(Resource.visibility == ResourceVisibility.PUBLIC)
     
     if conditions:
         query = query.where(and_(*conditions))
@@ -663,12 +666,12 @@ async def delete_resource(
 @router.post("/search/geo", response_model=List[ResourceResponse])
 async def search_resources_geo(
     search_params: ResourceSearchParams,
-    current_user: User = Depends(get_current_user),
+    current_user: Optional[User] = Depends(get_current_user_optional),
     db: AsyncSession = Depends(get_db)
 ):
     """Geo-basierte Suche nach Ressourcen"""
     
-    query = select(Resource).options(selectinload(Resource.service_provider)).where(Resource.visibility == ResourceVisibility.PUBLIC)
+    query = select(Resource).options(selectinload(Resource.service_provider))
     
     conditions = []
     
@@ -696,6 +699,16 @@ async def search_resources_geo(
     
     if search_params.status:
         conditions.append(Resource.status == search_params.status)
+    
+    # Sichtbarkeitsfilter
+    if current_user and current_user.user_role != "ADMIN":
+        conditions.append(or_(
+            Resource.visibility == ResourceVisibility.PUBLIC,
+            Resource.service_provider_id == current_user.id
+        ))
+    else:
+        # Wenn kein User authentifiziert ist, nur öffentliche Ressourcen anzeigen
+        conditions.append(Resource.visibility == ResourceVisibility.PUBLIC)
     
     # Geo-Filter
     if (search_params.latitude and search_params.longitude and search_params.radius_km):
