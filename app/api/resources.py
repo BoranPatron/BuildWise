@@ -142,8 +142,13 @@ class ResourceAllocationBase(BaseModel):
                 return datetime.fromisoformat(v)
             except ValueError:
                 # Fallback: versuche verschiedene Formate
-                from dateutil import parser
-                return parser.parse(v)
+                try:
+                    # Einfacher Fallback ohne dateutil
+                    from datetime import datetime
+                    return datetime.strptime(v, '%Y-%m-%d')
+                except ValueError:
+                    # Letzter Fallback
+                    return datetime.fromisoformat(f"{v}T00:00:00")
         return v
 
 
