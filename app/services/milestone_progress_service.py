@@ -103,6 +103,7 @@ class MilestoneProgressService:
             
             # Zusätzliche Zugriffskontrolle: Prüfe ob es bereits ein akzeptiertes Angebot gibt
             from sqlalchemy import select as sql_select
+            # Robuste Behandlung: Akzeptiere sowohl lowercase als auch uppercase
             accepted_quote_query = sql_select(Quote).where(
                 and_(Quote.milestone_id == milestone_id, Quote.status.in_(['accepted', 'ACCEPTED']))
             )
@@ -300,6 +301,7 @@ class MilestoneProgressService:
         
         # Prüfe ob es bereits ein akzeptiertes Angebot gibt
         from sqlalchemy import select as sql_select
+        # Robuste Behandlung: Akzeptiere sowohl lowercase als auch uppercase
         accepted_quote_query = sql_select(Quote).where(
             and_(Quote.milestone_id == milestone_id, Quote.status.in_(['accepted', 'ACCEPTED']))
         )

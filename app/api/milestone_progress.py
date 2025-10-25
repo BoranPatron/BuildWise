@@ -22,6 +22,41 @@ from ..schemas.milestone_progress import (
     CompletionResponseCreate
 )
 
+
+async def fix_enum_inconsistency_in_db(db: AsyncSession):
+    """Korrigiert Enum-Inkonsistenzen in der Datenbank"""
+    from sqlalchemy import text
+    
+    print("[INFO] [FIX] Starting enum inconsistency fix...")
+    
+    try:
+        # Fix quote statuses
+        await db.execute(text("UPDATE quotes SET status = 'accepted' WHERE status = 'ACCEPTED'"))
+        await db.execute(text("UPDATE quotes SET status = 'pending' WHERE status = 'PENDING'"))
+        await db.execute(text("UPDATE quotes SET status = 'rejected' WHERE status = 'REJECTED'"))
+        await db.execute(text("UPDATE quotes SET status = 'withdrawn' WHERE status = 'WITHDRAWN'"))
+        await db.execute(text("UPDATE quotes SET status = 'expired' WHERE status = 'EXPIRED'"))
+        
+        # Fix milestone_progress enum values if table exists
+        try:
+            await db.execute(text("UPDATE milestone_progress SET update_type = 'comment' WHERE update_type = 'COMMENT'"))
+            await db.execute(text("UPDATE milestone_progress SET update_type = 'completion' WHERE update_type = 'COMPLETION'"))
+            await db.execute(text("UPDATE milestone_progress SET update_type = 'revision' WHERE update_type = 'REVISION'"))
+            await db.execute(text("UPDATE milestone_progress SET update_type = 'defect' WHERE update_type = 'DEFECT'"))
+            await db.execute(text("UPDATE milestone_progress SET defect_severity = 'minor' WHERE defect_severity = 'MINOR'"))
+            await db.execute(text("UPDATE milestone_progress SET defect_severity = 'major' WHERE defect_severity = 'MAJOR'"))
+            await db.execute(text("UPDATE milestone_progress SET defect_severity = 'critical' WHERE defect_severity = 'CRITICAL'"))
+        except Exception as e:
+            print(f"[WARNING] [FIX] Could not update milestone_progress: {e}")
+        
+        await db.commit()
+        print("[SUCCESS] [FIX] Enum inconsistency fix completed")
+        
+    except Exception as e:
+        print(f"[ERROR] [FIX] Failed to fix enum inconsistency: {e}")
+        await db.rollback()
+        raise
+
 router = APIRouter(
     prefix="/milestones/{milestone_id}/progress",
     tags=["milestone-progress"]
@@ -139,6 +174,32 @@ async def create_progress_update(
         print(f"[ERROR] [PROGRESS] Unexpected Error: {e}")
         import traceback
         traceback.print_exc()
+        
+        # Spezielle Behandlung für Enum-Fehler
+        if "invalid input value for enum" in str(e) or "InvalidTextRepresentationError" in str(e):
+            print(f"[ERROR] [PROGRESS] Enum-Fehler erkannt - führe Datenbank-Korrektur durch")
+            try:
+                # Versuche die Datenbank zu korrigieren
+                await fix_enum_inconsistency_in_db(db)
+                print(f"[SUCCESS] [PROGRESS] Datenbank-Korrektur erfolgreich")
+                
+                # Versuche den Request erneut
+                progress_update = await milestone_progress_service.create_progress_update(
+                    db=db,
+                    milestone_id=milestone_id,
+                    user_id=current_user.id,
+                    data=validated_data
+                )
+                await db.refresh(progress_update, ['user', 'replies'])
+                return progress_update
+                
+            except Exception as fix_error:
+                print(f"[ERROR] [PROGRESS] Datenbank-Korrektur fehlgeschlagen: {fix_error}")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Datenbankfehler: Enum-Inkonsistenz. Bitte wenden Sie sich an den Support."
+                )
+        
         raise HTTPException(
             status_code=500,
             detail=f"Interner Serverfehler: {str(e)}"
@@ -194,16 +255,51 @@ async def get_progress_updates(
             detail="Zugriff auf diese Kommunikation nicht mehr möglich. Die Ausschreibung wurde bereits vergeben."
         )
     
-    updates = await milestone_progress_service.get_progress_updates(
-        db=db,
-        milestone_id=milestone_id,
-        user_id=current_user.id,
-        is_bautraeger=is_bautraeger
-    )
-    
-    print(f"[DEBUG] [GET_PROGRESS] Found {len(updates)} updates")
-    
-    return updates
+    try:
+        updates = await milestone_progress_service.get_progress_updates(
+            db=db,
+            milestone_id=milestone_id,
+            user_id=current_user.id,
+            is_bautraeger=is_bautraeger
+        )
+        
+        print(f"[DEBUG] [GET_PROGRESS] Found {len(updates)} updates")
+        return updates
+        
+    except Exception as e:
+        print(f"[ERROR] [GET_PROGRESS] Unexpected Error: {e}")
+        import traceback
+        traceback.print_exc()
+        
+        # Spezielle Behandlung für Enum-Fehler
+        if "invalid input value for enum" in str(e) or "InvalidTextRepresentationError" in str(e):
+            print(f"[ERROR] [GET_PROGRESS] Enum-Fehler erkannt - führe Datenbank-Korrektur durch")
+            try:
+                # Versuche die Datenbank zu korrigieren
+                await fix_enum_inconsistency_in_db(db)
+                print(f"[SUCCESS] [GET_PROGRESS] Datenbank-Korrektur erfolgreich")
+                
+                # Versuche den Request erneut
+                updates = await milestone_progress_service.get_progress_updates(
+                    db=db,
+                    milestone_id=milestone_id,
+                    user_id=current_user.id,
+                    is_bautraeger=is_bautraeger
+                )
+                print(f"[DEBUG] [GET_PROGRESS] Found {len(updates)} updates after fix")
+                return updates
+                
+            except Exception as fix_error:
+                print(f"[ERROR] [GET_PROGRESS] Datenbank-Korrektur fehlgeschlagen: {fix_error}")
+                raise HTTPException(
+                    status_code=500,
+                    detail="Datenbankfehler: Enum-Inkonsistenz. Bitte wenden Sie sich an den Support."
+                )
+        
+        raise HTTPException(
+            status_code=500,
+            detail=f"Interner Serverfehler: {str(e)}"
+        )
 
 
 @router.put("/{progress_id}", response_model=MilestoneProgressResponse)
