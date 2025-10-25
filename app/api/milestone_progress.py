@@ -30,22 +30,47 @@ async def fix_enum_inconsistency_in_db(db: AsyncSession):
     print("[INFO] [FIX] Starting enum inconsistency fix...")
     
     try:
+        # Stelle sicher, dass wir eine saubere Transaktion haben
+        await db.rollback()  # Rollback falls nötig
+        
         # Fix quote statuses
-        await db.execute(text("UPDATE quotes SET status = 'accepted' WHERE status = 'ACCEPTED'"))
-        await db.execute(text("UPDATE quotes SET status = 'pending' WHERE status = 'PENDING'"))
-        await db.execute(text("UPDATE quotes SET status = 'rejected' WHERE status = 'REJECTED'"))
-        await db.execute(text("UPDATE quotes SET status = 'withdrawn' WHERE status = 'WITHDRAWN'"))
-        await db.execute(text("UPDATE quotes SET status = 'expired' WHERE status = 'EXPIRED'"))
+        result1 = await db.execute(text("UPDATE quotes SET status = 'accepted' WHERE status = 'ACCEPTED'"))
+        print(f"[INFO] [FIX] Updated {result1.rowcount} quotes from ACCEPTED to accepted")
+        
+        result2 = await db.execute(text("UPDATE quotes SET status = 'pending' WHERE status = 'PENDING'"))
+        print(f"[INFO] [FIX] Updated {result2.rowcount} quotes from PENDING to pending")
+        
+        result3 = await db.execute(text("UPDATE quotes SET status = 'rejected' WHERE status = 'REJECTED'"))
+        print(f"[INFO] [FIX] Updated {result3.rowcount} quotes from REJECTED to rejected")
+        
+        result4 = await db.execute(text("UPDATE quotes SET status = 'withdrawn' WHERE status = 'WITHDRAWN'"))
+        print(f"[INFO] [FIX] Updated {result4.rowcount} quotes from WITHDRAWN to withdrawn")
+        
+        result5 = await db.execute(text("UPDATE quotes SET status = 'expired' WHERE status = 'EXPIRED'"))
+        print(f"[INFO] [FIX] Updated {result5.rowcount} quotes from EXPIRED to expired")
         
         # Fix milestone_progress enum values if table exists
         try:
-            await db.execute(text("UPDATE milestone_progress SET update_type = 'comment' WHERE update_type = 'COMMENT'"))
-            await db.execute(text("UPDATE milestone_progress SET update_type = 'completion' WHERE update_type = 'COMPLETION'"))
-            await db.execute(text("UPDATE milestone_progress SET update_type = 'revision' WHERE update_type = 'REVISION'"))
-            await db.execute(text("UPDATE milestone_progress SET update_type = 'defect' WHERE update_type = 'DEFECT'"))
-            await db.execute(text("UPDATE milestone_progress SET defect_severity = 'minor' WHERE defect_severity = 'MINOR'"))
-            await db.execute(text("UPDATE milestone_progress SET defect_severity = 'major' WHERE defect_severity = 'MAJOR'"))
-            await db.execute(text("UPDATE milestone_progress SET defect_severity = 'critical' WHERE defect_severity = 'CRITICAL'"))
+            result6 = await db.execute(text("UPDATE milestone_progress SET update_type = 'comment' WHERE update_type = 'COMMENT'"))
+            print(f"[INFO] [FIX] Updated {result6.rowcount} milestone_progress from COMMENT to comment")
+            
+            result7 = await db.execute(text("UPDATE milestone_progress SET update_type = 'completion' WHERE update_type = 'COMPLETION'"))
+            print(f"[INFO] [FIX] Updated {result7.rowcount} milestone_progress from COMPLETION to completion")
+            
+            result8 = await db.execute(text("UPDATE milestone_progress SET update_type = 'revision' WHERE update_type = 'REVISION'"))
+            print(f"[INFO] [FIX] Updated {result8.rowcount} milestone_progress from REVISION to revision")
+            
+            result9 = await db.execute(text("UPDATE milestone_progress SET update_type = 'defect' WHERE update_type = 'DEFECT'"))
+            print(f"[INFO] [FIX] Updated {result9.rowcount} milestone_progress from DEFECT to defect")
+            
+            result10 = await db.execute(text("UPDATE milestone_progress SET defect_severity = 'minor' WHERE defect_severity = 'MINOR'"))
+            print(f"[INFO] [FIX] Updated {result10.rowcount} milestone_progress from MINOR to minor")
+            
+            result11 = await db.execute(text("UPDATE milestone_progress SET defect_severity = 'major' WHERE defect_severity = 'MAJOR'"))
+            print(f"[INFO] [FIX] Updated {result11.rowcount} milestone_progress from MAJOR to major")
+            
+            result12 = await db.execute(text("UPDATE milestone_progress SET defect_severity = 'critical' WHERE defect_severity = 'CRITICAL'"))
+            print(f"[INFO] [FIX] Updated {result12.rowcount} milestone_progress from CRITICAL to critical")
         except Exception as e:
             print(f"[WARNING] [FIX] Could not update milestone_progress: {e}")
         
@@ -179,11 +204,15 @@ async def create_progress_update(
         if "invalid input value for enum" in str(e) or "InvalidTextRepresentationError" in str(e):
             print(f"[ERROR] [PROGRESS] Enum-Fehler erkannt - führe Datenbank-Korrektur durch")
             try:
-                # Versuche die Datenbank zu korrigieren
+                # Rollback der aktuellen Transaktion
+                await db.rollback()
+                print(f"[INFO] [PROGRESS] Transaktion zurückgerollt")
+                
+                # Versuche die Datenbank zu korrigieren (neue Transaktion)
                 await fix_enum_inconsistency_in_db(db)
                 print(f"[SUCCESS] [PROGRESS] Datenbank-Korrektur erfolgreich")
                 
-                # Versuche den Request erneut
+                # Versuche den Request erneut (neue Transaktion)
                 progress_update = await milestone_progress_service.create_progress_update(
                     db=db,
                     milestone_id=milestone_id,
@@ -275,11 +304,15 @@ async def get_progress_updates(
         if "invalid input value for enum" in str(e) or "InvalidTextRepresentationError" in str(e):
             print(f"[ERROR] [GET_PROGRESS] Enum-Fehler erkannt - führe Datenbank-Korrektur durch")
             try:
-                # Versuche die Datenbank zu korrigieren
+                # Rollback der aktuellen Transaktion
+                await db.rollback()
+                print(f"[INFO] [GET_PROGRESS] Transaktion zurückgerollt")
+                
+                # Versuche die Datenbank zu korrigieren (neue Transaktion)
                 await fix_enum_inconsistency_in_db(db)
                 print(f"[SUCCESS] [GET_PROGRESS] Datenbank-Korrektur erfolgreich")
                 
-                # Versuche den Request erneut
+                # Versuche den Request erneut (neue Transaktion)
                 updates = await milestone_progress_service.get_progress_updates(
                     db=db,
                     milestone_id=milestone_id,
