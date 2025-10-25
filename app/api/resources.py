@@ -1227,6 +1227,25 @@ async def bulk_create_allocations(
     
     created_allocations = []
     resource_map = {}  # Cache für Ressourcen
+    trade_map = {}  # Cache für Trades/Milestones
+    
+    # Validiere alle trade_ids vor der Verarbeitung
+    trade_ids = set(allocation.trade_id for allocation in request_data.allocations)
+    print(f"[DEBUG] Bulk: Validiere trade_ids: {trade_ids}")
+    for trade_id in trade_ids:
+        if trade_id not in trade_map:
+            from ..models.milestone import Milestone
+            trade_query = select(Milestone).where(Milestone.id == trade_id)
+            trade_result = await db.execute(trade_query)
+            trade = trade_result.scalar_one_or_none()
+            
+            if not trade:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Trade/Milestone mit ID {trade_id} nicht gefunden"
+                )
+            
+            trade_map[trade_id] = trade
     
     for allocation_data in request_data.allocations:
         # Hole Ressource wenn noch nicht im Cache
@@ -1250,34 +1269,43 @@ async def bulk_create_allocations(
         db.add(allocation)
         created_allocations.append((allocation, resource_map[allocation_data.resource_id]))
     
-    await db.commit()
-    
-    # Refresh all allocations to get their IDs
-    for allocation, resource in created_allocations:
-        await db.refresh(allocation)
-    
-    print(f"[SUCCESS] Bulk: {len(created_allocations)} Allocations erstellt")
-    
-    # Benachrichtigungen senden für alle erstellten Allocations
-    from ..services.notification_service import NotificationService
-    
-    for allocation, resource in created_allocations:
-        try:
-            if allocation.allocation_status == AllocationStatus.PRE_SELECTED:
-                print(f"[INFO] Bulk: Erstelle Benachrichtigung für Allocation {allocation.id}, Service Provider {resource.service_provider_id}")
-                await NotificationService.create_resource_allocated_notification(
-                    db=db,
-                    allocation_id=allocation.id,
-                    service_provider_id=resource.service_provider_id
-                )
-                print(f"[SUCCESS] Bulk: Benachrichtigung erfolgreich erstellt für Service Provider {resource.service_provider_id}")
-        except Exception as e:
-            import traceback
-            print(f"[ERROR] Bulk: Fehler beim Erstellen der Benachrichtigung für Allocation {allocation.id}: {e}")
-            print(f"[ERROR] Traceback details omitted due to encoding issues")
-    
-    # Return nur die Allocations (ohne Resource-Tupel)
-    return [alloc for alloc, _ in created_allocations]
+    try:
+        await db.commit()
+        
+        # Refresh all allocations to get their IDs
+        for allocation, resource in created_allocations:
+            await db.refresh(allocation)
+        
+        print(f"[SUCCESS] Bulk: {len(created_allocations)} Allocations erstellt")
+        
+        # Benachrichtigungen senden für alle erstellten Allocations
+        from ..services.notification_service import NotificationService
+        
+        for allocation, resource in created_allocations:
+            try:
+                if allocation.allocation_status == AllocationStatus.PRE_SELECTED:
+                    print(f"[INFO] Bulk: Erstelle Benachrichtigung für Allocation {allocation.id}, Service Provider {resource.service_provider_id}")
+                    await NotificationService.create_resource_allocated_notification(
+                        db=db,
+                        allocation_id=allocation.id,
+                        service_provider_id=resource.service_provider_id
+                    )
+                    print(f"[SUCCESS] Bulk: Benachrichtigung erfolgreich erstellt für Service Provider {resource.service_provider_id}")
+            except Exception as e:
+                import traceback
+                print(f"[ERROR] Bulk: Fehler beim Erstellen der Benachrichtigung für Allocation {allocation.id}: {e}")
+                print(f"[ERROR] Traceback details omitted due to encoding issues")
+        
+        # Return nur die Allocations (ohne Resource-Tupel)
+        return [alloc for alloc, _ in created_allocations]
+        
+    except Exception as e:
+        await db.rollback()
+        print(f"[ERROR] Bulk: Fehler beim Erstellen der Allocations: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Fehler beim Erstellen der Ressourcen-Zuweisungen: {str(e)}"
+        )
 
 
 @router.get("/allocations/my", response_model=List[ResourceAllocationResponse])
