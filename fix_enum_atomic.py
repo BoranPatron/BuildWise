@@ -10,13 +10,16 @@ from typing import Dict, List, Tuple
 
 class AtomicEnumMigration:
     def __init__(self):
+        # Verwende Umgebungsvariablen für Render-Deployment
         self.db_config = {
-            'host': 'localhost',
-            'port': 5432,
-            'user': 'postgres',
-            'password': 'postgres',
-            'database': 'buildwise'
+            'host': os.getenv('DB_HOST', 'localhost'),
+            'port': int(os.getenv('DB_PORT', '5432')),
+            'user': os.getenv('DB_USER', 'postgres'),
+            'password': os.getenv('DB_PASSWORD', 'postgres'),
+            'database': os.getenv('DB_NAME', 'buildwise')
         }
+        
+        print(f"🔗 Database config: {self.db_config['host']}:{self.db_config['port']}/{self.db_config['database']}")
     
     async def run_migration(self):
         """Führt die atomare Enum-Migration durch"""

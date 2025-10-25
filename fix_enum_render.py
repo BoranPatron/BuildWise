@@ -1,168 +1,166 @@
 #!/usr/bin/env python3
 """
-Direkte Datenbank-Korrektur für Quote Status Enum-Inkonsistenz
-Verwendet die Render-Datenbank direkt über die API
+Render-spezifische Enum-Migration für BuildWise
+Verwendet die Render-Umgebungsvariablen für die Datenbankverbindung
 """
 import asyncio
+import asyncpg
 import os
-import sys
-from pathlib import Path
+from typing import Dict, List, Tuple
 
-# Add the project root to Python path
-project_root = Path(__file__).parent
-sys.path.insert(0, str(project_root))
-
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine
-
-
-async def fix_quote_status_enum():
-    """Fix inconsistent quote status enum values in database"""
-    
-    print("[INFO] Starting Quote Status Enum Fix...")
-    
-    # Use PostgreSQL connection for Render
-    DATABASE_URL = os.getenv('DATABASE_URL')
-    if not DATABASE_URL:
-        print("[ERROR] DATABASE_URL environment variable not set")
-        return False
-    
-    # Convert to async URL if needed
-    if DATABASE_URL.startswith('postgresql://'):
-        DATABASE_URL = DATABASE_URL.replace('postgresql://', 'postgresql+asyncpg://')
-    
-    try:
-        # Create engine
-        engine = create_async_engine(
-            DATABASE_URL,
-            echo=False,
-            pool_pre_ping=True,
-            pool_recycle=300
-        )
+class RenderEnumMigration:
+    def __init__(self):
+        # Render-spezifische Datenbankverbindung
+        self.db_config = {
+            'host': os.getenv('DB_HOST'),
+            'port': int(os.getenv('DB_PORT', '5432')),
+            'user': os.getenv('DB_USER'),
+            'password': os.getenv('DB_PASSWORD'),
+            'database': os.getenv('DB_NAME')
+        }
         
-        async with engine.begin() as conn:
-            print("[INFO] Connected to database")
-            
-            # Check current quote statuses
-            result = await conn.execute(text("SELECT DISTINCT status FROM quotes WHERE status IS NOT NULL"))
-            current_statuses = [row[0] for row in result.fetchall()]
-            print(f"[INFO] Current quote statuses: {current_statuses}")
-            
-            # Fix quote statuses
-            updates_made = 0
-            
-            # Update ACCEPTED to accepted
-            result = await conn.execute(text("UPDATE quotes SET status = 'accepted' WHERE status = 'ACCEPTED'"))
-            if result.rowcount > 0:
-                print(f"[SUCCESS] Updated {result.rowcount} quotes from ACCEPTED to accepted")
-                updates_made += result.rowcount
-            
-            # Update PENDING to pending
-            result = await conn.execute(text("UPDATE quotes SET status = 'pending' WHERE status = 'PENDING'"))
-            if result.rowcount > 0:
-                print(f"[SUCCESS] Updated {result.rowcount} quotes from PENDING to pending")
-                updates_made += result.rowcount
-            
-            # Update REJECTED to rejected
-            result = await conn.execute(text("UPDATE quotes SET status = 'rejected' WHERE status = 'REJECTED'"))
-            if result.rowcount > 0:
-                print(f"[SUCCESS] Updated {result.rowcount} quotes from REJECTED to rejected")
-                updates_made += result.rowcount
-            
-            # Update WITHDRAWN to withdrawn
-            result = await conn.execute(text("UPDATE quotes SET status = 'withdrawn' WHERE status = 'WITHDRAWN'"))
-            if result.rowcount > 0:
-                print(f"[SUCCESS] Updated {result.rowcount} quotes from WITHDRAWN to withdrawn")
-                updates_made += result.rowcount
-            
-            # Update EXPIRED to expired
-            result = await conn.execute(text("UPDATE quotes SET status = 'expired' WHERE status = 'EXPIRED'"))
-            if result.rowcount > 0:
-                print(f"[SUCCESS] Updated {result.rowcount} quotes from EXPIRED to expired")
-                updates_made += result.rowcount
-            
-            # Check if milestone_progress table exists and fix it too
-            try:
-                # Check if table exists
-                result = await conn.execute(text("""
-                    SELECT EXISTS (
-                        SELECT FROM information_schema.tables 
-                        WHERE table_name = 'milestone_progress'
-                    )
-                """))
-                table_exists = result.scalar()
-                
-                if table_exists:
-                    print("[INFO] Found milestone_progress table, fixing enum values...")
-                    
-                    # Fix update_type enum values
-                    result = await conn.execute(text("UPDATE milestone_progress SET update_type = 'comment' WHERE update_type = 'COMMENT'"))
-                    if result.rowcount > 0:
-                        print(f"[SUCCESS] Updated {result.rowcount} milestone_progress from COMMENT to comment")
-                        updates_made += result.rowcount
-                    
-                    result = await conn.execute(text("UPDATE milestone_progress SET update_type = 'completion' WHERE update_type = 'COMPLETION'"))
-                    if result.rowcount > 0:
-                        print(f"[SUCCESS] Updated {result.rowcount} milestone_progress from COMPLETION to completion")
-                        updates_made += result.rowcount
-                    
-                    result = await conn.execute(text("UPDATE milestone_progress SET update_type = 'revision' WHERE update_type = 'REVISION'"))
-                    if result.rowcount > 0:
-                        print(f"[SUCCESS] Updated {result.rowcount} milestone_progress from REVISION to revision")
-                        updates_made += result.rowcount
-                    
-                    result = await conn.execute(text("UPDATE milestone_progress SET update_type = 'defect' WHERE update_type = 'DEFECT'"))
-                    if result.rowcount > 0:
-                        print(f"[SUCCESS] Updated {result.rowcount} milestone_progress from DEFECT to defect")
-                        updates_made += result.rowcount
-                    
-                    # Fix defect_severity enum values
-                    result = await conn.execute(text("UPDATE milestone_progress SET defect_severity = 'minor' WHERE defect_severity = 'MINOR'"))
-                    if result.rowcount > 0:
-                        print(f"[SUCCESS] Updated {result.rowcount} milestone_progress from MINOR to minor")
-                        updates_made += result.rowcount
-                    
-                    result = await conn.execute(text("UPDATE milestone_progress SET defect_severity = 'major' WHERE defect_severity = 'MAJOR'"))
-                    if result.rowcount > 0:
-                        print(f"[SUCCESS] Updated {result.rowcount} milestone_progress from MAJOR to major")
-                        updates_made += result.rowcount
-                    
-                    result = await conn.execute(text("UPDATE milestone_progress SET defect_severity = 'critical' WHERE defect_severity = 'CRITICAL'"))
-                    if result.rowcount > 0:
-                        print(f"[SUCCESS] Updated {result.rowcount} milestone_progress from CRITICAL to critical")
-                        updates_made += result.rowcount
-                else:
-                    print("[INFO] milestone_progress table not found, skipping...")
-                    
-            except Exception as e:
-                print(f"[WARNING] Could not update milestone_progress table: {e}")
-            
-            # Verify the fix
-            result = await conn.execute(text("SELECT DISTINCT status FROM quotes WHERE status IS NOT NULL"))
-            final_statuses = [row[0] for row in result.fetchall()]
-            print(f"[INFO] Final quote statuses: {final_statuses}")
-            
-            print(f"[SUCCESS] Enum fix completed! Total updates made: {updates_made}")
-            
-    except Exception as e:
-        print(f"[ERROR] Failed to fix enum values: {e}")
-        import traceback
-        traceback.print_exc()
-        return False
+        # Validiere dass alle erforderlichen Umgebungsvariablen gesetzt sind
+        required_vars = ['DB_HOST', 'DB_USER', 'DB_PASSWORD', 'DB_NAME']
+        missing_vars = [var for var in required_vars if not os.getenv(var)]
+        
+        if missing_vars:
+            raise ValueError(f"Missing required environment variables: {missing_vars}")
+        
+        print(f"🔗 Database config: {self.db_config['host']}:{self.db_config['port']}/{self.db_config['database']}")
     
-    return True
-
+    async def run_migration(self):
+        """Führt die atomare Enum-Migration durch"""
+        print("🚀 Starting Render enum migration...")
+        
+        conn = None
+        try:
+            conn = await asyncpg.connect(**self.db_config)
+            
+            # Starte Transaktion
+            async with conn.transaction():
+                print("📊 Checking current enum values...")
+                await self._check_current_values(conn)
+                
+                print("🔧 Applying enum fixes...")
+                await self._fix_quotes_status(conn)
+                await self._fix_milestone_progress_enums(conn)
+                await self._fix_milestones_completion_status(conn)
+                
+                print("✅ Render enum migration completed successfully!")
+                
+        except Exception as e:
+            print(f"❌ Migration failed: {e}")
+            raise
+        finally:
+            if conn:
+                await conn.close()
+    
+    async def _check_current_values(self, conn: asyncpg.Connection):
+        """Prüft aktuelle Enum-Werte"""
+        
+        # Quotes status
+        quotes_status = await conn.fetch('SELECT DISTINCT status FROM quotes WHERE status IS NOT NULL')
+        print(f"📊 Quotes status: {[row['status'] for row in quotes_status]}")
+        
+        # Milestone progress update_type
+        try:
+            progress_update_type = await conn.fetch('SELECT DISTINCT update_type FROM milestone_progress WHERE update_type IS NOT NULL')
+            print(f"📊 Progress update_type: {[row['update_type'] for row in progress_update_type]}")
+        except Exception as e:
+            print(f"⚠️ Could not check progress update_type: {e}")
+        
+        # Milestone progress defect_severity
+        try:
+            defect_severity = await conn.fetch('SELECT DISTINCT defect_severity FROM milestone_progress WHERE defect_severity IS NOT NULL')
+            print(f"📊 Progress defect_severity: {[row['defect_severity'] for row in defect_severity]}")
+        except Exception as e:
+            print(f"⚠️ Could not check progress defect_severity: {e}")
+        
+        # Milestones completion_status
+        try:
+            completion_status = await conn.fetch('SELECT DISTINCT completion_status FROM milestones WHERE completion_status IS NOT NULL')
+            print(f"📊 Milestones completion_status: {[row['completion_status'] for row in completion_status]}")
+        except Exception as e:
+            print(f"⚠️ Could not check milestones completion_status: {e}")
+    
+    async def _fix_quotes_status(self, conn: asyncpg.Connection):
+        """Korrigiert quotes.status Enum-Werte"""
+        print("🔧 Fixing quotes.status...")
+        
+        fixes = [
+            ('ACCEPTED', 'accepted'),
+            ('PENDING', 'pending'),
+            ('REJECTED', 'rejected'),
+            ('WITHDRAWN', 'withdrawn'),
+            ('EXPIRED', 'expired')
+        ]
+        
+        for old_val, new_val in fixes:
+            result = await conn.execute(
+                f"UPDATE quotes SET status = $1 WHERE status = $2",
+                new_val, old_val
+            )
+            if result.split()[-1] != '0':
+                print(f"  ✅ Updated {result.split()[-1]} quotes from {old_val} to {new_val}")
+    
+    async def _fix_milestone_progress_enums(self, conn: asyncpg.Connection):
+        """Korrigiert milestone_progress Enum-Werte"""
+        print("🔧 Fixing milestone_progress enums...")
+        
+        # Update type fixes
+        update_type_fixes = [
+            ('COMMENT', 'comment'),
+            ('COMPLETION', 'completion'),
+            ('REVISION', 'revision'),
+            ('DEFECT', 'defect')
+        ]
+        
+        for old_val, new_val in update_type_fixes:
+            result = await conn.execute(
+                f"UPDATE milestone_progress SET update_type = $1 WHERE update_type = $2",
+                new_val, old_val
+            )
+            if result.split()[-1] != '0':
+                print(f"  ✅ Updated {result.split()[-1]} progress updates from {old_val} to {new_val}")
+        
+        # Defect severity fixes
+        defect_severity_fixes = [
+            ('MINOR', 'minor'),
+            ('MAJOR', 'major'),
+            ('CRITICAL', 'critical')
+        ]
+        
+        for old_val, new_val in defect_severity_fixes:
+            result = await conn.execute(
+                f"UPDATE milestone_progress SET defect_severity = $1 WHERE defect_severity = $2",
+                new_val, old_val
+            )
+            if result.split()[-1] != '0':
+                print(f"  ✅ Updated {result.split()[-1]} defect severities from {old_val} to {new_val}")
+    
+    async def _fix_milestones_completion_status(self, conn: asyncpg.Connection):
+        """Korrigiert milestones.completion_status Enum-Werte"""
+        print("🔧 Fixing milestones.completion_status...")
+        
+        completion_status_fixes = [
+            ('IN_PROGRESS', 'in_progress'),
+            ('COMPLETION_REQUESTED', 'completion_requested'),
+            ('UNDER_REVIEW', 'under_review'),
+            ('COMPLETED', 'completed'),
+            ('COMPLETED_WITH_DEFECTS', 'completed_with_defects')
+        ]
+        
+        for old_val, new_val in completion_status_fixes:
+            result = await conn.execute(
+                f"UPDATE milestones SET completion_status = $1 WHERE completion_status = $2",
+                new_val, old_val
+            )
+            if result.split()[-1] != '0':
+                print(f"  ✅ Updated {result.split()[-1]} milestones from {old_val} to {new_val}")
 
 async def main():
-    """Main function"""
-    success = await fix_quote_status_enum()
-    if success:
-        print("[SUCCESS] Database enum fix completed successfully!")
-        sys.exit(0)
-    else:
-        print("[ERROR] Database enum fix failed!")
-        sys.exit(1)
-
+    migration = RenderEnumMigration()
+    await migration.run_migration()
 
 if __name__ == "__main__":
     asyncio.run(main())
