@@ -15,6 +15,7 @@ class NotificationBase(BaseModel):
     related_project_id: Optional[int] = None
     related_milestone_id: Optional[int] = None
     related_appointment_id: Optional[int] = None
+    trade_id: Optional[int] = None  # Für Frontend-Kompatibilität (tradeId)
 
 class NotificationCreate(NotificationBase):
     """Schema für das Erstellen von Benachrichtigungen"""
