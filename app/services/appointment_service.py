@@ -91,8 +91,11 @@ class AppointmentService:
             print(f"[DEBUG] appointment_type: {appointment_data.appointment_type}, type: {type(appointment_data.appointment_type)}")
             print(f"[DEBUG] AppointmentType.INSPECTION: {AppointmentType.INSPECTION}, type: {type(AppointmentType.INSPECTION)}")
             print(f"[DEBUG] invited_service_provider_ids: {appointment_data.invited_service_provider_ids}")
+            print(f"[DEBUG] appointment_type.value: {appointment_data.appointment_type.value}")
+            print(f"[DEBUG] AppointmentType.INSPECTION.value: {AppointmentType.INSPECTION.value}")
             
-            if (appointment_data.appointment_type == AppointmentType.INSPECTION and 
+            # Vergleiche die Enum-Werte statt der Enum-Objekte
+            if (appointment_data.appointment_type.value == AppointmentType.INSPECTION.value and 
                 appointment_data.invited_service_provider_ids):
                 print(f"[NOTIFICATION] Erstelle Benachrichtigungen für {len(appointment_data.invited_service_provider_ids)} Dienstleister")
                 try:
