@@ -200,3 +200,4 @@ buildwise.db
 # User uploads (company logos, documents, etc.)
 uploads/company_logos/*
 !uploads/company_logos/.gitkeep
+.cursor/rules/database-enum-consistency.mdc

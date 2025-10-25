@@ -179,8 +179,15 @@ async def create_progress_update(
                 detail="Zugriff auf diese Kommunikation nicht mehr möglich. Die Ausschreibung wurde bereits vergeben."
             )
         
+        # Normalisiere Enum-Werte zu lowercase vor Validierung
+        normalized_data = data.copy()
+        if 'update_type' in normalized_data:
+            normalized_data['update_type'] = normalized_data['update_type'].lower()
+        if 'defect_severity' in normalized_data and normalized_data['defect_severity']:
+            normalized_data['defect_severity'] = normalized_data['defect_severity'].lower()
+        
         # Validiere und konvertiere die Daten zu MilestoneProgressCreate
-        validated_data = MilestoneProgressCreate(**data)
+        validated_data = MilestoneProgressCreate(**normalized_data)
         print(f"[DEBUG] [PROGRESS] Validated Data: {validated_data.model_dump()}")
         
         progress_update = await milestone_progress_service.create_progress_update(
