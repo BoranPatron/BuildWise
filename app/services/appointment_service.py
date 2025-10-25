@@ -714,6 +714,7 @@ class AppointmentService:
                         data=json.dumps(notification_data),
                         related_milestone_id=appointment.milestone_id,
                         related_project_id=appointment.project_id,
+                        trade_id=appointment.milestone_id,  # Setze tradeId direkt für Frontend-Kompatibilität
                         is_read=False,
                         is_acknowledged=False,
                         created_at=datetime.utcnow()

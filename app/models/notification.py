@@ -70,6 +70,7 @@ class Notification(Base):
     related_project_id = Column(Integer, ForeignKey("projects.id"), nullable=True, index=True)
     related_milestone_id = Column(Integer, ForeignKey("milestones.id"), nullable=True, index=True)
     related_appointment_id = Column(Integer, ForeignKey("appointments.id"), nullable=True, index=True)
+    trade_id = Column(Integer, nullable=True, index=True)  # Für Frontend-Kompatibilität (tradeId)
     
     # Beziehungen
     recipient = relationship("User", foreign_keys=[recipient_id])
