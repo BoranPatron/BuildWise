@@ -98,14 +98,20 @@ class AppointmentService:
             if (appointment_data.appointment_type.value == AppointmentType.INSPECTION.value and 
                 appointment_data.invited_service_provider_ids):
                 print(f"[NOTIFICATION] Erstelle Benachrichtigungen für {len(appointment_data.invited_service_provider_ids)} Dienstleister")
+                # Verwende asyncio.create_task für asynchrone Ausführung
+                import asyncio
                 try:
-                    await AppointmentService._create_inspection_notifications(
-                        db=db,
-                        appointment=appointment,
-                        invited_service_provider_ids=appointment_data.invited_service_provider_ids,
-                        created_by=created_by
+                    # Erstelle Task für asynchrone Benachrichtigungserstellung
+                    notification_task = asyncio.create_task(
+                        AppointmentService._create_inspection_notifications(
+                            db=db,
+                            appointment=appointment,
+                            invited_service_provider_ids=appointment_data.invited_service_provider_ids,
+                            created_by=created_by
+                        )
                     )
-                    print(f"[SUCCESS] Benachrichtigungen für Besichtigungseinladungen erstellt")
+                    # Warte nicht auf das Task - lasse es im Hintergrund laufen
+                    print(f"[SUCCESS] Benachrichtigungs-Task erstellt")
                 except Exception as e:
                     print(f"[WARNING] Fehler beim Erstellen der Benachrichtigungen: {e}")
                     # Fahre trotz Fehler fort - Appointment wurde bereits erstellt
@@ -706,7 +712,7 @@ class AppointmentService:
                     
                     notification = Notification(
                         recipient_id=service_provider_id,
-                        type=NotificationType.INSPECTION_INVITATION,
+                        type=NotificationType.TENDER_INVITATION,  # Verwende existierenden Enum-Wert
                         priority=NotificationPriority.HIGH,
                         title=f"Einladung zur Besichtigung: {milestone_title}",
                         message=f"{bautraeger_name} hat dich zur Besichtigung für '{milestone_title}' im Projekt '{project_name}' eingeladen. Termin: {scheduled_date_str}{time_info}{location_info}",
