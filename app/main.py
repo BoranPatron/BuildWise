@@ -51,7 +51,11 @@ def get_allowed_origins():
         "http://192.168.1.65:5174",
         "http://192.168.1.42:5173",
         "http://192.168.1.42:3000",
-        "http://192.168.1.42:5174"
+        "http://192.168.1.42:5174",
+        # Production frontend URLs (temporary fix)
+        "https://frontend-8ysi.onrender.com",
+        "https://buildwise-landingpage.onrender.com",
+        "https://landingpage-5pjp.onrender.com"
     ]
     print(f"[INFO] CORS configured for DEVELOPMENT: {len(origins)} origins")
     return origins
