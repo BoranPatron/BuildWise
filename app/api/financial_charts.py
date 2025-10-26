@@ -327,6 +327,14 @@ async def get_financial_summary(
     expenses_total = expenses_total_result.scalar() or 0
     print(f"[DEBUG] Direct expenses total: {expenses_total}")
     
+    # Berechne Gesamtausgaben aus direkten Kostenpositionen (CostPosition ohne Rechnung)
+    cost_positions_total_result = await db.execute(
+        select(func.sum(CostPosition.amount))
+        .where(CostPosition.project_id == project_id)
+    )
+    cost_positions_total = cost_positions_total_result.scalar() or 0
+    print(f"[DEBUG] Direct cost positions total: {cost_positions_total}")
+    
     # Debug: Zähle alle Kostenpositionen für das Projekt (direkt über project_id)
     cost_positions_count_result = await db.execute(
         select(func.count(CostPosition.id))
@@ -364,8 +372,9 @@ async def get_financial_summary(
     )
     pending_invoices_total = pending_invoices_result.scalar() or 0
     
-    # Gesamtausgaben
-    total_expenses = float(paid_invoices_total) + float(expenses_total)
+    # Gesamtausgaben: Rechnungen + direkte Ausgaben + direkte Kostenpositionen
+    total_expenses = float(paid_invoices_total) + float(expenses_total) + float(cost_positions_total)
+    print(f"[DEBUG] Total expenses breakdown: invoices={paid_invoices_total}, expenses={expenses_total}, cost_positions={cost_positions_total}, total={total_expenses}")
     
     # Budget-Status
     budget = project.budget or 0
@@ -379,6 +388,7 @@ async def get_financial_summary(
         "total_expenses": total_expenses,
         "paid_invoices": float(paid_invoices_total),
         "direct_expenses": float(expenses_total),
+        "direct_cost_positions": float(cost_positions_total),
         "pending_invoices": float(pending_invoices_total),
         "remaining_budget": remaining_budget,
         "budget_percentage": round(budget_percentage, 1),
