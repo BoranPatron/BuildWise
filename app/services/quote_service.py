@@ -469,8 +469,8 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
         )
         project = project_result.scalar_one_or_none()
         
-        # Hole die Owner-ID (project.owner ist eine User-Instanz, wir brauchen die ID)
-        owner_id = project.owner.id if hasattr(project.owner, 'id') else project.owner_id
+        # Hole die Owner-ID - verwende direkt den Foreign Key statt lazy-loaded relationship
+        owner_id = project.owner_id
         
         if project and owner_id:
             # Prüfe ob dieses Angebot aus einem Besichtigungsprozess stammt
