@@ -26,7 +26,7 @@ class OAuthService:
             
             params = {
                 "client_id": settings.google_client_id,
-                "redirect_uri": settings.google_redirect_uri,
+                "redirect_uri": settings.google_redirect_uri_dynamic,
                 "response_type": "code",
                 "scope": "openid email profile",
                 "access_type": "offline",
@@ -44,7 +44,7 @@ class OAuthService:
             
             params = {
                 "client_id": settings.microsoft_client_id,
-                "redirect_uri": settings.microsoft_redirect_uri,
+                "redirect_uri": settings.microsoft_redirect_uri_dynamic,
                 "response_type": "code",
                 "scope": "openid email profile User.Read",  # User.Read für Graph API
                 "response_mode": "query",
@@ -86,12 +86,12 @@ class OAuthService:
             "client_secret": settings.google_client_secret,
             "code": code,
             "grant_type": "authorization_code",
-            "redirect_uri": settings.google_redirect_uri
+            "redirect_uri": settings.google_redirect_uri_dynamic
         }
         
         print(f"[DEBUG] Google OAuth Debug:")
         print(f"  - Client ID: {settings.google_client_id}")
-        print(f"  - Redirect URI: {settings.google_redirect_uri}")
+        print(f"  - Redirect URI: {settings.google_redirect_uri_dynamic}")
         print(f"  - Code length: {len(code)}")
         
         async with aiohttp.ClientSession() as session:
@@ -148,12 +148,12 @@ class OAuthService:
             "client_secret": settings.microsoft_client_secret,
             "code": code,
             "grant_type": "authorization_code",
-            "redirect_uri": settings.microsoft_redirect_uri
+            "redirect_uri": settings.microsoft_redirect_uri_dynamic
         }
         
         print(f"[DEBUG] Microsoft OAuth Debug:")
         print(f"  - Client ID: {settings.microsoft_client_id}")
-        print(f"  - Redirect URI: {settings.microsoft_redirect_uri}")
+        print(f"  - Redirect URI: {settings.microsoft_redirect_uri_dynamic}")
         print(f"  - Code length: {len(code)}")
         print(f"  - Token URL: {token_url}")
         

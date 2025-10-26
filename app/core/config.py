@@ -22,9 +22,12 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 30
     
     # Google OAuth
-    google_client_id: str = "1039127200110-vav094cta93qmtleivdj63un5dne17eb.apps.googleusercontent.com"
-    google_client_secret: str = "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"
-    google_redirect_uri: str = "http://localhost:5173/auth/google/callback"
+    google_client_id: str = os.getenv("GOOGLE_CLIENT_ID", "1039127200110-nsoqdfqsn2ejkqdbll8lu919ep5bu7lq.apps.googleusercontent.com")
+    google_client_secret: str = os.getenv("GOOGLE_CLIENT_SECRET", "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")
+    google_redirect_uri: str = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:5173/auth/google/callback")
+    
+    # Frontend URL (set via environment variable in production)
+    frontend_base_url: str = os.getenv("FRONTEND_BASE_URL", "http://localhost:5173")
     
     # Microsoft OAuth
     microsoft_client_id: str = "1039127200110-vav094cta93qmtleivdj63un5dne17eb.apps.googleusercontent.com"  # Temporär für Tests
@@ -57,6 +60,16 @@ class Settings(BaseSettings):
     def stripe_payment_cancel_url(self) -> str:
         """Dynamische Cancel URL basierend auf Frontend URL"""
         return f"{self.frontend_url}/service-provider/buildwise-fees?payment=cancelled"
+    
+    @property
+    def google_redirect_uri_dynamic(self) -> str:
+        """Dynamische Google OAuth Redirect URI basierend auf Frontend URL"""
+        return f"{self.frontend_base_url}/auth/google/callback"
+    
+    @property
+    def microsoft_redirect_uri_dynamic(self) -> str:
+        """Dynamische Microsoft OAuth Redirect URI basierend auf Frontend URL"""
+        return f"{self.frontend_base_url}/auth/microsoft/callback"
     
     # Sicherheit
     bcrypt_rounds: int = 12
