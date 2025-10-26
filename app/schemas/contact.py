@@ -3,13 +3,13 @@ Contact Schemas
 Pydantic models für Kontaktbuch-Daten
 """
 from typing import Optional
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from datetime import datetime
 
 
 class ContactBase(BaseModel):
     """Basis-Schema für Contact"""
-    company_name: str = Field(..., min_length=1, max_length=255, description="Firmenname")
+    company_name: Optional[str] = Field(None, max_length=255, description="Firmenname")
     contact_person: Optional[str] = Field(None, max_length=255, description="Ansprechpartner")
     email: Optional[EmailStr] = Field(None, description="E-Mail-Adresse")
     phone: Optional[str] = Field(None, max_length=50, description="Telefonnummer")
@@ -25,6 +25,14 @@ class ContactBase(BaseModel):
     project_id: Optional[int] = Field(None, description="Verknüpftes Projekt")
     service_provider_id: Optional[int] = Field(None, description="Dienstleister-ID")
     favorite: Optional[bool] = Field(False, description="Favorit")
+    
+    @field_validator('company_name')
+    @classmethod
+    def validate_company_name(cls, v, info):
+        """Ensure company_name is not empty string"""
+        if v is None or v == "":
+            return None
+        return v
 
 
 class ContactCreate(ContactBase):

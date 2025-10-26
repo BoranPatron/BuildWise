@@ -41,10 +41,18 @@ async def create_contact(
                 detail="Dieser Kontakt existiert bereits in Ihrem Kontaktbuch"
             )
     
+    # Fallback-Logik: Verwende contact_person wenn company_name leer ist
+    final_company_name = contact_data.company_name
+    if not final_company_name or final_company_name.strip() == "":
+        if contact_data.contact_person:
+            final_company_name = contact_data.contact_person
+        else:
+            final_company_name = "Unbekanntes Unternehmen"
+    
     # Erstelle neuen Kontakt
     new_contact = Contact(
         user_id=current_user.id,
-        company_name=contact_data.company_name,
+        company_name=final_company_name,
         contact_person=contact_data.contact_person,
         email=contact_data.email,
         phone=contact_data.phone,
