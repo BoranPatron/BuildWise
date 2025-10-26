@@ -1609,7 +1609,7 @@ END:VCALENDAR`;
 
               
               {/* Besichtigungstermin Banner - wenn Termin vereinbart */}
-              {appointmentsForTrade.length > 0 && (() => {
+              {appointmentsForTrade.length > 0 && (isBautraegerUser || isUserInvitedForInspection) && (() => {
                 const appointment = appointmentsForTrade[0] || {
                   id: 1,
                   scheduled_date: '2025-08-30T14:00:00',
@@ -1705,9 +1705,11 @@ END:VCALENDAR`;
                       </div>
                       <div className="flex items-center gap-3">
                         <div className="text-right">
-                          <div className="text-blue-200 text-sm">
-                            {appointmentsForTrade.length > 0 && `${(appointment.invitations || []).length || 202} Dienstleister eingeladen`}
-                          </div>
+                          {isBautraegerUser && (
+                            <div className="text-blue-200 text-sm">
+                              {appointmentsForTrade.length > 0 && `${(appointment.invitations || []).length || 202} Dienstleister eingeladen`}
+                            </div>
+                          )}
                           <div className="text-blue-300 text-xs">
                             {appointment.location_address || appointment.location || 'Seestrasse 2, 8610 Uster, Schweiz'}
                           </div>
@@ -1854,7 +1856,7 @@ END:VCALENDAR`;
         </div>
 
         {/* Besichtigungstermin Banner */}
-        {appointmentsForTrade.length > 0 && (() => {
+        {appointmentsForTrade.length > 0 && (isBautraegerUser || isUserInvitedForInspection) && (() => {
           const appointment = appointmentsForTrade[0] || {
             id: 1,
             scheduled_date: '2025-08-30T14:00:00',
@@ -1920,7 +1922,9 @@ END:VCALENDAR`;
                 </div>
                 <div className="flex items-center gap-3">
                   <div className="text-right">
-                    <div className="text-blue-200 text-sm">202 Dienstleister eingeladen</div>
+                    {isBautraegerUser && (
+                      <div className="text-blue-200 text-sm">202 Dienstleister eingeladen</div>
+                    )}
                     <div className="text-blue-300 text-xs">Seestrasse 2, 8610 Uster, Schweiz</div>
                   </div>
                   <button
