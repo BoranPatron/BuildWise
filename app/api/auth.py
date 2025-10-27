@@ -913,6 +913,20 @@ async def update_company_info(
         )
         await db.commit()
         
+        # ✨ NEU: Prüfe ob Welcome-Notification angezeigt werden soll
+        show_welcome = False
+        welcome_credits = 0
+        if current_user.user_role == UserRole.BAUTRAEGER:
+            from ..services.credit_service import CreditService
+            try:
+                balance = await CreditService.get_credit_balance(db, current_user.id)
+                if balance.credits > 0:
+                    show_welcome = True
+                    welcome_credits = balance.credits
+                    logger.info(f"Welcome-Notification für User {current_user.id}: {welcome_credits} Credits")
+            except Exception as e:
+                logger.error(f"Fehler beim Credit-Check: {e}")
+        
         # Audit-Log
         ip_address = req.client.host if req else None
         await SecurityService.create_audit_log(
@@ -926,7 +940,9 @@ async def update_company_info(
             "message": "Firmeninformationen erfolgreich gespeichert",
             "company_name": company_name,
             "company_address": company_address,
-            "company_uid": company_uid
+            "company_uid": company_uid,
+            "show_welcome_notification": show_welcome,
+            "welcome_credits": welcome_credits
         }
         
     except HTTPException:
