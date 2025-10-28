@@ -5,8 +5,11 @@ from typing import Optional
 from pydantic import BaseModel
 import os
 import shutil
+import logging
 from datetime import datetime
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 from ..core.database import get_db
 from ..core.security import create_access_token
