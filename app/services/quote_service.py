@@ -358,10 +358,9 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
         print(f"   Environment Mode: {getattr(settings, 'environment_mode', 'production')}")
         print(f"   Fee Percentage: {get_fee_percentage()}%")
         
-        # [SUCCESS] FIX: Da create_cost_position_from_quote deaktiviert wurde, verwende Quote-ID direkt
-        # Die BuildWise Fee Service kann mit der Quote-ID arbeiten, ohne eine echte CostPosition zu benötigen
-        cost_position_id = quote.id
-        print(f"   Cost Position ID: {cost_position_id} (verwendet Quote-ID als Referenz)")
+        # Verwende nach Möglichkeit die echte CostPosition-ID, sonst Fee ohne FK referenzieren
+        cost_position_id = getattr(cost_position, "id", None)
+        print(f"   Cost Position ID: {cost_position_id if cost_position_id else 'keine (Fee ohne FK-Referenz)'}")
         
         # Erstelle BuildWise Gebühr mit Retry-Logik
         max_retries = 3
@@ -461,7 +460,8 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
         from ..models.credit_event import CreditEventType
         from ..models.user import UserRole
         from ..models import Project
-        from ..models.inspection import Inspection
+        from ..models.inspection import Inspection, InspectionInvitation
+        from ..models.user import User
         
         # Hole Projekt-Owner (Bauträger)
         project_result = await db.execute(
@@ -476,11 +476,11 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
             # Prüfe ob dieses Angebot aus einem Besichtigungsprozess stammt
             inspection_result = await db.execute(
                 select(Inspection)
-                .join(Inspection.invitations)
+                .join(InspectionInvitation, InspectionInvitation.inspection_id == Inspection.id)
                 .where(
                     and_(
                         Inspection.milestone_id == quote.milestone_id,
-                        Inspection.invitations.any(quote_id=quote.id)
+                        InspectionInvitation.quote_id == quote.id
                     )
                 )
             )
@@ -506,14 +506,12 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
                     related_entity_id=quote.id
                 )
         
-        # Zusätzliche Credit-Zuordnung (Legacy)
-        if project and project.owner:
+        # Zusätzliche Credit-Zuordnung (Legacy) ohne Lazy-Relationship
+        if project and owner_id:
             try:
-                owner = project.owner
-                
-                # Prüfe ob Owner ein Bauträger ist
-                if owner.user_role == UserRole.BAUTRAEGER:
-                    # Füge Credits für akzeptiertes Angebot hinzu
+                owner_result = await db.execute(select(User).where(User.id == owner_id))
+                owner = owner_result.scalar_one_or_none()
+                if owner and owner.user_role == UserRole.BAUTRAEGER:
                     await CreditService.add_credits_for_activity(
                         db=db,
                         user_id=owner.id,
@@ -524,7 +522,7 @@ async def accept_quote(db: AsyncSession, quote_id: int) -> Quote | None:
                     )
                     print(f"Credits fuer Bautraeger {owner.id} hinzugefuegt: Angebot akzeptiert")
                 else:
-                    print(f"Projekt-Owner {owner.id} ist kein Bautraeger, keine Credits hinzugefuegt")
+                    print(f"Projekt-Owner {owner_id} ist kein Bautraeger oder nicht gefunden, keine Credits hinzugefuegt")
             except Exception as credit_error:
                 print(f"Fehler bei zusaetzlicher Credit-Zuordnung: {credit_error}")
                 
